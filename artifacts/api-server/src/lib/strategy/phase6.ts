@@ -167,6 +167,15 @@ export type Phase6Analysis = {
   explanation: string;
 };
 
+type ConsolidationEvaluationInput = {
+  setupType: SetupType | LegacySetupType;
+  decision: Phase6Decision;
+  consolidation?: {
+    detected: boolean;
+    endTime: number | string | null;
+  } | null;
+};
+
 type ConsolidationMetrics = {
   high: number;
   low: number;
@@ -394,16 +403,59 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
   return buildEvaluation("PATIENCE_CANDLE_CONTINUATION", direction, rules, false, context.patience.state);
 }
 
-export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
+type DirectConsolidationSetup = {
+  candidateCandle: Candle;
+  consolidation: ExtendedConsolidation;
+  direction: Direction;
+};
+
+function findDirectConsolidationSetup(context: Phase6Context): DirectConsolidationSetup | null {
   const completed = completedCandles(context.candles).filter(isCompletedFiveMinuteCandle);
-  const candidateCandle = context.breakout.candleOpenTime === null
-    ? completed.at(-1)
-    : completed.find((candle) => candle.openTime === context.breakout.candleOpenTime) ?? completed.at(-1);
-  const consolidation = detectExtendedNtzConsolidation(
+  let latestSetup: DirectConsolidationSetup | null = null;
+  for (const candidateCandle of completed) {
+    const consolidation = detectExtendedNtzConsolidation(
+      context.candles,
+      context.levels.ntz,
+      context.config.phase6ConsolidationExpansionRatio,
+      candidateCandle.openTime,
+      context.config.phase6ConsolidationMaxRangeTicks,
+      context.config.phase6ConsolidationMinCandles,
+      context.config.phase6ConsolidationVolatilityLookback,
+      context.config.phase6ConsolidationVolatilityMultiplier,
+      context.config.phase6ConsolidationMinOverlapRatio,
+      context.config.phase6ConsolidationMinRejectionCount,
+      context.config.phase6ConsolidationMaxDirectionalSequence,
+    );
+    if (!consolidation.detected
+      || typeof consolidation.frozenHigh !== "number"
+      || typeof consolidation.frozenLow !== "number") continue;
+    const longCrossing = candidateCandle.high >= consolidation.frozenHigh + 8 * (context.tickSize ?? 0.25);
+    const shortCrossing = candidateCandle.low <= consolidation.frozenLow - 8 * (context.tickSize ?? 0.25);
+    const causalDirection = context.orbTrend?.trendDirectionAt(candidateCandle.openTime)
+      ?? context.breakout.direction;
+    const direction = causalDirection === "long" && longCrossing
+      ? "long"
+      : causalDirection === "short" && shortCrossing
+        ? "short"
+        : causalDirection === null || causalDirection === undefined
+          ? longCrossing !== shortCrossing
+            ? longCrossing ? "long" : "short"
+            : null
+          : null;
+    if (direction) latestSetup = { candidateCandle, consolidation, direction };
+  }
+  return latestSetup;
+}
+
+export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
+  const directSetup = findDirectConsolidationSetup(context);
+  const completed = completedCandles(context.candles).filter(isCompletedFiveMinuteCandle);
+  const candidateCandle = directSetup?.candidateCandle ?? completed.at(-1);
+  const consolidation = directSetup?.consolidation ?? detectExtendedNtzConsolidation(
     context.candles,
     context.levels.ntz,
     context.config.phase6ConsolidationExpansionRatio,
-    candidateCandle?.openTime ?? context.breakout.candleOpenTime ?? context.breakout.time,
+    candidateCandle?.openTime ?? null,
     context.config.phase6ConsolidationMaxRangeTicks,
     context.config.phase6ConsolidationMinCandles,
     context.config.phase6ConsolidationVolatilityLookback,
@@ -412,12 +464,17 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     context.config.phase6ConsolidationMinRejectionCount,
     context.config.phase6ConsolidationMaxDirectionalSequence,
   );
-  const direction = context.orbTrend?.direction ?? context.breakout.direction ?? directionFromTrend(context.trend.direction);
-  const breakoutDirectionMatchesTrend = context.orbTrend?.direction === null
-    || context.orbTrend?.direction === undefined
+  const direction = directSetup?.direction
+    ?? context.orbTrend?.trendDirectionAt(candidateCandle?.openTime ?? Number.NaN)
+    ?? context.breakout.direction
+    ?? directionFromTrend(context.trend.direction);
+  const causalOrbDirection = context.orbTrend?.trendDirectionAt(candidateCandle?.openTime ?? Number.NaN);
+  const breakoutDirectionMatchesTrend = directSetup !== null
+    || causalOrbDirection === null
+    || causalOrbDirection === undefined
     || context.breakout.direction === null
-    || context.orbTrend.direction === context.breakout.direction;
-  const breakoutCandle = candidateCandle;
+    || causalOrbDirection === context.breakout.direction;
+  const breakoutCandle = directSetup?.candidateCandle ?? candidateCandle;
   const directionalCloseLocationRatio = direction === "short"
     ? 1 - (context.breakout.closeLocationRatio ?? 0.5)
     : context.breakout.closeLocationRatio ?? 0.5;
@@ -434,7 +491,6 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     && (direction === "long" ? breakoutCandle.high >= strongBreakoutThreshold : breakoutCandle.low <= strongBreakoutThreshold);
   const breakoutConfirmed = breakoutCandle !== undefined
     && breakoutDirectionMatchesTrend
-    && !context.breakout.failed
     && strongBreakoutReached;
   const breakoutBodySupported = (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio;
   const breakoutCloseLocationSupported = directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio;
@@ -668,7 +724,7 @@ export function evaluateConsolidationEntryGuard(input: {
   strategyType?: SetupType | LegacySetupType | null;
   breakout?: Pick<BreakoutEvent, "detected" | "direction" | "candleOpenTime" | "continuationConfirmed" | "failed"> | null;
   config: StrategyConfig;
-  consolidationEvaluation?: Pick<SetupEvaluation, "setupType" | "decision"> | null;
+  consolidationEvaluation?: ConsolidationEvaluationInput | null;
   qualifyingPullback?: boolean;
   entryFillPrice?: number | null;
   tickSize?: number;
@@ -676,9 +732,44 @@ export function evaluateConsolidationEntryGuard(input: {
   const completed = completedCandles(input.candles);
   const directConsolidation = input.strategyType === "CONSOLIDATION_BREAKOUT_CONTINUATION";
   const patienceCandle = directConsolidation ? null : input.patience?.patienceCandle;
-  const breakoutCandle = input.breakout?.candleOpenTime === null || input.breakout?.candleOpenTime === undefined
-    ? undefined
-    : completed.find((candle) => candle.openTime === input.breakout!.candleOpenTime);
+  const evaluatedConsolidation = directConsolidation
+    ? input.consolidationEvaluation?.consolidation ?? null
+    : null;
+  const evaluatedEndTime = evaluatedConsolidation?.endTime === null || evaluatedConsolidation?.endTime === undefined
+    ? null
+    : typeof evaluatedConsolidation.endTime === "number"
+      ? evaluatedConsolidation.endTime
+      : Date.parse(evaluatedConsolidation.endTime);
+  const breakoutCandle = directConsolidation && evaluatedConsolidation?.detected
+    && evaluatedEndTime !== null
+    && Number.isFinite(evaluatedEndTime)
+    && typeof input.direction === "string"
+    ? completed
+      .filter((candle) => candle.openTime >= evaluatedEndTime)
+      .find((candidate) => {
+        const candidateConsolidation = detectExtendedNtzConsolidation(
+          input.candles,
+          input.levels.ntz,
+          input.config.phase6ConsolidationExpansionRatio,
+          candidate.openTime,
+          input.config.phase6ConsolidationMaxRangeTicks,
+          input.config.phase6ConsolidationMinCandles,
+          input.config.phase6ConsolidationVolatilityLookback,
+          input.config.phase6ConsolidationVolatilityMultiplier,
+          input.config.phase6ConsolidationMinOverlapRatio,
+          input.config.phase6ConsolidationMinRejectionCount,
+          input.config.phase6ConsolidationMaxDirectionalSequence,
+        );
+        return candidateConsolidation.detected
+          && typeof candidateConsolidation.frozenHigh === "number"
+          && typeof candidateConsolidation.frozenLow === "number"
+          && (input.direction === "long"
+            ? candidate.high >= candidateConsolidation.frozenHigh + 8 * (input.tickSize ?? 0.25)
+            : candidate.low <= candidateConsolidation.frozenLow - 8 * (input.tickSize ?? 0.25));
+      })
+    : input.breakout?.candleOpenTime === null || input.breakout?.candleOpenTime === undefined
+      ? undefined
+      : completed.find((candle) => candle.openTime === input.breakout!.candleOpenTime);
   const breakoutIsBeforePatience = breakoutCandle !== undefined
     && patienceCandle !== null
     && patienceCandle !== undefined
@@ -695,18 +786,18 @@ export function evaluateConsolidationEntryGuard(input: {
       ? candle.closeTime <= patienceCandle.openTime
       : candle.closeTime <= (completed.at(-1)?.closeTime ?? Number.NEGATIVE_INFINITY));
   const frozen = detectExtendedNtzConsolidation(
-    detectionCandles,
-    input.levels.ntz,
-    input.config.phase6ConsolidationExpansionRatio,
-    null,
-    input.config.phase6ConsolidationMaxRangeTicks,
-    input.config.phase6ConsolidationMinCandles,
-    input.config.phase6ConsolidationVolatilityLookback,
-    input.config.phase6ConsolidationVolatilityMultiplier,
-    input.config.phase6ConsolidationMinOverlapRatio,
-    input.config.phase6ConsolidationMinRejectionCount,
-    input.config.phase6ConsolidationMaxDirectionalSequence,
-  );
+      detectionCandles,
+      input.levels.ntz,
+      input.config.phase6ConsolidationExpansionRatio,
+      null,
+      input.config.phase6ConsolidationMaxRangeTicks,
+      input.config.phase6ConsolidationMinCandles,
+      input.config.phase6ConsolidationVolatilityLookback,
+      input.config.phase6ConsolidationVolatilityMultiplier,
+      input.config.phase6ConsolidationMinOverlapRatio,
+      input.config.phase6ConsolidationMinRejectionCount,
+      input.config.phase6ConsolidationMaxDirectionalSequence,
+    );
   if (
     !frozen.detected
     || typeof frozen.frozenHigh !== "number"

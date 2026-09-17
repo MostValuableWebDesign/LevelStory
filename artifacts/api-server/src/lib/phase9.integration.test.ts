@@ -85,6 +85,162 @@ function scenarioDataset(seed: number, startDate: string, days: number) {
   return { ...dataset, candles };
 }
 
+type DirectFixtureKind = "consolidation" | "reversal";
+
+function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "short") {
+  const tradingDate = "2026-08-25";
+  const seed = direction === "long" ? 11 : 12;
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: tradingDate,
+    days: kind === "reversal" ? 6 : 1,
+    seed,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const regularWindow = sessionWindow(tradingDate, "regular", calendar)!;
+  const regular = source.filter((item) =>
+    tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+    && item.openTime >= regularWindow.openTime
+    && item.openTime < regularWindow.closeTime,
+  );
+  const signalIndex = kind === "reversal" ? 37 : 40;
+  const base = regular[25]!.close;
+  const candles = source.map((item) => {
+    const index = regular.findIndex((candidate) => candidate.openTime === item.openTime);
+    if (kind === "consolidation" && index >= 25 && index < signalIndex) {
+      return {
+        ...item,
+        open: base,
+        high: base + 0.5,
+        low: base - 0.5,
+        close: base + (index % 2 ? 0.25 : -0.25),
+        volume: 1_000,
+        bid: base,
+        ask: base + specification.tickSize,
+      };
+    }
+    if (kind === "consolidation" && index === signalIndex) {
+      return direction === "long"
+        ? {
+          ...item,
+          open: base,
+          high: base + 2.5,
+          low: base - 0.25,
+          close: base + 0.25,
+          volume: 2_000,
+          bid: base,
+          ask: base + specification.tickSize,
+        }
+        : {
+          ...item,
+          open: base,
+          high: base + 0.25,
+          low: base - 2.5,
+          close: base - 0.25,
+          volume: 2_000,
+          bid: base - specification.tickSize,
+          ask: base,
+        };
+    }
+    if (kind === "reversal" && index >= 0 && index < signalIndex) {
+      const trendBase = direction === "short"
+        ? 6810 - index * 0.2
+        : 6790 + index * 0.2;
+      return direction === "short"
+        ? {
+          ...item,
+          open: trendBase,
+          high: trendBase + 0.1,
+          low: trendBase - 0.5,
+          close: trendBase - 0.5,
+          volume: 1_000,
+        }
+        : {
+          ...item,
+          open: trendBase,
+          high: trendBase + 0.1,
+          low: trendBase - 0.5,
+          close: trendBase - 0.5,
+          volume: 1_000,
+        };
+    }
+    if (kind === "reversal" && index === signalIndex) {
+      return direction === "short"
+        ? { ...item, open: 6_800.75, high: 6_801.75, low: 6_800.75, close: 6_801.75, volume: 1_000 }
+        : { ...item, open: 6_807.5, high: 6_808.5, low: 6_807.5, close: 6_808.5, volume: 1_000 };
+    }
+    if (kind === "reversal" && index === signalIndex + 1) {
+      return direction === "short"
+        ? { ...item, open: 6_801.75, high: 6_801.75, low: 6_800.75, close: 6_800.75, volume: 1_000 }
+        : { ...item, open: 6_808.5, high: 6_808.5, low: 6_807.5, close: 6_807.5, volume: 1_000 };
+    }
+    if (kind === "reversal" && index === signalIndex + 2) {
+      return direction === "short"
+        ? { ...item, open: 6_800.75, high: 6_801, low: 6_798.5, close: 6_798.5, volume: 2_000 }
+        : { ...item, open: 6_807.5, high: 6_810.75, low: 6_807.25, close: 6_810.75, volume: 2_000 };
+    }
+    return item;
+  });
+  const signalCandle = regular[signalIndex]!;
+  const entryCandle = kind === "reversal" ? regular[signalIndex + 2]! : signalCandle;
+  const entryThreshold = kind === "consolidation"
+    ? direction === "long" ? base + 2.5 : base - 2.5
+    : direction === "short" ? 6_798.75 : 6_810.5;
+  const ticks = [{
+    timestamp: entryCandle.openTime + 60_000,
+    price: entryThreshold,
+    source: "tick" as const,
+  }, {
+    timestamp: entryCandle.openTime + 120_000,
+    price: direction === "long" ? entryThreshold + 0.25 : entryThreshold - 0.25,
+    source: "tick" as const,
+  }];
+  const dates = [...new Set(source.map((item) => tradingDateForTimestamp(item.openTime, calendar)))];
+  const enabledStrategies = {
+    ORB_PULLBACK_CONTINUATION: false,
+    EARLY_ORB_MOMENTUM_CONTINUATION: false,
+    CONSOLIDATION_BREAKOUT_CONTINUATION: kind === "consolidation",
+    EQUIVALENT_CANDLE_REVERSAL: kind === "reversal",
+    PATIENCE_CANDLE_CONTINUATION: false,
+    PEAK_RETRACEMENT_REVERSAL: false,
+  };
+  return {
+    request: {
+      symbol: "MES",
+      startDate: tradingDate,
+      endDate: tradingDate,
+      inSampleDays: Math.max(1, dates.length - 1),
+      outOfSampleDays: dates.length > 1 ? 1 : 0,
+      executionMode: "ohlcv_modeled" as const,
+      premarketAvailable: true,
+      visualReviewEnabledStrategies: enabledStrategies,
+      ...(kind === "reversal"
+        ? { strategyConfigOverride: strategyConfig({ trendCandleCount: 3, emaPeriod: 5, emaSlopeWindow: 5 }) }
+        : {}),
+    },
+    dataset: {
+      source: "historical_databento" as const,
+      contractSymbol: specification.fullContractSymbol,
+      contractMonth: specification.contractMonth,
+      candles,
+      ticks,
+      orderedIntrabarEvidence: {
+        source: "tick" as const,
+        contractSymbol: specification.fullContractSymbol,
+        ordering: "timestamp_ascending" as const,
+        equalTimestampSemantics: "conservative" as const,
+        coverageStart: entryCandle.openTime,
+        coverageEnd: entryCandle.closeTime,
+      },
+      orderedIntrabarEvidenceComplete: true,
+      inSampleDates: dates.slice(0, -1),
+      outOfSampleDates: dates.slice(-1),
+      selectedDates: [tradingDate],
+    },
+  };
+}
+
 function candle(index: number, open: number, high: number, low: number, close: number, volume = 100, isComplete = true): SimulatedFuturesCandle {
   const openTime = index * FIVE_MINUTES;
   return {
@@ -149,6 +305,38 @@ test("deterministic bullish and bearish A+ fixtures qualify with the governed en
         ? patienceCandle.low - 8 * specification.tickSize
         : patienceCandle.high + 8 * specification.tickSize,
       `seed ${seed}`);
+  }
+});
+
+test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution, and account arbitration", () => {
+  for (const kind of ["consolidation", "reversal"] as const) {
+    for (const direction of ["long", "short"] as const) {
+      const fixture = directProductionFixture(kind, direction);
+      const report = runCausalBacktest(fixture.request, undefined, fixture.dataset);
+      const setupType = kind === "consolidation"
+        ? "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        : "EQUIVALENT_CANDLE_REVERSAL";
+      const qualifiedAudit = report.audit.find((record) =>
+        record.setupType === setupType && record.decision === "SETUP QUALIFIED");
+      assert.ok(qualifiedAudit, `${kind} ${direction} must qualify from a raw snapshot`);
+      const occurrence = report.occurrences.find((item) =>
+        item.strategyCandidate === setupType && item.status === "SIGNAL_CONFIRMED");
+      assert.ok(occurrence, `${kind} ${direction} must create a confirmed causal occurrence`);
+      if (kind === "reversal") continue;
+      const candidate = report.tradeCandidates.find((item) =>
+        item.primaryEdge === setupType);
+      assert.ok(candidate, `${kind} ${direction} must project a candidate`);
+      assert.equal(candidate?.executionStatus, "MODELED_TRADE_CREATED");
+      assert.equal(candidate?.accountEntryStatus, "ENTERED");
+      assert.ok(
+        report.candidateExecutionEvidence?.some((trade) => trade.primaryEdge === setupType),
+        `${kind} ${direction} must emit candidate-owned execution evidence`,
+      );
+      assert.ok(
+        report.trades.some((trade) => trade.primaryEdge === setupType && trade.direction === direction),
+        `${kind} ${direction} must produce an authoritative trade`,
+      );
+    }
   }
 });
 

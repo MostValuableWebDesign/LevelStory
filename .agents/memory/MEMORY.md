@@ -94,3 +94,4 @@
 - [Ordered intrabar completeness](ordered-intrabar-completeness.md) — timestamped ticks override OHLC stop-first only when source coverage is explicitly verified; partial or equal-time evidence stays conservative.
 - [Verified intrabar provenance](verified-intrabar-provenance.md) — a completeness flag alone is insufficient; exact chronology also needs validated source, contract, coverage, ordering, and tie semantics.
 - [Interval-scoped intrabar coverage](interval-intrabar-coverage.md) — ordered evidence authorizes only its validated candle interval; uncovered candles retain conservative OHLC behavior.
+- [Causal fixture visibility](causal-fixture-visibility.md) — next-candle opens share the current close boundary but remain hidden until their own completed close.

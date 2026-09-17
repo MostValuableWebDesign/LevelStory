@@ -49,6 +49,8 @@ export function validateDashboardInvariants(input: DashboardInvariantInput): Das
     ? input.setupAnalysis.evaluations[0]
     : input.setupAnalysis.evaluations.find((evaluation) => evaluation.setupType === input.setupAnalysis.primarySetup);
   const executableSetup = selected?.decision === "SETUP QUALIFIED" && !selected.alertOnly;
+  const requiresPatienceEntry = selected !== undefined
+    && !["CONSOLIDATION_BREAKOUT_CONTINUATION", "EQUIVALENT_CANDLE_REVERSAL"].includes(selected.setupType);
   const riskApproval = selected?.rules.find((rule) => rule.key === "riskApproval");
 
   if (orbSignal?.status === "confirmed" && (
@@ -77,7 +79,8 @@ export function validateDashboardInvariants(input: DashboardInvariantInput): Das
     });
   }
 
-  if (executableSetup && (input.patience.entryBufferPrice === null || input.patience.strategyStopPrice === null)) {
+  if (executableSetup && requiresPatienceEntry
+    && (input.patience.entryBufferPrice === null || input.patience.strategyStopPrice === null)) {
     violations.push({
       code: "QUALIFIED_SETUP_WITHOUT_PATIENCE_ENTRY",
       detail: "The setup is qualified even though the phased patience analysis has no buffered entry and strategy stop.",
