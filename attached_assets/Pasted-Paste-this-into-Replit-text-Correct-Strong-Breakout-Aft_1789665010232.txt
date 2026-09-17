@@ -1,0 +1,111 @@
+Paste this into Replit:
+
+```text
+Correct Strong Breakout After Consolidation in LevelStory.
+
+These instructions supersede the previously requested stop four ticks inside the consolidation zone. Apply this change only to CONSOLIDATION_BREAKOUT_CONTINUATION.
+
+1. REQUIRE A BREAKOUT IN THE TREND DIRECTION
+
+Use the causally established trend at the setup/entry time.
+
+Bearish trend:
+- Only a SHORT is allowed.
+- Entry threshold = frozen consolidation LOW − 8 instrument ticks.
+- The actual modeled entry fill must be strictly BELOW the frozen consolidation low.
+- Reject an entry inside or above the consolidation zone.
+
+Bullish trend:
+- Only a LONG is allowed.
+- Entry threshold = frozen consolidation HIGH + 8 instrument ticks.
+- The actual modeled entry fill must be strictly ABOVE the frozen consolidation high.
+- Reject an entry inside or below the consolidation zone.
+
+If trend is missing, neutral, ambiguous, or conflicts with the trade direction, reject with a clear diagnostic. Do not infer the trend from the proposed trade direction or use future candles.
+
+A candle crossing the threshold does not excuse an invalid actual fill. Validate the entry fill itself against the original frozen zone.
+
+Preserve price-crossing entry semantics. Do not add a candle-close requirement or reject an otherwise valid entry simply because the trigger candle opened or wicked inside the zone.
+
+2. RESTORE THE OPPOSITE-SIDE EIGHT-TICK STOP
+
+Bearish SHORT:
+- Stop = frozen consolidation HIGH + 8 instrument ticks.
+
+Bullish LONG:
+- Stop = frozen consolidation LOW − 8 instrument ticks.
+
+Remove the four-ticks-inside-zone stop for this strategy. The stop belongs beyond the opposite side of the entire frozen consolidation range.
+
+MES example:
+Frozen zone = 5200.00–5206.00.
+Eight ticks = 2.00 points.
+
+- Bearish: short entry threshold 5198.00; stop 5208.00.
+- Bullish: long entry threshold 5208.00; stop 5198.00.
+
+Trigger the stop on price touch/crossing, without requiring a candle close. Preserve existing gap, slippage, and intrabar-ordering handling.
+
+3. USE ONE FROZEN SETUP THROUGHOUT
+
+The trend evidence, consolidation boundaries, entry threshold, actual fill, and stop must belong to the same causal setup.
+
+Do not substitute a later consolidation range, use the trigger candle as the stop boundary, or move the original stop because the range is recalculated.
+
+Inspect the full production path:
+- Strategy detection and trend qualification.
+- Audit and occurrence creation.
+- Candidate projection and account arbitration.
+- Entry-fill modeling.
+- Risk/reward qualification and position sizing.
+- Authoritative execution and P/L.
+- Visual Review chart markers, zone overlays, and trade details.
+
+Update all stop-dependent risk and R calculations consistently. Preserve target-selection rules.
+
+Investigate why the reported bearish example displayed an entry that was not below its consolidation zone. Correct the underlying trade data or chart linkage as appropriate; do not merely reposition the marker. If that example is unavailable, reproduce the defect with a deterministic fixture and state that the original screenshot was not verified.
+
+Missing or conflicting trend/range evidence must fail closed. Use explicit rejection reasons.
+
+Remove any restriction added solely because the old stop needed four ticks of interior zone depth. Preserve independently justified consolidation-detection rules.
+
+4. REQUIRED REGRESSION TESTS
+
+Use production functions to verify:
+
+- Bearish trend produces a short below the frozen range with its stop eight ticks above the range high.
+- Bullish trend produces a long above the frozen range with its stop eight ticks below the range low.
+- Opposite-trend entries are rejected.
+- Missing, neutral, or ambiguous trend is rejected.
+- Fills inside the zone or exactly on its boundary are rejected.
+- A candle reaching the threshold cannot authorize an incorrectly modeled fill inside the zone.
+- Opening or wicking inside the zone does not reject an otherwise valid directional crossing and outside fill.
+- Later range changes do not alter the original entry threshold or stop.
+- Stop touches trigger without waiting for a close.
+- Pre-entry stop touches do not become post-entry exits.
+- Gaps and ambiguous intrabar ordering follow existing execution policy.
+- Candidate, trade, chart marker, frozen zone, stop, risk, and P/L remain linked and consistent.
+- Equivalent-Candle Reversal and other strategies remain unchanged.
+
+Preserve stable occurrence/candidate identity and duplicate-conflict protection. Do not allow a rejected conflicting setup to become executable again when another duplicate arrives.
+
+5. VERSIONING AND VERIFICATION
+
+Inspect current HEAD and preserve unrelated valid changes.
+
+Update formula/cache versions so results generated under the four-tick interior-stop rule are not reused as current results. Preserve historical provenance and do not silently transfer human reviews to incompatible regenerated trades.
+
+Run focused strategy, Phase 9, execution, account-arbitration, and relevant Visual Review tests, plus API typecheck/build and git diff --check.
+
+Do not run a broad historical replay before focused tests pass.
+
+Report:
+- Root cause of the invalid bearish entry, if reproduced.
+- Files and commit changed.
+- Verified long/short entry and stop formulas.
+- Production-path test results.
+- Formula/cache version changes.
+- Tests/builds passed, failed, or not run.
+
+Do not claim the screenshot is fixed unless its underlying example was actually verified.
+```

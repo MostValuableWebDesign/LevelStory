@@ -1793,6 +1793,86 @@ function annotation(
   };
 }
 
+type DirectConsolidationProjection = {
+  zoneHigh: number;
+  zoneLow: number;
+  entryThreshold: number;
+  strategyStop: number;
+  bufferPoints: number;
+};
+
+function isDirectConsolidationStrategy(
+  audit: Pick<BacktestAuditRecord, "setupType">,
+  occurrence?: HistoricalOccurrence,
+): boolean {
+  return occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || canonicalStrategyId(audit.setupType) === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+}
+
+/**
+ * Direct Strong Breakout geometry is owned by the frozen consolidation zone.
+ * Return null when the zone is missing or invalid so Visual Review cannot draw
+ * a plausible-looking legacy candle-close entry or stop.
+ */
+function directConsolidationProjection(
+  audit: Pick<BacktestAuditRecord, "contractSymbol" | "direction" | "setupType" | "directConsolidationZoneHigh" | "directConsolidationZoneLow" | "consolidationGuard">,
+  occurrence?: HistoricalOccurrence,
+): DirectConsolidationProjection | null {
+  if (!isDirectConsolidationStrategy(audit, occurrence) || !audit.direction) return null;
+  const specification = getFuturesContractSpecification(
+    parseMesContractSymbol(audit.contractSymbol)?.rootSymbol ?? audit.contractSymbol ?? "MES",
+  );
+  const tickSize = specification.tickSize;
+  const finite = (value: number | null | undefined): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  const zoneHigh = finite(occurrence?.directConsolidationZoneHigh)
+    ? occurrence.directConsolidationZoneHigh
+    : finite(audit.directConsolidationZoneHigh)
+      ? audit.directConsolidationZoneHigh
+      : finite(occurrence?.consolidationGuard?.consolidationZoneHigh)
+        ? occurrence.consolidationGuard.consolidationZoneHigh
+        : audit.consolidationGuard?.consolidationZoneHigh;
+  const zoneLow = finite(occurrence?.directConsolidationZoneLow)
+    ? occurrence.directConsolidationZoneLow
+    : finite(audit.directConsolidationZoneLow)
+      ? audit.directConsolidationZoneLow
+      : finite(occurrence?.consolidationGuard?.consolidationZoneLow)
+        ? occurrence.consolidationGuard.consolidationZoneLow
+        : audit.consolidationGuard?.consolidationZoneLow;
+  if (!finite(zoneHigh) || !finite(zoneLow) || !(zoneHigh > zoneLow) || !(tickSize > 0)) return null;
+  const entryThreshold = audit.direction === "long"
+    ? zoneHigh + 8 * tickSize
+    : zoneLow - 8 * tickSize;
+  const strategyStop = audit.direction === "long"
+    ? zoneLow - 8 * tickSize
+    : zoneHigh + 8 * tickSize;
+  if (!Number.isFinite(entryThreshold) || !Number.isFinite(strategyStop)) return null;
+  return {
+    zoneHigh,
+    zoneLow,
+    entryThreshold: Number(entryThreshold.toFixed(10)),
+    strategyStop: Number(strategyStop.toFixed(10)),
+    bufferPoints: Number((8 * tickSize).toFixed(10)),
+  };
+}
+
+function modeledFillPrice(trade: BacktestTrade | null): number | null {
+  const price = trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null;
+  return typeof price === "number" && Number.isFinite(price) ? price : null;
+}
+
+function directFillIsOutsideZone(
+  direction: "long" | "short" | null,
+  projection: DirectConsolidationProjection | null,
+  fillPrice: number | null,
+): boolean {
+  if (!direction || !projection || fillPrice === null) return false;
+  return direction === "long"
+    ? fillPrice > projection.zoneHigh
+    : fillPrice < projection.zoneLow;
+}
+
 function buildAnnotations(
   snapshot: MarketSnapshot,
   audit: BacktestAuditRecord,
@@ -1896,11 +1976,13 @@ function buildAnnotations(
   const entryPrice = occurrence
     ? evidenceNumber(occurrence.entryCandle, "close")
     : evidenceNumber(audit.triggerCandle, "close");
-  const directStrategy = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+  const directConsolidationCandidate = isDirectConsolidationStrategy(audit, occurrence);
+  const directConsolidation = directConsolidationProjection(audit, occurrence);
+  const directStrategy = directConsolidationCandidate
+    || occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence?.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
-    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence?.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
-  const directEntryDetail = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+  const directEntryDetail = directConsolidationCandidate
     ? "The next completed candle is the authorized threshold observation above or below the frozen consolidation range."
     : "The next completed candle is the only authorized trigger after the two completed equivalent pattern candles.";
   const patienceLabel = occurrence && occurrence.status !== "CONFIRMED"
@@ -1913,7 +1995,7 @@ function buildAnnotations(
     "entry-candle",
     directStrategy ? "Authorized trigger candle" : "Entry candle (E)",
     "candle",
-    entryPrice,
+    directConsolidation?.entryThreshold ?? entryPrice,
     "accent",
     directStrategy
       ? directEntryDetail
@@ -1922,25 +2004,44 @@ function buildAnnotations(
     entryClose,
   ));
   const modeledFillTime = audit.modeledFillObservationTime ? Date.parse(audit.modeledFillObservationTime) : trade?.audit?.modeledFillObservationTime ? Date.parse(trade.audit.modeledFillObservationTime) : trade ? Date.parse(trade.entryTime) : null;
-  lines.push(annotation("modeled-fill", "Modeled fill", "candle", trade?.audit?.modeledFillPrice ?? trade?.entryPrice ?? null, "positive", "The modeled execution observation, not a live order or broker fill.", modeledFillTime, modeledFillTime, eventVisibility(modeledFillTime)));
+  const modeledPrice = modeledFillPrice(trade);
+  const modeledFillValid = !directConsolidationCandidate
+    || directFillIsOutsideZone(audit.direction, directConsolidation, modeledPrice);
+  lines.push(annotation(
+    "modeled-fill",
+    "Modeled fill",
+    "candle",
+    modeledFillValid ? modeledPrice : null,
+    "positive",
+    modeledFillValid
+      ? "The modeled execution observation, not a live order or broker fill."
+      : "The stored direct-strategy fill was withheld because it is not strictly outside the frozen consolidation zone.",
+    modeledFillTime,
+    modeledFillTime,
+    eventVisibility(modeledFillTime),
+  ));
   const entryBuffer = occurrence
-    ? audit.entryTriggerPrice ?? occurrence.confirmationThreshold ?? entryPrice
+    ? directConsolidation?.entryThreshold ?? audit.entryTriggerPrice ?? occurrence.confirmationThreshold ?? entryPrice
     : snapshot.patience.entryBufferPrice ?? audit.entryTriggerPrice;
+  const projectedEntryBuffer = directConsolidationCandidate
+    ? directConsolidation?.entryThreshold ?? null
+    : entryBuffer;
   const entryBufferTicks = directStrategy ? 8 : audit.confirmationBufferTicks ?? snapshot.patience.entryBufferTicks;
   addLevel(
     "entry-buffer",
     directStrategy ? "Authorized entry threshold" : "Entry buffer",
-    entryBuffer,
+    projectedEntryBuffer,
     directStrategy
       ? `${entryBufferTicks}-tick strategy-owned threshold; no patience-derived buffer is applied.`
       : `${entryBufferTicks}-tick confirmation buffer at the causal P→E occurrence.`,
     "accent",
   );
-  const directOccurrenceStop = directStrategy && occurrence
-    ? strategyStopPriceForOccurrence(occurrence)
-    : null;
+  const directOccurrenceStop = directConsolidation?.strategyStop
+    ?? (directConsolidationCandidate ? null : directStrategy && occurrence ? strategyStopPriceForOccurrence(occurrence) : null);
   const candidateStrategyStopPrice = directOccurrenceStop !== null
     ? directOccurrenceStop
+    : directConsolidationCandidate
+      ? null
     : trade?.candidateId
       ? trade.audit?.strategyStopPrice ?? null
       : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
@@ -2272,15 +2373,21 @@ function buildTradeEvents(
   const entryClose = occurrence?.entryCandle
     ? evidenceTime(occurrence.entryCandle, "closeTime")
     : evidenceTime(audit.triggerCandle, "closeTime");
-  const directStrategy = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+  const directConsolidationCandidate = isDirectConsolidationStrategy(audit, occurrence);
+  const directConsolidation = directConsolidationProjection(audit, occurrence);
+  const directStrategy = directConsolidationCandidate
+    || occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence?.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
-    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence?.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
   if (occurrence && (
     !["SIGNAL_CONFIRMED", "TRADE_TAKEN", "TRADE_OUTCOME"].includes(occurrence.status) && occurrence.kind !== "trade"
     || entryOpen === null
     || (!directStrategy && (patienceClose === null || entryOpen !== patienceClose))
   )) return [];
+  if (
+    directConsolidationCandidate
+    && !directFillIsOutsideZone(trade.direction, directConsolidation, modeledFillPrice(trade))
+  ) return [];
   const fillTime = tradeAudit?.modeledFillTimestamp
     ? Date.parse(tradeAudit.modeledFillTimestamp)
     : tradeAudit?.modeledFillObservationTime
@@ -2319,7 +2426,7 @@ function buildTradeEvents(
       trade.direction,
       entryOpen,
       entryClose ?? fillTime,
-      tradeAudit.entryTriggerPrice,
+      directConsolidationCandidate ? directConsolidation?.entryThreshold ?? null : tradeAudit.entryTriggerPrice,
       trade.entryPrice,
       trade.contracts,
        directStrategy
@@ -2335,7 +2442,7 @@ function buildTradeEvents(
       trade.direction,
       exitOpen,
       exitClose,
-      audit.entryTriggerPrice,
+      directConsolidationCandidate ? directConsolidation?.entryThreshold ?? null : audit.entryTriggerPrice,
       trade.exitPrice,
       trade.contracts,
        `${trade.outcome} exit at the frozen ${directStrategy ? "consolidation-zone" : "patience-wick"} strategy stop.`,
@@ -2343,7 +2450,7 @@ function buildTradeEvents(
     ));
   }
   if (trade.audit?.targetHit || trade.outcome === "target") {
-    events.push(tradeEvent("target", "target", "TARGET", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.audit?.targetPrice ?? audit.targetPrice, trade.contracts, "Modeled target exit.", evaluationCloseTime));
+    events.push(tradeEvent("target", "target", "TARGET", trade.direction, exitOpen, exitClose, directConsolidationCandidate ? directConsolidation?.entryThreshold ?? null : audit.entryTriggerPrice, trade.audit?.targetPrice ?? audit.targetPrice, trade.contracts, "Modeled target exit.", evaluationCloseTime));
   }
   if (trade.audit?.runnerActivated) {
     events.push(tradeEvent("runner", "runner_activation", "RUNNER", trade.direction, exitOpen, exitClose, audit.entryTriggerPrice, trade.audit.runnerReferencePrice ?? null, trade.audit.remainingQuantity ?? 0, "Runner leg activated.", evaluationCloseTime));
@@ -2624,11 +2731,19 @@ function buildMachineSnapshot(
   const overlapDetail = patienceNtzOverlap
     ? `Candidate rejection: patience candle ${patienceLow}-${patienceHigh} overlaps causal ORB/NTZ ${Math.min(ntzHigh!, ntzLow!)}-${Math.max(ntzHigh!, ntzLow!)}.`
     : null;
+  const directCandidateProjection = isDirectConsolidationStrategy(audit, occurrence);
+  const directProjection = directConsolidationProjection(audit, occurrence);
+  const directFillValid = !directCandidateProjection
+    || directFillIsOutsideZone(audit.direction, directProjection, modeledFillPrice(trade));
+  const fillProjectionRejection = directCandidateProjection && trade && !directFillValid
+    ? "Candidate projection rejected: the modeled direct-strategy fill is not strictly outside the frozen consolidation zone."
+    : null;
   const projectionRejection = [
     ...(candidateRejection?.details ?? []),
     ...(overlapDetail ? [overlapDetail] : []),
+    ...(fillProjectionRejection ? [fillProjectionRejection] : []),
   ].filter((detail, index, details) => detail.trim().length > 0 && details.indexOf(detail) === index);
-  const displayedAudit = projectionRejection.length > 0
+  const displayedAuditBeforeGeometry = projectionRejection.length > 0
     ? {
       ...audit,
       rejectionSummary: [
@@ -2637,7 +2752,31 @@ function buildMachineSnapshot(
       ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" "),
     }
     : audit;
-  const displayedTrade = trade
+  const displayedAudit = directProjection
+    ? {
+      ...displayedAuditBeforeGeometry,
+      // The frozen zone is authoritative for direct Strong Breakout entry and
+      // stop geometry even when this snapshot was built without an occurrence.
+      entryTriggerPrice: directProjection.entryThreshold,
+      effectiveEntryThreshold: directProjection.entryThreshold,
+      strategyStopPrice: directProjection.strategyStop,
+      finalStrategyStopBoundary: directProjection.strategyStop,
+      stopDirection: displayedAuditBeforeGeometry.direction,
+      stopBufferTicks: 8,
+      stopBufferPoints: directProjection.bufferPoints,
+      directConsolidationZoneHigh: directProjection.zoneHigh,
+      directConsolidationZoneLow: directProjection.zoneLow,
+      directConsolidationStartTimestamp: occurrence?.directConsolidationStartTimestamp
+        ?? displayedAuditBeforeGeometry.directConsolidationStartTimestamp,
+      directConsolidationEndTimestamp: occurrence?.directConsolidationEndTimestamp
+        ?? displayedAuditBeforeGeometry.directConsolidationEndTimestamp,
+      directConsolidationSourceCandleTimestamps: occurrence?.directConsolidationSourceCandleTimestamps
+        ?? displayedAuditBeforeGeometry.directConsolidationSourceCandleTimestamps,
+      consolidationGuard: occurrence?.consolidationGuard
+        ?? displayedAuditBeforeGeometry.consolidationGuard,
+    }
+    : displayedAuditBeforeGeometry;
+  const projectedTrade = trade
     ? {
       ...trade,
       audit: trade.audit
@@ -2658,6 +2797,9 @@ function buildMachineSnapshot(
         : trade.audit,
     }
     : null;
+  const displayedTrade = directCandidateProjection && trade && !directFillValid
+    ? null
+    : projectedTrade;
   return {
     snapshotId: `visual-${hash}`,
     ...(occurrence ? { occurrenceId: occurrence.occurrenceId, sourceFingerprint: occurrence.sourceFingerprint } : {}),

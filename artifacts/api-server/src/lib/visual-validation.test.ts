@@ -178,6 +178,86 @@ test("historical projection keeps contract-local candles and truthful category g
   assert.equal(partial.accountReplayTrades.length, 0);
 });
 
+test("Visual Review reconstructs Strong Breakout entry and stop from the frozen zone", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "strong_breakout");
+  assert.ok(fixture);
+  const audit: BacktestAuditRecord = {
+    ...fixture.audit,
+    setupType: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    direction: "short",
+    directConsolidationZoneHigh: 5540,
+    directConsolidationZoneLow: 5530,
+    entryTriggerPrice: 5535,
+    strategyStopPrice: 5555,
+    targetPrice: 5520,
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    fixture.dataset,
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [audit],
+      trades: [],
+    },
+  );
+  const snapshot = set.snapshots.find((candidate) => candidate.category === "strong_breakout");
+  assert.ok(snapshot);
+  const entry = snapshot.annotations.find((annotation) => annotation.id === "entry-buffer");
+  const trigger = snapshot.annotations.find((annotation) => annotation.id === "entry-candle");
+  const stop = snapshot.annotations.find((annotation) => annotation.id === "strategy-stop");
+  assert.equal(entry?.price, 5528);
+  assert.equal(trigger?.price, 5528);
+  assert.equal(stop?.price, 5542);
+  assert.equal(snapshot.machineEvidence.audit.entryTriggerPrice, 5528);
+  assert.equal(snapshot.machineEvidence.audit.strategyStopPrice, 5542);
+});
+
+test("Visual Review withholds a direct trade whose modeled fill is inside the frozen zone", () => {
+  const fixture = createVisualValidationFixtures(request).find((item) => item.category === "qualified_trade");
+  assert.ok(fixture);
+  assert.ok(fixture.trade);
+  const audit: BacktestAuditRecord = {
+    ...fixture.audit,
+    setupType: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    direction: "short",
+    directConsolidationZoneHigh: 5540,
+    directConsolidationZoneLow: 5530,
+    entryTriggerPrice: 5550,
+    strategyStopPrice: 5555,
+    targetPrice: 5520,
+  };
+  const trade: BacktestTrade = {
+    ...fixture.trade,
+    setupType: audit.setupType,
+    direction: "short",
+    entryPrice: 5535,
+    audit: {
+      ...fixture.trade.audit!,
+      entryTriggerPrice: 5535,
+      modeledFillPrice: 5535,
+      strategyStopPrice: 5555,
+    },
+  };
+  const set = buildHistoricalVisualValidationSetFromReport(
+    { ...request, source: "historical_databento", reviewMode: "trades_and_diagnostics" },
+    fixture.dataset,
+    {
+      symbol: "MES",
+      formulaHash: fixture.audit.id.padEnd(64, "0").slice(0, 64),
+      executionMode: "ohlcv_modeled",
+      audit: [audit],
+      trades: [trade],
+    },
+  );
+  const snapshot = set.snapshots.find((candidate) => candidate.category === "target_exit");
+  assert.ok(snapshot);
+  assert.equal(snapshot.machineEvidence.trade, null);
+  assert.equal(snapshot.annotations.find((annotation) => annotation.id === "modeled-fill")?.price, null);
+  assert.match(snapshot.machineEvidence.audit.rejectionSummary ?? "", /modeled direct-strategy fill is not strictly outside/);
+});
+
 test("Visual Review preserves no-target stop outcomes without target-hit evidence", () => {
   const fixture = createVisualValidationFixtures(request).find((item) => item.category === "stop_exit");
   assert.ok(fixture);
