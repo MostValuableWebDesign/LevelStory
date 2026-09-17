@@ -1,0 +1,104 @@
+The entry and stop formulas are now correct. Preserve them:
+- Bullish LONG: entry threshold = frozen range HIGH + 8 ticks; stop = frozen range LOW − 8 ticks.
+- Bearish SHORT: entry threshold = frozen range LOW − 8 ticks; stop = frozen range HIGH + 8 ticks.
+
+Two defects remain.
+
+1. REQUIRE ESTABLISHED CAUSAL TREND
+
+In strategy/phase6.ts, findDirectConsolidationSetup currently falls back to choosing direction from whichever threshold was crossed when causal direction is missing.
+
+This violates the strategy requirement. A breakout crossing cannot establish its own trend authorization.
+
+Confirmed reproduction:
+- ORB trend direction is null.
+- Breakout direction is null.
+- Trend is neutral.
+- Price crosses the long threshold.
+- The evaluator incorrectly returns SETUP QUALIFIED.
+
+Fix the full qualification path:
+- Require valid, independently established trend evidence available at the setup/entry time.
+- Bullish trend authorizes only a long above the frozen range.
+- Bearish trend authorizes only a short below the frozen range.
+- Missing, neutral, ambiguous, or conflicting trend evidence must reject with explicit diagnostics.
+- Do not infer trend from the proposed trade direction or crossing direction.
+- Do not use future trend evidence.
+- Do not replace a missing historical trend with the current evaluation cursor’s trend.
+- Inspect the fallback path in evaluateStrongBreakoutAfterConsolidation as well; fixing only findDirectConsolidationSetup must not leave another route to qualification.
+
+Use the repository’s authoritative causal trend source. Preserve its documented precedence; do not silently substitute another source to make a setup qualify.
+
+Carry the causal trend evidence through audit, occurrence, candidate, and execution so downstream projection cannot authorize a setup whose required trend evidence is absent or contradictory.
+
+Preserve:
+- Eight-tick directional entry thresholds.
+- Actual fills strictly outside the original frozen zone.
+- Eight-tick opposite-side stops.
+- Price-crossing semantics without requiring a candle close.
+- Valid trigger candles that open or wick inside the zone.
+- Equivalent-Candle Reversal and other strategies.
+
+2. KEEP CONFLICTED IDENTITIES REJECTED
+
+In phase9.ts, projectHistoricalTradeCandidates deletes a physical identity from signalByPhysicalIdentity when duplicate records contain conflicting crossing timestamps.
+
+A later duplicate then sees no existing entry and can reintroduce that rejected setup as an executable candidate.
+
+Previously reproduced:
+- Record A: exact crossing timestamp T1.
+- Record B: same physical identity, conflicting timestamp T2.
+- Record C: duplicate of A.
+- Expected zero candidates; actual result was one.
+
+Make conflict rejection persistent for the entire projection call:
+- Once a physical identity has conflicting evidence, it remains rejected regardless of later duplicates or input order.
+- Retain explicit conflict diagnostics.
+- Emit no executable candidate or authoritative trade for that identity.
+- Preserve valid enrichment from missing crossing time to one consistent exact timestamp.
+- Preserve distinct identities for different strategies and frozen setups.
+
+3. REQUIRED REGRESSION TESTS
+
+Use production functions, not mocked qualification outcomes.
+
+Trend:
+- Missing ORB trend, missing breakout direction, and neutral trend reject despite a threshold crossing.
+- Future trend evidence cannot authorize an earlier crossing.
+- Missing historical trend cannot fall back to a later cursor’s trend.
+- Bearish trend plus only a long crossing rejects.
+- Bullish trend plus only a short crossing rejects.
+- Ambiguous or conflicting authoritative trend evidence rejects.
+- Valid bullish and bearish setups reach linked audit, occurrence, candidate, arbitration, and authoritative execution.
+- Both detector and downstream projection fail closed when required trend evidence is absent.
+
+Identity:
+- [A, conflicting B, A] produces zero candidates and zero trades.
+- All permutations of those records remain rejected.
+- Additional duplicates cannot restore the identity.
+- [missing timestamp, exact timestamp] and the reverse order retain one stable identity and the best valid evidence.
+- Existing cross-strategy and frozen-range collision tests remain passing.
+
+Preservation:
+- Assert the exact long/short entry and stop formulas.
+- Confirm actual fills remain outside the frozen zone.
+- Keep both strategies’ existing long/short production fixtures passing.
+
+4. VERIFICATION AND REPORT
+
+Update governed formula/cache versions for the changed qualification semantics. Preserve historical provenance and prevent stale results from being presented as current.
+
+Run focused Phase 6, Phase 9, execution, account-arbitration, batch, and relevant Visual Review tests, plus API typecheck/build and git diff --check.
+
+Do not run a broad historical replay before focused checks pass.
+
+Report:
+- Root causes and files changed.
+- Authoritative causal trend source and timestamp used.
+- Before/after results for the missing-trend reproduction.
+- Before/after results for the three-record identity conflict.
+- Confirmation that entry and stop formulas remain unchanged.
+- Tests/builds passed, failed, or not run.
+- Formula/cache version changes.
+
+Do not claim completion solely because the existing suite passes. The two targeted regressions must demonstrate rejection through the production paths.
