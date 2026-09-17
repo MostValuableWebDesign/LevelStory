@@ -107,6 +107,7 @@ import {
   isOpeningRangeCompleteAtEvaluation,
   isPrimaryLevel,
    chartLevelLabel,
+  authoritativeConsolidationZone,
   INTRADAY_REFERENCE_PRESENTATION,
   mergeOrbNtzAnnotations,
   priceToY,
@@ -2454,7 +2455,7 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
   const regularStartIndex = regularCandles.length ? getCandleSlotIndex(regularCandles[0], sessionView) : -1;
   const openingRangeX = regularStartIndex >= 0 ? left + regularStartIndex * step : null;
   const openingRangeWidth = orbCandles.length === 3 ? 3 * step : 0;
-   const consolidationZones = (() => {
+    const consolidationZones = (() => {
      const audit = typeof snapshot.machineEvidence.audit === "object" && snapshot.machineEvidence.audit !== null
        ? snapshot.machineEvidence.audit as Record<string, unknown>
        : null;
@@ -2481,8 +2482,21 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
           maxDirectionalSequence: rawThresholds.maxDirectionalSequence,
        }
        : null;
-     if (!thresholds) return [];
-     return findConsolidationZones(candles, thresholds).flatMap((zone) => {
+      const toPrice = (value: unknown): number | null =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+      const toTimestampList = (value: unknown): string[] =>
+        Array.isArray(value)
+          ? value.filter((item): item is string => typeof item === "string" && Number.isFinite(Date.parse(item)))
+          : [];
+      const projectZone = (zone: {
+        high: number;
+        low: number;
+        range: number;
+        sourceCandleOpenTimes: string[];
+        startTime: string;
+        endTime: string;
+      } | null) => {
+        if (!zone) return [];
        const sourceSlots = zone.sourceCandleOpenTimes
          .map((openTime) => {
            const candleIndex = findCandleIndexAtTimestamp(candles, openTime);
@@ -2508,7 +2522,36 @@ function PremarketMiniChart({ candles, snapshot }: { candles: SessionCandle[]; s
          endTime: zone.endTime,
          range: zone.range,
        }];
-     });
+      };
+      const detectedZones = thresholds
+        ? findConsolidationZones(candles, thresholds).flatMap(projectZone)
+        : [];
+
+      // The audit carries the exact frozen range that authorized a direct
+      // consolidation entry. Keep it visible even when the client-side
+      // detector cannot reconstruct the range from the focused candle window
+      // (for example, when E occurs several candles after the zone).
+      const directSourceTimes = toTimestampList(audit?.directConsolidationSourceCandleTimestamps);
+      const authoritativeDirectZone = projectZone(
+        authoritativeConsolidationZone(candles, {
+          zoneHigh: toPrice(audit?.directConsolidationZoneHigh),
+          zoneLow: toPrice(audit?.directConsolidationZoneLow),
+          startTime: typeof audit?.directConsolidationStartTimestamp === "string"
+            ? audit.directConsolidationStartTimestamp
+            : null,
+          endTime: typeof audit?.directConsolidationEndTimestamp === "string"
+            ? audit.directConsolidationEndTimestamp
+            : null,
+          sourceCandleOpenTimes: directSourceTimes,
+        }),
+      );
+      const zones = [...detectedZones, ...authoritativeDirectZone];
+      return zones.filter((zone, index) => zones.findIndex((candidate) =>
+        candidate.startTime === zone.startTime
+          && candidate.endTime === zone.endTime
+          && Math.abs(candidate.zoneLow - zone.zoneLow) < 0.001
+          && Math.abs(candidate.zoneHigh - zone.zoneHigh) < 0.001,
+      ) === index);
    })();
     const fixedLevels = annotations.filter((annotation) =>
       isVisualPresentationAnnotation(annotation)

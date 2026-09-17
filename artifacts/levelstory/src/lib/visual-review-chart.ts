@@ -94,6 +94,14 @@ export type ConsolidationZone = {
   sourceCandleOpenTimes: string[];
 };
 
+export type FrozenConsolidationEvidence = {
+  zoneHigh?: number | null;
+  zoneLow?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  sourceCandleOpenTimes?: readonly string[] | null;
+};
+
 export type ConsolidationThresholds = {
   minCandles: number;
   maxRangeTicks: number;
@@ -458,6 +466,47 @@ export function findConsolidationZones(
     }
   }
   return zones;
+}
+
+/**
+ * Projects the server-authoritative direct-entry range into the visible
+ * candle series. This is intentionally separate from detector reconstruction:
+ * a later E candle must not make an already-frozen consolidation disappear.
+ */
+export function authoritativeConsolidationZone(
+  candles: readonly VisualValidationCandle[],
+  evidence: FrozenConsolidationEvidence,
+): ConsolidationZone | null {
+  const high = evidence.zoneHigh;
+  const low = evidence.zoneLow;
+  const sourceCandleOpenTimes = (evidence.sourceCandleOpenTimes ?? [])
+    .filter((openTime): openTime is string => typeof openTime === "string" && Number.isFinite(timestamp(openTime)))
+    .filter((openTime) => findCandleIndexAtTimestamp(candles, openTime) >= 0);
+  if (
+    typeof high !== "number"
+    || typeof low !== "number"
+    || !Number.isFinite(high)
+    || !Number.isFinite(low)
+    || high <= low
+    || sourceCandleOpenTimes.length === 0
+  ) return null;
+  return {
+    startTime: evidence.startTime ?? sourceCandleOpenTimes[0]!,
+    endTime: evidence.endTime ?? sourceCandleOpenTimes.at(-1)!,
+    high,
+    low,
+    range: Number((high - low).toFixed(2)),
+    rangeTicks: Number(((high - low) / MES_TICK_SIZE).toFixed(2)),
+    causalVolatilityBaseline: 0,
+    compressionRatio: 0,
+    overlapRatio: 0,
+    highRejectionCount: 0,
+    lowRejectionCount: 0,
+    maxDirectionalSequence: 0,
+    diagnosticRangeCapExceeded: false,
+    expansionRatio: 0,
+    sourceCandleOpenTimes,
+  };
 }
 
 export function isExactFiveMinuteCandle(candle: VisualValidationCandle): boolean {

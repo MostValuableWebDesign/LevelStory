@@ -4635,7 +4635,7 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
   };
 }
 
-function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): number | null {
+export function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): number | null {
   const tickSize = getFuturesContractSpecification(
     parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
   ).tickSize;

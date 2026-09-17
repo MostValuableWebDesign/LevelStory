@@ -14,6 +14,7 @@ import {
   type RejectedCandidateSignal,
   buildQualificationFunnel,
   type QualificationFunnel,
+  strategyStopPriceForOccurrence,
   sourceFingerprint as datasetSourceFingerprint,
 } from "./phase9.js";
 import type { PrimaryLossExitReference } from "./strategy/key-level-targets.js";
@@ -1348,6 +1349,13 @@ function auditEvidenceForOccurrence(
   const confirmationPrice = occurrence.confirmationThreshold
     ?? occurrence.confirmationEntryPrice
     ?? audit.entryTriggerPrice;
+  const directStrategy = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  const occurrenceStrategyStop = directStrategy
+    ? strategyStopPriceForOccurrence(occurrence)
+    : null;
   return {
     ...audit,
     direction: occurrence.direction ?? audit.direction,
@@ -1365,8 +1373,14 @@ function auditEvidenceForOccurrence(
     patienceConfirmationThreshold: confirmationPrice,
     effectiveEntryThreshold: confirmationPrice,
     effectiveEntryThresholdReached: occurrence.status === "SIGNAL_CONFIRMED",
-    finalStrategyStopBoundary: occurrence.management?.strategyStopPrice ?? audit.finalStrategyStopBoundary,
-    strategyStopPrice: occurrence.management?.strategyStopPrice ?? audit.strategyStopPrice,
+    // Direct occurrences own their frozen structural stop. Do not let a
+    // pre-candidate/legacy trade record reintroduce the old patience stop.
+    finalStrategyStopBoundary: directStrategy
+      ? occurrenceStrategyStop
+      : occurrence.management?.strategyStopPrice ?? audit.finalStrategyStopBoundary,
+    strategyStopPrice: directStrategy
+      ? occurrenceStrategyStop
+      : occurrence.management?.strategyStopPrice ?? audit.strategyStopPrice,
     catastropheStopPrice: occurrence.management?.catastropheStopPrice ?? audit.catastropheStopPrice,
     stopDirection: occurrence.direction ?? audit.stopDirection,
     consolidationGuard: occurrence.consolidationGuard ?? audit.consolidationGuard,
@@ -1884,9 +1898,14 @@ function buildAnnotations(
       : `${entryBufferTicks}-tick confirmation buffer at the causal P→E occurrence.`,
     "accent",
   );
-  const candidateStrategyStopPrice = trade?.candidateId
-    ? trade.audit?.strategyStopPrice ?? null
-    : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
+  const directOccurrenceStop = directStrategy && occurrence
+    ? strategyStopPriceForOccurrence(occurrence)
+    : null;
+  const candidateStrategyStopPrice = directOccurrenceStop !== null
+    ? directOccurrenceStop
+    : trade?.candidateId
+      ? trade.audit?.strategyStopPrice ?? null
+      : audit.strategyStopPrice ?? snapshot.patience.strategyStopPrice;
   const strategyStopValid = trade === null
     || candidateStrategyStopPrice === null
     || (trade.direction === "long"
@@ -1906,7 +1925,10 @@ function buildAnnotations(
   addLevel("strategy-stop", "Strategy stop", strategyStopPrice, "Formula-defined thesis stop.", "negative");
   // Candidate-owned plans are authoritative. Audit target fields are legacy
   // evidence and may only be used for a non-candidate legacy visualization.
-  const targetPlan = trade?.targetPlan ?? occurrence?.management?.targetPlan ?? (
+  const targetPlan = (directStrategy ? occurrence?.management?.targetPlan : undefined)
+    ?? trade?.targetPlan
+    ?? occurrence?.management?.targetPlan
+    ?? (
     trade?.candidateId ? undefined : audit.targetPlan
   );
   const targetPlacementTicks = targetPlan?.placementTicks ?? PROFIT_TARGET_PLACEMENT_TICKS;
@@ -1948,9 +1970,7 @@ function buildAnnotations(
        "muted",
      );
    }
-  const targetPrice = trade?.candidateId
-    ? trade.targetPlan?.targetPrice ?? null
-    : targetPlan?.targetPrice ?? null;
+  const targetPrice = targetPlan?.targetPrice ?? null;
   addLevel(
     "target",
      targetPlan?.fallbackUsed
@@ -2214,11 +2234,14 @@ function buildTradeEvents(
   const entryClose = occurrence?.entryCandle
     ? evidenceTime(occurrence.entryCandle, "closeTime")
     : evidenceTime(audit.triggerCandle, "closeTime");
+  const directStrategy = occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence?.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
+    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence?.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
   if (occurrence && (
     !["SIGNAL_CONFIRMED", "TRADE_TAKEN", "TRADE_OUTCOME"].includes(occurrence.status) && occurrence.kind !== "trade"
     || entryOpen === null
-    || patienceClose === null
-    || entryOpen !== patienceClose
+    || (!directStrategy && (patienceClose === null || entryOpen !== patienceClose))
   )) return [];
   const fillTime = tradeAudit?.modeledFillTimestamp
     ? Date.parse(tradeAudit.modeledFillTimestamp)
@@ -2235,9 +2258,23 @@ function buildTradeEvents(
     && tradeAudit?.triggerCandleOpenTime
     && tradeAudit?.modeledFillObservationTime;
   if (!authoritativeFill) return [];
-  const events: VisualValidationTradeEvent[] = [
-    tradeEvent("patience", "patience", "P", audit.direction, patienceOpen, patienceClose, null, occurrence ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close"), trade.contracts, "Validated patience candle.", evaluationCloseTime),
-    tradeEvent(
+  const events: VisualValidationTradeEvent[] = [];
+  if (!directStrategy) {
+    events.push(tradeEvent(
+      "patience",
+      "patience",
+      "P",
+      audit.direction,
+      patienceOpen,
+      patienceClose,
+      null,
+      occurrence ? evidenceNumber(occurrence.patienceCandle, "close") : evidenceNumber(audit.patienceCandle, "close"),
+      trade.contracts,
+      "Validated patience candle.",
+      evaluationCloseTime,
+    ));
+  }
+  events.push(tradeEvent(
       "entry-fill",
       "entry_fill",
       `Entry + fill ${trade.entryPrice.toFixed(2)}`,
@@ -2247,10 +2284,11 @@ function buildTradeEvents(
       tradeAudit.entryTriggerPrice,
       trade.entryPrice,
       trade.contracts,
-       `Candidate ${trade.candidateId} filled at the modeled execution price after the immediate E threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`,
+       directStrategy
+         ? `Candidate ${trade.candidateId} filled at the modeled execution price after the direct strategy threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`
+         : `Candidate ${trade.candidateId} filled at the modeled execution price after the immediate E threshold; signal ${trade.signalOccurrenceId}, observed at E close in permanent Shadow Mode.`,
       evaluationCloseTime,
-    ),
-  ];
+    ));
   if (trade.outcome === "strategy stop" || trade.outcome === "catastrophe stop") {
     events.push(tradeEvent(
       "stop",
@@ -2262,7 +2300,7 @@ function buildTradeEvents(
       audit.entryTriggerPrice,
       trade.exitPrice,
       trade.contracts,
-      `${trade.outcome} exit at the frozen patience-wick strategy stop.`,
+       `${trade.outcome} exit at the frozen ${directStrategy ? "consolidation-zone" : "patience-wick"} strategy stop.`,
       evaluationCloseTime,
     ));
   }

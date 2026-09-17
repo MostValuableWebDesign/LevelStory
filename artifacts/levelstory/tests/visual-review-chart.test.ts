@@ -27,6 +27,7 @@ import {
   getCandleGeometry,
   getEdgeIndicators,
   findConsolidationZones,
+  authoritativeConsolidationZone,
   getSessionDomainSlotCount,
   hasExactCandleAnchor,
   findCandleIndexAtTimestamp,
@@ -214,6 +215,28 @@ test("consolidation scanning finds every maximal bounded range in a snapshot", (
   assert.equal(zones[0]!.high, 101);
   assert.equal(zones[0]!.low, 99);
   assert.equal(zones[1]!.sourceCandleOpenTimes.length, 3);
+});
+
+test("authoritative consolidation remains visible when entry occurs after the zone", () => {
+  const candles = Array.from({ length: 8 }, (_, index) => makeCandle(index, {
+    open: index < 4 ? 100 : 102,
+    high: index < 4 ? 101 : 103,
+    low: index < 4 ? 99 : 101,
+    close: index < 4 ? 100 : 102,
+  }));
+  const zone = authoritativeConsolidationZone(candles, {
+    zoneHigh: 101,
+    zoneLow: 99,
+    startTime: candles[0]!.openTime,
+    endTime: candles[3]!.closeTime,
+    sourceCandleOpenTimes: candles.slice(0, 4).map((candle) => candle.openTime),
+  });
+  assert.ok(zone);
+  assert.equal(zone!.sourceCandleOpenTimes.length, 4);
+  assert.equal(zone!.startTime, candles[0]!.openTime);
+  assert.equal(zone!.endTime, candles[3]!.closeTime);
+  assert.equal(zone!.high, 101);
+  assert.equal(zone!.low, 99);
 });
 
 function makeCandle(index: number, overrides: Partial<VisualValidationCandle> = {}): VisualValidationCandle {
