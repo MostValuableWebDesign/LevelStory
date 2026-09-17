@@ -907,7 +907,10 @@ export default function VisualReview() {
       setRequest(generationRequest);
       setGenerationMessage(`Only ${storedSessions} stored trading session${storedSessions === 1 ? "" : "s"} are available through ${request.endDate}; generating with ${adjustedDays}.`);
     }
-    if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) return;
+    if (regenerateFresh && typeof window !== "undefined" && !window.confirm("Regenerate fresh for this review request? This recomputes only the derived review set, keeps existing review history intact, and does not rebuild the historical index.")) {
+      setGenerationMessage("Fresh regeneration was cancelled; the current review set is unchanged.");
+      return;
+    }
     setActiveVisualReviewTab("generate");
     setReviewSetRequested(true);
     setFreshGenerationRequested(regenerateFresh);
