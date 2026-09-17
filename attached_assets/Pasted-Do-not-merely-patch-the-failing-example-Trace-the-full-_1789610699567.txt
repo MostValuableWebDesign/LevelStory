@@ -1,0 +1,257 @@
+Do not merely patch the failing example. Trace the full production path and correct every use of incomplete intrabar evidence that can change entry, exit, timestamps, or account occupancy.
+
+FIRST: Resolve the one pending strategy decision
+
+Ask me this before changing consolidation qualification:
+
+“Do you authorize Strong Breakout After Consolidation to arm once a valid consolidation range is established from completed candles, then enter on the first subsequent price crossing eight ticks beyond that frozen range, without requiring the breakout candle to close first?”
+
+Explain which existing breakout-close or continuation gates conflict with that behavior. This prompt is NOT itself approval to remove them.
+
+Continue the independent execution-evidence fixes while awaiting my answer. Do not ask again about already-authorized price geometry or equivalent-candle measurements.
+
+If I approve:
+- Implement the authorized threshold-entry behavior causally.
+- Preserve consolidation detection measurements.
+- Freeze the range before entry eligibility.
+- Do not use the breakout candle’s future high, low, close, or volume to retroactively qualify its own entry.
+- Preserve existing authorized expiry/invalidation rules.
+- If expiry or re-arming behavior is undefined, identify that exact remaining decision; do not invent unlimited validity or automatic re-entry.
+
+AUTHORIZED STRATEGY CONTRACTS
+
+Strong Breakout After Consolidation:
+- No patience candle or P→E requirement.
+- Range high = highest high of the consolidation’s constituent candles.
+- Range low = lowest low of those candles.
+- Long trigger = frozen range high + 8 instrument ticks.
+- Long stop = frozen range low − 8 ticks.
+- Short trigger = frozen range low − 8 ticks.
+- Short stop = frozen range high + 8 ticks.
+- No automatically imposed immediate-next-candle-only restriction.
+
+Equivalent-Candle Reversal:
+- Two consecutive completed pattern candles.
+- Uptrend: exactly equal highs → short reversal.
+- Downtrend: exactly equal lows → long reversal.
+- Preserve the existing authorized body, wick, opposing-candle, and level-context measurements.
+- All pattern measurements must refer to the same two candles.
+- Long trigger = second pattern candle high + 8 ticks.
+- Long stop = second pattern candle low − 8 ticks.
+- Short trigger = second pattern candle low − 8 ticks.
+- Short stop = second pattern candle high + 8 ticks.
+- Only the immediate next candle may trigger entry; otherwise expire the pattern.
+- No separate patience candle or four-tick P→E gate.
+
+Both:
+- Retain existing key-level/1R selection, risk controls, fees, configured slippage, session windows, and account-position rules.
+- Preserve unrelated strategies.
+- Do not introduce a peak-retracement percentage gate.
+- Historical/Shadow execution only.
+
+CONFIRMED DEFECT TO FIX
+
+Inspect:
+- artifacts/api-server/src/lib/strategy/ohlcv-execution.ts
+- artifacts/api-server/src/lib/phase9.ts
+- artifacts/api-server/src/lib/batch-backtest.ts
+- Production replay dataset builders/adapters
+- Relevant tests, formula identity, and Visual Review projection
+
+The new orderedIntrabarEvidenceComplete flag controls some exit selection, but entry-candle preprocessing still:
+- infers entry from any nonempty orderedPoints array;
+- can reject entry if that incomplete array lacks a crossing;
+- replaces the original trigger OHLC with prices from the supplied points;
+- truncates that synthetic path;
+- can remove an actual stop touch from the original candle;
+- can consequently report an unambiguous target exit despite incomplete evidence.
+
+Reproduction:
+
+simulateOhlcvExecution({
+  direction: "long",
+  entry: 100,
+  tickSize: 0.25,
+  tickValue: 1.25,
+  pointMultiplier: 5,
+  contracts: 1,
+  target: 102,
+  stop: 98,
+  immediateTriggerCandle: {
+    open: 99,
+    high: 103,
+    low: 97,
+    close: 101,
+    openTime: 0,
+    closeTime: 300000
+  },
+  evaluateEntryCandleForExit: true,
+  orderedIntrabarEvidenceComplete: false,
+  orderedIntrabarPoints: [
+    { timestamp: 60000, price: 100 },
+    { timestamp: 120000, price: 102 }
+  ]
+})
+
+Observed incorrect result:
+- modeledFill: 100
+- exitReason: "target"
+- no ambiguity
+
+These incomplete observations cannot establish that the stop was not reached before the target.
+
+REQUIRED EXECUTION DESIGN
+
+1. Establish one evidence policy before execution
+
+Use the same validated evidence decision for:
+- Entry reachability.
+- First fill price and timestamp.
+- Entry-candle exits.
+- Subsequent-candle exits.
+- Partial exits and remaining quantity.
+- Exact exit timestamps.
+- Account-position chronology.
+
+Do not gate only one branch while another branch still trusts sparse points.
+
+A nonempty array is not proof of completeness.
+A manually supplied boolean is not sufficient production provenance.
+
+2. Preserve OHLC evidence when ordered evidence is insufficient
+
+When evidence is missing, incomplete, invalid, or does not cover the relevant interval:
+- Do not replace original OHLC with a sparse synthetic candle.
+- Do not interpret absence of a sampled crossing as proof that entry was missed.
+- Do not label a sampled crossing as the exact first fill time unless established.
+- Do not resolve competing barriers using incomplete observations.
+- Use the documented OHLC execution and ambiguity policy.
+- Preserve the distinction between unresolved entry and a confirmed entry with uncertain exit.
+- Unresolved entries must not create authoritative positions.
+- Do not assume the favorable path.
+
+For the reproduction above, preserve explicit entry/exit-order ambiguity and do not create a falsely certain target trade.
+
+3. Process sufficient ordered evidence chronologically
+
+Where source coverage and event ordering are verified:
+- Process events after the setup becomes eligible.
+- Establish entry before processing exits.
+- Determine the first executable barrier event before choosing exit reason.
+- Apply only stops and targets effective at that event.
+- Ignore pre-entry touches.
+- Stop processing a position after full exit.
+- After partial exit, process only remaining quantity.
+- Do not activate trailing stops, breakeven changes, or dynamic targets retroactively using later candle information.
+- Do not truncate the path before remaining-position management is finished.
+- Preserve the selected event’s timestamp directly; do not independently rescan and attach a potentially different event time afterward.
+- Equal timestamps with competing events require reliable sequence metadata or explicit ambiguity.
+
+4. Validate production evidence coverage
+
+Trace every actual dataset producer and consumer.
+
+The current code passes orderedIntrabarEvidenceComplete through phase9 and batch partitioning, but the last review found no production source assigning verified completeness.
+
+Implement an honest source contract:
+- Identify source/provenance.
+- Identify the covered time interval and relevant instrument/contract.
+- Validate finite prices and timestamps.
+- Validate ordering and duplicate/equal-time semantics.
+- Detect relevant coverage gaps where the source supports that check.
+- Ensure partitioning retains only the coverage guarantees applicable to that partition.
+- Never mix ticks from different contracts.
+- Reject or downgrade malformed or contradictory completeness claims.
+
+Do not simply set the flag to true to enable the new path.
+
+If the available source is only OHLCV or sparse observations:
+- Keep ordered evidence unverified/incomplete.
+- Use the OHLC fallback.
+- State clearly that precise intrabar ordering is unavailable.
+- Do not fabricate ticks from OHLC to claim exact event order.
+
+Use the smallest maintainable evidence representation that expresses these guarantees. Avoid unnecessary infrastructure.
+
+5. Propagate consistent execution results
+
+Reconcile:
+- Candidate execution status.
+- Trigger threshold versus actual fill.
+- Fill event time versus observation time.
+- Exit event time versus observation time.
+- Exit legs and remaining quantity.
+- P/L, fees, and slippage.
+- Authoritative versus diagnostic evidence.
+- Account blocking.
+- Batch totals.
+- Visual Review and exports.
+
+Retain:
+- Candidate strictly after established full exit may enter.
+- Candidate exactly at full exit remains blocked.
+- Partial exit does not release the account.
+- Unfilled, unresolved-entry, and invalid-management candidates do not occupy it.
+
+REQUIRED TEST MATRIX
+
+Add regression tests before fixing the reproduced bug, then verify they pass.
+
+Incomplete/invalid evidence:
+1. The exact reproduction above.
+2. Short-direction equivalent.
+3. Sparse points show entry and target but omit a possible stop.
+4. Sparse points omit entry crossing although original OHLC reaches it.
+5. Sparse points show no exits although OHLC touches a barrier.
+6. Invalid timestamps/prices.
+7. Points outside the candle or coverage interval.
+8. Equal-timestamp competing barriers without sequence evidence.
+9. A completeness claim inconsistent with available coverage.
+10. No ticks at all.
+
+Sufficient ordered evidence:
+11. Long target before stop.
+12. Long stop before target.
+13. Both short equivalents.
+14. Entry-candle and subsequent-candle versions.
+15. Stop/target touch before entry.
+16. Partial target followed by remaining-position stop.
+17. No changes after full exit.
+18. No retroactive stop/target activation.
+19. Exact event timestamps remain consistent across execution legs and trades.
+20. Configured slippage and fees reconcile exactly once.
+
+Integration:
+21. Real production adapter → dataset → candidate projection → execution → account gate.
+22. Incomplete-evidence candidate cannot become a falsely certain authoritative winner.
+23. Unresolved entry does not block a later valid candidate.
+24. Exact full-exit boundary and partial-position occupancy.
+25. Batch and single-run results agree.
+26. Equivalent-Candle Reversal preserves both directions, exact matching, next-candle expiry, and eight-tick geometry.
+27. Consolidation remains independent of patience state.
+28. Existing patience strategies retain their authorized behavior.
+
+Use actual adapter-produced evidence metadata in at least one integration test. Do not make every integration test manually set completeness to true.
+
+VERSIONING AND VERIFICATION
+
+- Update governed formula/cache identity for changed execution semantics.
+- Preserve historical results with their original provenance.
+- Run focused execution, strategy, account, and batch tests.
+- Run relevant typechecks/builds.
+- Run a bounded historical replay if data is available.
+- Identify whether that replay used OHLC fallback or verified ordered evidence.
+- Do not claim an OHLC-only replay validates exact tick sequencing.
+
+FINAL REPORT
+
+Provide:
+- Root cause and files changed.
+- Before/after result of the exact reproduction.
+- How production evidence completeness is established—or why it remains unavailable.
+- Test totals and any failures or skipped checks.
+- Formula/cache identity.
+- Historical replay results, if run.
+- Remaining unresolved consolidation authorization.
+
+Do not mark both strategies complete while consolidation timing is unresolved or while incomplete evidence can silently override original OHLC evidence.
