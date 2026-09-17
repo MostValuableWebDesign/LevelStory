@@ -405,6 +405,16 @@ export type MarketSnapshot = {
       grade?: number;
       dynamiteConfluenceCount?: number;
       supportingConfluences?: string[];
+      directSetupEvidence?: {
+        signalOpenTime: string;
+        qualificationTime: string;
+        crossingCandleOpenTime: string;
+        consolidationStartTime: string;
+        consolidationEndTime: string;
+        frozenHigh: number;
+        frozenLow: number;
+        sourceCandleOpenTimes: string[];
+      } | null;
     }>;
   };
   assumptions: string[];
@@ -1380,6 +1390,19 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
       grade: evaluation.grade ?? 0,
       dynamiteConfluenceCount: evaluation.dynamiteConfluenceCount ?? 0,
       supportingConfluences: evaluation.supportingConfluences ?? [],
+      directSetupEvidence: evaluation.directSetupEvidence
+        ? {
+          signalOpenTime: new Date(evaluation.directSetupEvidence.signalOpenTime).toISOString(),
+          qualificationTime: new Date(evaluation.directSetupEvidence.qualificationTime).toISOString(),
+          crossingCandleOpenTime: new Date(evaluation.directSetupEvidence.crossingCandleOpenTime).toISOString(),
+          consolidationStartTime: new Date(evaluation.directSetupEvidence.consolidationStartTime).toISOString(),
+          consolidationEndTime: new Date(evaluation.directSetupEvidence.consolidationEndTime).toISOString(),
+          frozenHigh: evaluation.directSetupEvidence.frozenHigh,
+          frozenLow: evaluation.directSetupEvidence.frozenLow,
+          sourceCandleOpenTimes: evaluation.directSetupEvidence.sourceCandleOpenTimes
+            .map((time) => new Date(time).toISOString()),
+        }
+        : null,
     })),
   };
 }

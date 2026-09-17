@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.10-authorized-preentry-consolidation-arm-interval-intrabar-provenance";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.11-authorized-direct-crossing-identity";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -29,6 +29,8 @@ export function formulaConfiguration(
       completedBarOnly: true,
       immediateNextCandleOnly: true,
       directConsolidationSameCandleRule: "arm at the end of the completed frozen consolidation range; enter at the first eight-tick crossing without requiring breakout close, body, close-location, or final-volume gates; no automatic next-candle substitution",
+      directConsolidationCrossingIdentity: "strategy, direction, contract, frozen range, constituent candle identity, arm timestamp, and crossing candle identity; evaluation cursor is provenance only",
+      directConsolidationThresholdEvent: "intrabar crossing timestamp is emitted only for verified ordered evidence; OHLCV remains conservative",
       noFutureData: true,
       noParameterOptimization: true,
       patienceEntryBufferTicks: config.patienceEntryBufferTicks,

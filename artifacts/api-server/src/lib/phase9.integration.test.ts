@@ -145,15 +145,15 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
     }
     if (kind === "reversal" && index >= 0 && index < signalIndex) {
       const trendBase = direction === "short"
-        ? 6810 - index * 0.2
-        : 6790 + index * 0.2;
+        ? 6770 + index * 0.5
+        : 6830 - index * 0.5;
       return direction === "short"
         ? {
           ...item,
           open: trendBase,
-          high: trendBase + 0.1,
-          low: trendBase - 0.5,
-          close: trendBase - 0.5,
+          high: trendBase + 0.5,
+          low: trendBase - 0.1,
+          close: trendBase + 0.5,
           volume: 1_000,
         }
         : {
@@ -167,18 +167,18 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
     }
     if (kind === "reversal" && index === signalIndex) {
       return direction === "short"
-        ? { ...item, open: 6_800.75, high: 6_801.75, low: 6_800.75, close: 6_801.75, volume: 1_000 }
-        : { ...item, open: 6_807.5, high: 6_808.5, low: 6_807.5, close: 6_808.5, volume: 1_000 };
+        ? { ...item, open: 6_807.5, high: 6_808.5, low: 6_807.5, close: 6_808.5, volume: 1_000 }
+        : { ...item, open: 6_808.25, high: 6_808.5, low: 6_807.25, close: 6_807.25, volume: 1_000 };
     }
     if (kind === "reversal" && index === signalIndex + 1) {
       return direction === "short"
-        ? { ...item, open: 6_801.75, high: 6_801.75, low: 6_800.75, close: 6_800.75, volume: 1_000 }
-        : { ...item, open: 6_808.5, high: 6_808.5, low: 6_807.5, close: 6_807.5, volume: 1_000 };
+        ? { ...item, open: 6_808.5, high: 6_808.5, low: 6_807.5, close: 6_807.5, volume: 1_000 }
+        : { ...item, open: 6_807.25, high: 6_808.25, low: 6_807.25, close: 6_808.25, volume: 1_000 };
     }
     if (kind === "reversal" && index === signalIndex + 2) {
       return direction === "short"
-        ? { ...item, open: 6_800.75, high: 6_801, low: 6_798.5, close: 6_798.5, volume: 2_000 }
-        : { ...item, open: 6_807.5, high: 6_810.75, low: 6_807.25, close: 6_810.75, volume: 2_000 };
+        ? { ...item, open: 6_807.5, high: 6_808, low: 6_805.5, close: 6_805.5, volume: 2_000 }
+        : { ...item, open: 6_808.25, high: 6_810.25, low: 6_808, close: 6_810.25, volume: 2_000 };
     }
     return item;
   });
@@ -186,7 +186,7 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
   const entryCandle = kind === "reversal" ? regular[signalIndex + 2]! : signalCandle;
   const entryThreshold = kind === "consolidation"
     ? direction === "long" ? base + 2.5 : base - 2.5
-    : direction === "short" ? 6_798.75 : 6_810.5;
+    : direction === "short" ? 6_805.5 : 6_810.25;
   const ticks = [{
     timestamp: entryCandle.openTime + 60_000,
     price: entryThreshold,
@@ -317,25 +317,62 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
         ? "CONSOLIDATION_BREAKOUT_CONTINUATION"
         : "EQUIVALENT_CANDLE_REVERSAL";
       const qualifiedAudit = report.audit.find((record) =>
-        record.setupType === setupType && record.decision === "SETUP QUALIFIED");
+        record.setupType === setupType
+        && record.direction === direction
+        && record.decision === "SETUP QUALIFIED");
       assert.ok(qualifiedAudit, `${kind} ${direction} must qualify from a raw snapshot`);
       const occurrence = report.occurrences.find((item) =>
-        item.strategyCandidate === setupType && item.status === "SIGNAL_CONFIRMED");
+        item.strategyCandidate === setupType
+        && item.direction === direction
+        && item.status === "SIGNAL_CONFIRMED");
       assert.ok(occurrence, `${kind} ${direction} must create a confirmed causal occurrence`);
-      if (kind === "reversal") continue;
       const candidate = report.tradeCandidates.find((item) =>
-        item.primaryEdge === setupType);
+        item.signalOccurrenceId === occurrence?.occurrenceId
+        && item.primaryEdge === setupType);
       assert.ok(candidate, `${kind} ${direction} must project a candidate`);
       assert.equal(candidate?.executionStatus, "MODELED_TRADE_CREATED");
       assert.equal(candidate?.accountEntryStatus, "ENTERED");
       assert.ok(
-        report.candidateExecutionEvidence?.some((trade) => trade.primaryEdge === setupType),
+        report.candidateExecutionEvidence?.some((trade) =>
+          trade.candidateId === candidate?.candidateId
+          && trade.signalOccurrenceId === occurrence?.occurrenceId
+          && trade.primaryEdge === setupType),
         `${kind} ${direction} must emit candidate-owned execution evidence`,
       );
       assert.ok(
-        report.trades.some((trade) => trade.primaryEdge === setupType && trade.direction === direction),
+        report.trades.some((trade) =>
+          trade.candidateId === candidate?.candidateId
+          && trade.signalOccurrenceId === occurrence?.occurrenceId
+          && trade.primaryEdge === setupType
+          && trade.direction === direction),
         `${kind} ${direction} must produce an authoritative trade`,
       );
+      assert.ok(occurrence?.directSignalOpenTimestamp,
+        `${kind} ${direction} must retain the direct signal candle identity`);
+      if (kind === "reversal") {
+        assert.equal(occurrence?.directSignalOpenTimestamp,
+          qualifiedAudit?.evaluatedCandleOpenTime,
+          `${kind} ${direction} must retain the direct signal candle identity`);
+        assert.equal(occurrence?.eOpenTimestamp,
+          new Date(Date.parse(qualifiedAudit?.evaluatedCandleOpenTime ?? "") + FIVE_MINUTES).toISOString(),
+          `${kind} ${direction} must use the immediate next candle`);
+      } else {
+        assert.equal(occurrence?.eOpenTimestamp,
+          occurrence?.directSignalOpenTimestamp,
+          `${kind} ${direction} must enter on the completed breakout candle`);
+        assert.equal(occurrence?.directCrossingCandleOpenTimestamp,
+          occurrence?.directSignalOpenTimestamp,
+          `${kind} ${direction} must preserve the physical crossing candle`);
+        assert.ok(occurrence?.directConsolidationStartTimestamp);
+        assert.ok(occurrence?.directConsolidationEndTimestamp);
+        assert.ok(occurrence?.directConsolidationCrossingIdentity);
+        assert.equal(candidate?.causalIdentity.directConsolidationCrossingIdentity,
+          occurrence?.directConsolidationCrossingIdentity);
+      }
+      assert.equal(candidate?.confirmationBufferTicks, 8);
+      assert.equal(candidate?.entryReachedThreshold, true);
+      assert.ok(candidate?.strategyStopPrice !== null && Number.isFinite(candidate?.strategyStopPrice));
+      assert.ok(candidate?.targetDisposition);
     }
   }
 });

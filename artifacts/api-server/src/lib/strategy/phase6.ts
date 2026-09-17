@@ -158,6 +158,19 @@ export type SetupEvaluation = {
   grade?: number;
   dynamiteConfluenceCount?: number;
   supportingConfluences?: string[];
+  /** Causal identity of an authorized direct setup, independent of evaluation cursor. */
+  directSetupEvidence?: DirectSetupEvidence | null;
+};
+
+export type DirectSetupEvidence = {
+  signalOpenTime: number;
+  qualificationTime: number;
+  crossingCandleOpenTime: number;
+  consolidationStartTime: number;
+  consolidationEndTime: number;
+  frozenHigh: number;
+  frozenLow: number;
+  sourceCandleOpenTimes: number[];
 };
 
 export type Phase6Analysis = {
@@ -507,7 +520,35 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     diagnosticRule("breakoutCloseLocation", "Breakout close location supports the move", breakoutCloseLocationSupported, breakoutCloseLocationSupported ? "Breakout close location meets the configured ratio; retained as diagnostic evidence." : "Breakout close location is below the configured threshold; this does not block the authorized crossing entry."),
     diagnosticRule("breakoutVolume", "Breakout volume supports the move", breakoutVolumeSupported, breakoutVolumeSupported ? "Breakout volume meets the configured support threshold; retained as diagnostic evidence." : "Breakout volume support is not confirmed; this does not block the authorized crossing entry."),
   ];
-  return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
+  const directSetupEvidence = directSetup
+    && typeof directSetup.consolidation.startTime === "number"
+    && typeof directSetup.consolidation.endTime === "number"
+    && typeof directSetup.consolidation.frozenHigh === "number"
+    && typeof directSetup.consolidation.frozenLow === "number"
+    ? {
+      signalOpenTime: directSetup.candidateCandle.openTime,
+      qualificationTime: directSetup.consolidation.endTime,
+      crossingCandleOpenTime: directSetup.candidateCandle.openTime,
+      consolidationStartTime: directSetup.consolidation.startTime,
+      consolidationEndTime: directSetup.consolidation.endTime,
+      frozenHigh: directSetup.consolidation.frozenHigh,
+      frozenLow: directSetup.consolidation.frozenLow,
+      sourceCandleOpenTimes: completed
+        .filter((candle) =>
+          candle.openTime >= directSetup.consolidation.startTime!
+          && candle.closeTime <= directSetup.consolidation.endTime!)
+        .map((candle) => candle.openTime),
+    }
+    : null;
+  return buildEvaluation(
+    "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    direction,
+    rules,
+    false,
+    context.patience.state,
+    consolidation,
+    directSetupEvidence,
+  );
 }
 
 export const evaluateExtendedNtzConsolidationBreakout = evaluateStrongBreakoutAfterConsolidation;
@@ -1106,6 +1147,7 @@ function buildEvaluation(
   alertOnly: boolean,
   patienceState: PatienceAnalysis["state"],
   consolidation: ExtendedConsolidation | null = null,
+  directSetupEvidence: DirectSetupEvidence | null = null,
 ): SetupEvaluation {
   const mandatory = rules.filter((item) => item.mandatory);
   const mandatoryPassed = mandatory.every((item) => item.passed);
@@ -1133,6 +1175,7 @@ function buildEvaluation(
     grade: 0,
     supportingConfluences: rules.filter((item) => item.passed).map((item) => item.label),
     dynamiteConfluenceCount: 0,
+    directSetupEvidence,
   };
 }
 

@@ -59,6 +59,7 @@ import { authoritativePatienceStopPrice, effectiveConfirmationThreshold } from "
 import {
   evaluateConsolidationEntryGuard,
   type ConsolidationEntryEvidence,
+  type DirectSetupEvidence,
 } from "./strategy/phase6.js";
 import type { Direction } from "./strategy/types.js";
 import { canonicalStrategyId } from "./strategy/taxonomy.js";
@@ -297,6 +298,8 @@ export type CandidateCausalIdentity = {
   signalOccurrenceId: string;
   eligibilityArmId: string | null;
   activeConsolidationZoneId: string | null;
+  /** Stable causal crossing identity for direct consolidation entries. */
+  directConsolidationCrossingIdentity?: string | null;
   /** Stable identity for this independent entry attempt within the shared arm. */
   armAttemptId?: string;
   /** One-based attempt number for authoritative entries on the shared arm. */
@@ -548,6 +551,15 @@ export type BacktestAuditRecord = {
   evaluatedCandleOpenTime: string;
   /** Explicit causal timestamp for a direct setup, when known before entry. */
   directQualificationTimestamp?: string | null;
+  /** Stable direct crossing identity; never substitute the evaluation cursor. */
+  directSignalOpenTimestamp?: string | null;
+  directCrossingCandleOpenTimestamp?: string | null;
+  directConsolidationStartTimestamp?: string | null;
+  directConsolidationEndTimestamp?: string | null;
+  directConsolidationZoneHigh?: number | null;
+  directConsolidationZoneLow?: number | null;
+  directConsolidationSourceCandleTimestamps?: string[];
+  directConsolidationCrossingIdentity?: string | null;
   setupType: string;
   direction: Direction | null;
   decision: string;
@@ -1371,6 +1383,13 @@ export type HistoricalOccurrence = {
   /** Direct consolidation may use same-candle entry only with ordered causal evidence. */
   directQualificationTimestamp?: string | null;
   directThresholdCrossingTimestamp?: string | null;
+  directCrossingCandleOpenTimestamp?: string | null;
+  directConsolidationStartTimestamp?: string | null;
+  directConsolidationEndTimestamp?: string | null;
+  directConsolidationZoneHigh?: number | null;
+  directConsolidationZoneLow?: number | null;
+  directConsolidationSourceCandleTimestamps?: string[];
+  directConsolidationCrossingIdentity?: string | null;
   directPatternFirstCandle?: Record<string, number | boolean> | null;
   directPatternSecondCandle?: Record<string, number | boolean> | null;
   directPatternTrend?: "bullish" | "bearish" | null;
@@ -1460,6 +1479,9 @@ function candidateCausalIdentityForOccurrence(
     signalOccurrenceId: occurrence.occurrenceId,
     eligibilityArmId: occurrence.eligibilityArmId ?? null,
     activeConsolidationZoneId: occurrence.consolidationGuard?.activeConsolidationZoneId ?? null,
+    ...(occurrence.directConsolidationCrossingIdentity
+      ? { directConsolidationCrossingIdentity: occurrence.directConsolidationCrossingIdentity }
+      : {}),
   };
 }
 
@@ -2870,11 +2892,14 @@ function auditForEvaluation(
     ),
     tickSize: contractSpecification.tickSize,
   }));
-  const directQualificationTime = evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-    && evaluation.consolidation?.endTime !== null
-    && evaluation.consolidation?.endTime !== undefined
-    ? new Date(evaluation.consolidation.endTime).toISOString()
-    : null;
+  const directSetupEvidence = (evaluation as unknown as { directSetupEvidence?: DirectSetupEvidence | null }).directSetupEvidence ?? null;
+  const directQualificationTime = directSetupEvidence
+    ? new Date(directSetupEvidence.qualificationTime).toISOString()
+    : evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      && evaluation.consolidation?.endTime !== null
+      && evaluation.consolidation?.endTime !== undefined
+      ? new Date(evaluation.consolidation.endTime).toISOString()
+      : null;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2883,6 +2908,23 @@ function auditForEvaluation(
     period,
     evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
     directQualificationTimestamp: directQualificationTime,
+    directSignalOpenTimestamp: directSetupEvidence
+      ? new Date(directSetupEvidence.signalOpenTime).toISOString()
+      : null,
+    directCrossingCandleOpenTimestamp: directSetupEvidence
+      ? new Date(directSetupEvidence.crossingCandleOpenTime).toISOString()
+      : null,
+    directConsolidationStartTimestamp: directSetupEvidence
+      ? new Date(directSetupEvidence.consolidationStartTime).toISOString()
+      : null,
+    directConsolidationEndTimestamp: directSetupEvidence
+      ? new Date(directSetupEvidence.consolidationEndTime).toISOString()
+      : null,
+    directConsolidationZoneHigh: directSetupEvidence?.frozenHigh ?? null,
+    directConsolidationZoneLow: directSetupEvidence?.frozenLow ?? null,
+    directConsolidationSourceCandleTimestamps: directSetupEvidence
+      ? directSetupEvidence.sourceCandleOpenTimes.map((time) => new Date(time).toISOString())
+      : [],
     setupType: evaluation.setupType,
     direction: evaluation.direction,
     decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
@@ -3561,7 +3603,11 @@ export function buildHistoricalOccurrenceLedger(
       && (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
         || directStrategy === "EQUIVALENT_CANDLE_REVERSAL")
       && record.direction) {
-      const signalOpen = Date.parse(record.evaluatedCandleOpenTime);
+      const signalOpen = Date.parse(
+        record.directSignalOpenTimestamp
+        ?? record.directCrossingCandleOpenTimestamp
+        ?? record.evaluatedCandleOpenTime,
+      );
       const signalCandle = dataset.candles.find((candle) =>
         candle.contractSymbol === record.contractSymbol && candle.openTime === signalOpen && candle.isComplete,
       );
@@ -3572,7 +3618,16 @@ export function buildHistoricalOccurrenceLedger(
           && candle.openTime === signalCandle.openTime + 5 * 60_000,
         )
         : undefined;
-      const zone = record.consolidationGuard;
+      const zone = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+        ? {
+          consolidationZoneHigh: record.directConsolidationZoneHigh
+            ?? record.consolidationGuard?.consolidationZoneHigh
+            ?? null,
+          consolidationZoneLow: record.directConsolidationZoneLow
+            ?? record.consolidationGuard?.consolidationZoneLow
+            ?? null,
+        }
+        : record.consolidationGuard;
       const tickSize = getFuturesContractSpecification(
         parseMesContractSymbol(record.contractSymbol)?.rootSymbol ?? record.contractSymbol,
       ).tickSize;
@@ -3620,9 +3675,22 @@ export function buildHistoricalOccurrenceLedger(
         const directPatternTrend = directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
           ? record.direction === "short" ? "bullish" : "bearish"
           : null;
+        const directConsolidationCrossingIdentity = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+          ? [
+            directStrategy,
+            record.direction,
+            record.contractSymbol,
+            record.directConsolidationStartTimestamp ?? "",
+            record.directConsolidationEndTimestamp ?? "",
+            record.directConsolidationZoneHigh ?? "",
+            record.directConsolidationZoneLow ?? "",
+            record.directCrossingCandleOpenTimestamp ?? new Date(signalCandle.openTime).toISOString(),
+          ].join("|")
+          : null;
         const identity = [
-          "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
-           directStrategy, record.direction, executionCandle.openTime,
+           "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
+            directStrategy, record.direction,
+            directConsolidationCrossingIdentity ?? executionCandle.openTime,
         ].join("|");
         const directOccurrence = {
           occurrenceId: occurrenceId(identity),
@@ -3653,7 +3721,17 @@ export function buildHistoricalOccurrenceLedger(
             // reversal uses the immediate next candle. Authorized consolidation
             // arms at the end of the completed frozen range and never substitutes
             // a later candle for a threshold crossing.
-           directQualificationTimestamp: record.directQualificationTimestamp ?? null,
+            directQualificationTimestamp: record.directQualificationTimestamp ?? null,
+            directCrossingCandleOpenTimestamp: record.directCrossingCandleOpenTimestamp
+              ?? (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+                ? new Date(signalCandle.openTime).toISOString()
+                : null),
+            directConsolidationStartTimestamp: record.directConsolidationStartTimestamp ?? null,
+            directConsolidationEndTimestamp: record.directConsolidationEndTimestamp ?? null,
+            directConsolidationZoneHigh: record.directConsolidationZoneHigh ?? null,
+            directConsolidationZoneLow: record.directConsolidationZoneLow ?? null,
+            directConsolidationSourceCandleTimestamps: record.directConsolidationSourceCandleTimestamps ?? [],
+            directConsolidationCrossingIdentity,
            directThresholdCrossingTimestamp: sameCandleEvidence?.thresholdCrossingTimestamp !== null
              && sameCandleEvidence?.thresholdCrossingTimestamp !== undefined
              ? new Date(sameCandleEvidence.thresholdCrossingTimestamp).toISOString()
