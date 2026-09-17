@@ -1,0 +1,171 @@
+Do not solve these problems by changing timestamps, weakening validation, or making tests accept a nonfunctional strategy. Trace detection → audit → occurrence → candidate → execution → account arbitration.
+
+Preserve unrelated strategy behavior and the recently fixed incomplete-tick ambiguity handling.
+
+1. FIX CONSOLIDATION’S BACKDATED QUALIFICATION
+
+Current inconsistency:
+- auditForEvaluation assigns directQualificationTimestamp to candle.openTime.
+- evaluateStrongBreakoutAfterConsolidation still requires breakout volume, body ratio, and close-location measurements.
+- These completed-candle measurements are not known at candle open.
+
+Therefore, the timestamp currently claims eligibility before its required evidence exists.
+
+Required approach:
+- Inventory every mandatory consolidation condition.
+- For each condition, identify the earliest time its inputs are available.
+- Qualification time must be no earlier than the latest required evidence.
+- Never backdate a completed-candle decision to candle open.
+- Do not use future high, low, close, volume, or continuation evidence to authorize an earlier fill.
+
+The intended price geometry remains:
+- Frozen range high = highest high of the consolidation’s constituent candles.
+- Frozen range low = lowest low of those candles.
+- Long trigger = range high + 8 instrument ticks.
+- Long stop = range low − 8 ticks.
+- Short trigger = range low − 8 ticks.
+- Short stop = range high + 8 ticks.
+- No patience candle or P→E requirement.
+
+Before changing mandatory strategy conditions, ask me this specific question unless explicit authorization already exists in our conversation:
+
+“Do you authorize the consolidation strategy to arm using only the completed consolidation candles and other information already available before entry, then enter at the eight-tick crossing? This requires removing breakout-candle body, close-location, final-volume, and any other conditions that cannot be known until after that crossing from pre-entry eligibility.”
+
+Explain precisely which current conditions conflict and which would remain unchanged.
+
+This implementation prompt does not itself authorize removing those conditions.
+
+Continue the independent coverage fixes below while awaiting that decision. Do not invent consolidation expiry, re-entry, or range-refresh rules.
+
+2. COMPLETE AN HONEST HISTORICAL CONSOLIDATION PATH
+
+The historical adapters correctly mark ordered tick evidence incomplete, but consolidation currently requires a verified same-candle crossing timestamp to pass identity validation. Normal historical entries therefore remain rejected.
+
+After the entry contract is resolved:
+- Separate setup identity validation from execution-resolution policy.
+- A missing exact tick timestamp must not automatically mean invalid strategy identity.
+- If the setup was demonstrably armed before the trigger candle, evaluate its threshold using the existing OHLC modeling policy.
+- Preserve the distinction between a modeled fill observed at candle close and an exact intrabar fill timestamp.
+- If OHLC cannot resolve whether entry occurred before a competing event, retain explicit ambiguity.
+- Never invent an exact crossing timestamp.
+- Never substitute the next candle automatically.
+- Never disable causal checks merely to produce trades.
+
+If the chosen strategy contract cannot execute honestly with available OHLC data, report that limitation explicitly rather than claiming implementation is complete.
+
+3. VALIDATE ORDERED EVIDENCE OVER THE ACTUAL EXECUTION INTERVAL
+
+Current defect:
+candidateDrivenEntryTrade verifies coverage from entryOpenTime through entryCloseTime, then passes later ticks into execution under the same “complete” flag.
+
+That incorrectly extends entry-candle coverage to later candles.
+
+Fix this with interval-specific validation:
+- Coverage must apply to the specific contract and interval being evaluated.
+- Entry-candle completeness must not authorize subsequent-candle ordering.
+- For each later candle or event interval, use ordered execution only when coverage is verified for that interval.
+- Preserve source gaps and partition boundaries.
+- Points outside verified coverage must not be used to claim exact ordering or timestamps.
+- Do not infer complete coverage from the existence of a few observations.
+- Do not expand declared coverage to include available points.
+- Reject or downgrade contradictory metadata.
+- Keep historical OHLC-only adapters marked incomplete.
+- Batch partitioning must preserve or intersect coverage accurately.
+
+Use a maintainable evidence representation that communicates verified coverage to the simulator. Do not leave a single global boolean that can silently over-authorize later intervals.
+
+Where coverage is unavailable:
+- Preserve original OHLC.
+- Apply the documented conservative ambiguity policy.
+- Do not replace the candle with a sparse synthetic price path.
+- Do not treat a missing sampled crossing as proof of no entry.
+- Do not attach an exact first-event timestamp from incomplete evidence.
+
+4. MAKE CONTRACT DESCRIPTIONS AND FORMULA IDENTITY ACCURATE
+
+The formula currently says consolidation qualifies at breakout close, while the implementation timestamps qualification at candle open.
+
+Once the authorized behavior is established:
+- Align formula configuration, audit descriptions, execution-policy fields, diagnostics, and Visual Review wording.
+- Update formula/cache identity for the changed semantics.
+- Preserve old results with their original provenance.
+- Do not label incomplete strategy work as complete through a version bump alone.
+
+PRESERVE EQUIVALENT-CANDLE REVERSAL
+
+Do not change its authorized rules:
+- Two consecutive completed pattern candles.
+- Uptrend with exactly equal highs → short reversal.
+- Downtrend with exactly equal lows → long reversal.
+- Existing authorized body/wick/opposing-candle/level-context measurements apply to the same two candles.
+- Long trigger: second candle high + 8 ticks.
+- Long stop: second candle low − 8 ticks.
+- Short trigger: second candle low − 8 ticks.
+- Short stop: second candle high + 8 ticks.
+- Only the immediate next candle may trigger; otherwise expire.
+- No separate patience requirement.
+
+For both strategies preserve existing key-level/1R targeting, configured slippage, fees, risk controls, session windows, and account-position rules. Do not add a peak-retracement percentage gate.
+
+REQUIRED REGRESSION TESTS
+
+A. Consolidation causality
+- Eligibility never predates any required input.
+- Modifying information after the proposed entry cannot retroactively authorize that entry.
+- Frozen consolidation range uses only candles available before eligibility.
+- Production-generated timestamps are tested; do not inject fabricated qualification times.
+- Both long and short price geometry.
+- No patience dependency.
+- Real historical adapter → detection → audit → candidate → execution coverage after the contract is resolved.
+- Explicit ambiguity when OHLC ordering cannot establish execution.
+
+B. Evidence coverage
+- Coverage includes only the entry candle; sparse later ticks cannot override later OHLC ambiguity.
+- Coverage includes one subsequent candle but not the next.
+- Coverage gap inside the execution interval.
+- Wrong-contract metadata.
+- Points outside declared coverage.
+- Malformed or contradictory metadata.
+- Partition boundaries preserve the correct coverage.
+- Fully verified target-before-stop and stop-before-target cases remain correct.
+- Equal-time events without reliable sequence remain uncertain.
+
+C. Existing protections
+- The previously reproduced incomplete entry-candle tick case remains ambiguous with no established fill.
+- Unfilled or unresolved-entry candidates do not occupy the account.
+- Invalid management context produces diagnostics, not authoritative positions.
+- Exact full-exit boundary and partial-position occupancy remain unchanged.
+- Slippage and fees reconcile exactly once.
+- Equivalent-candle next-candle expiry and both directions still work.
+- Unrelated patience strategies retain their behavior.
+
+VERIFICATION
+
+Run focused strategy, execution, account, and batch tests, followed by relevant typechecks/builds.
+
+If data is available, run a bounded historical replay and state:
+- Whether it used OHLC fallback or verified ordered evidence.
+- Qualified setups.
+- Established fills.
+- Ambiguous entries.
+- Rejections with reasons.
+- Account-blocked candidates.
+- Open and finalized trades.
+
+Do not target a predetermined trade count.
+
+FINAL REPORT
+
+Provide:
+- Root causes and files changed.
+- Any outstanding strategy authorization.
+- Evidence that qualification is causal.
+- Evidence that coverage is checked per applicable interval.
+- Test results and checks not run.
+- Formula/cache identity.
+- Historical replay results, if performed.
+- Remaining limitations.
+
+Do not claim both strategies are complete while consolidation’s timing contract is unresolved or normal historical inputs still fail solely because exact tick timestamps are unavailable.
+
+
