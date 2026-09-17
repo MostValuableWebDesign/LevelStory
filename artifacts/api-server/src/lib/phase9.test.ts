@@ -1304,7 +1304,7 @@ test("direct crossing evidence enriches one stable occurrence and candidate", ()
   );
 });
 
-test("consolidation continuation uses the frozen range four-tick stop for long and short execution", () => {
+test("consolidation continuation uses an eight-tick stop outside the opposite frozen range edge", () => {
   const makeFixture = (direction: "long" | "short") => {
     const start = Date.parse("2026-08-25T14:00:00.000Z");
     const iso = (offset: number) => new Date(start + offset).toISOString();
@@ -1355,9 +1355,9 @@ test("consolidation continuation uses the frozen range four-tick stop for long a
         openTime: start + 900_000,
         closeTime: start + 1_200_000,
         open: long ? 103 : 97,
-        high: long ? 104 : 100,
-        low: long ? 100 : 96,
-        close: long ? 102 : 98,
+        high: long ? 104 : 107,
+        low: long ? 97 : 96,
+        close: long ? 98 : 106,
         volume: 20,
         isComplete: true,
       },
@@ -1370,10 +1370,11 @@ test("consolidation continuation uses the frozen range four-tick stop for long a
       specification: getFuturesContractSpecification("MES"),
       executionMode: "ohlcv_modeled",
     });
-    const expectedStop = long ? 100 : 100;
+    const expectedStop = long ? 97 : 107;
     assert.equal(result.rejected.length, 0, JSON.stringify(result.rejected));
     assert.equal(result.candidates[0]?.strategyStopPrice, expectedStop);
     assert.equal(result.authoritativeTrades[0]?.audit?.strategyStopPrice, expectedStop);
+    assert.equal(result.candidates[0]?.managementContext?.stopBufferTicks, 8);
     assert.equal(result.authoritativeTrades[0]?.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
   };
   makeFixture("long");

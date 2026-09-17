@@ -51,22 +51,38 @@ export function buildReviewQueue(
     seen.add(candidate.candidateId);
     return !selectedStrategyKey || matchesStrategy(candidate, selectedStrategyKey);
   });
-  const snapshotsById = new Map(
-    data.snapshots
-      .filter((snapshot) => snapshot.category === "qualified_trade")
-      .map((snapshot) => [snapshot.snapshotId, snapshot]),
-  );
+  const qualifiedSnapshots = data.snapshots.filter((snapshot) => snapshot.category === "qualified_trade");
+  const snapshotsByCandidateId = new Map<string, VisualValidationSnapshot[]>();
+  for (const snapshot of qualifiedSnapshots) {
+    const trade = snapshot.machineEvidence.trade as { candidateId?: string } | null;
+    if (!trade?.candidateId) continue;
+    const snapshots = snapshotsByCandidateId.get(trade.candidateId) ?? [];
+    snapshots.push(snapshot);
+    snapshotsByCandidateId.set(trade.candidateId, snapshots);
+  }
+  const snapshotForCandidate = (candidate: VisualValidationTradeCandidate): VisualValidationSnapshot | undefined => {
+    const snapshots = snapshotsByCandidateId.get(candidate.candidateId) ?? [];
+    if (selectedStrategyKey) {
+      const requestedEdge = canonicalEdgeForStrategy(selectedStrategyKey);
+      const strategySnapshot = snapshots.find((snapshot) =>
+        canonicalEdgeForStrategy(snapshot.strategyKey) === requestedEdge,
+      );
+      if (strategySnapshot) return strategySnapshot;
+    }
+    return qualifiedSnapshots.find((snapshot) => snapshot.snapshotId === candidate.snapshotId);
+  };
   const items = candidates
     .map((candidate) => {
-      const snapshot = snapshotsById.get(candidate.snapshotId);
+      const snapshot = snapshotForCandidate(candidate);
       return snapshot ? { candidate, snapshot } : null;
     })
     .filter((item): item is ReviewQueueItem => Boolean(item))
     .sort(compareQueueItems);
+  const reviewableCandidateIds = new Set(items.map((item) => item.candidate.candidateId));
 
   return {
     items,
     candidates,
-    unreviewableCandidates: candidates.filter((candidate) => !snapshotsById.has(candidate.snapshotId)),
+    unreviewableCandidates: candidates.filter((candidate) => !reviewableCandidateIds.has(candidate.candidateId)),
   };
 }

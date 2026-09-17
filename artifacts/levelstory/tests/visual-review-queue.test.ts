@@ -90,6 +90,19 @@ function snapshot(snapshotId: string, strategyKey: VisualValidationSnapshot["str
   };
 }
 
+function snapshotForCandidate(
+  snapshotId: string,
+  strategyKey: VisualValidationSnapshot["strategyKey"],
+  candidateId: string,
+): VisualValidationSnapshot {
+  const value = snapshot(snapshotId, strategyKey);
+  value.machineEvidence.trade = {
+    candidateId,
+    signalOccurrenceId: `${candidateId}-occurrence`,
+  } as NonNullable<VisualValidationSnapshot["machineEvidence"]["trade"]>;
+  return value;
+}
+
 function data(candidates: VisualValidationTradeCandidate[], snapshots: VisualValidationSnapshot[]): VisualValidationSet {
   return {
     reviewSetId: "00000000-0000-0000-0000-000000000001",
@@ -139,4 +152,20 @@ test("overlapping strategy matches remain one row and empty filters have no acti
   assert.equal(buildReviewQueue(set, "ORB_PULLBACK_CONTINUATION").items.length, 1);
   assert.equal(buildReviewQueue(set, "EARLY_ORB_MOMENTUM_CONTINUATION").items.length, 1);
   assert.equal(buildReviewQueue(set, "PEAK_RETRACEMENT_REVERSAL").items.length, 0);
+});
+
+test("strategy filters select the matching causal snapshot for an overlapping candidate", () => {
+  const overlapping = candidate("c1", "orb-snapshot");
+  overlapping.matchedEdges = [
+    "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
+    "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+  ];
+  const set = data(overlapping ? [overlapping] : [], [
+    snapshotForCandidate("orb-snapshot", "ORB_PULLBACK_CONTINUATION", "c1"),
+    snapshotForCandidate("consolidation-snapshot", "CONSOLIDATION_BREAKOUT_CONTINUATION", "c1"),
+  ]);
+  const model = buildReviewQueue(set, "CONSOLIDATION_BREAKOUT_CONTINUATION");
+  assert.equal(model.items.length, 1);
+  assert.equal(model.items[0]?.snapshot.snapshotId, "consolidation-snapshot");
+  assert.equal(model.unreviewableCandidates.length, 0);
 });

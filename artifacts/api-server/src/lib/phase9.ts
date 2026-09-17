@@ -2986,8 +2986,8 @@ function auditForEvaluation(
         ? effectiveSignalPatience.patienceCandle.low
         : effectiveSignalPatience.patienceCandle.high
       : null,
-     stopBufferTicks: directSetupEvidence ? 4 : effectiveSignalPatience.stopBufferTicks,
-     stopBufferPoints: (directSetupEvidence ? 4 : effectiveSignalPatience.stopBufferTicks) * getFuturesContractSpecification(
+     stopBufferTicks: directSetupEvidence ? 8 : effectiveSignalPatience.stopBufferTicks,
+     stopBufferPoints: (directSetupEvidence ? 8 : effectiveSignalPatience.stopBufferTicks) * getFuturesContractSpecification(
       parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
     ).tickSize,
     runnerBufferTicks: adaptiveExecutionManagement(
@@ -4699,13 +4699,13 @@ function directConsolidationStopForOccurrence(occurrence: HistoricalOccurrence):
     return { price: null, reason: "INVALID_FROZEN_CONSOLIDATION_RANGE" };
   }
   const rangeTicks = (high - low) / tickSize;
-  if (!Number.isFinite(rangeTicks) || rangeTicks <= 4) {
-    return { price: null, reason: "DIRECT_CONSOLIDATION_RANGE_TOO_NARROW_FOR_FOUR_TICK_STOP" };
-  }
+   if (!Number.isFinite(rangeTicks) || rangeTicks <= 0) {
+     return { price: null, reason: "DIRECT_CONSOLIDATION_RANGE_HAS_NO_WIDTH" };
+   }
   const stop = occurrence.direction === "long"
-    ? high - 4 * tickSize
+     ? low - 8 * tickSize
     : occurrence.direction === "short"
-      ? low + 4 * tickSize
+       ? high + 8 * tickSize
       : null;
   if (stop === null || !Number.isFinite(stop)) {
     return { price: null, reason: "MISSING_DIRECT_CONSOLIDATION_DIRECTION" };
@@ -4797,6 +4797,9 @@ function freezeCandidateManagementContext(
     ? null
     : structuralRiskTicks(occurrence.direction!, entryPrice ?? 0, strategyStopPrice, contractTickSize);
   const managementValues = adaptiveExecutionManagement(occurrence.atrTicks ?? null);
+  const stopBufferTicks = isAuthorizedDirectStrategyOccurrence(occurrence)
+    ? 8
+    : managementValues.stopBufferTicks;
   // A missing key-level target is not invalid management: the governed
   // no-level 1R plan remains a complete executable plan. Only missing or
   // geometrically contradictory management evidence is rejected below.
@@ -4818,7 +4821,7 @@ function freezeCandidateManagementContext(
     patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
     patienceCandleHigh: patienceHigh,
     patienceCandleLow: patienceLow,
-    stopBufferTicks: managementValues.stopBufferTicks,
+    stopBufferTicks,
     runnerBufferTicks: managementValues.runnerBufferTicks,
     tickSize: 0.25,
     derivedStrategyStop: strategyStopPrice,

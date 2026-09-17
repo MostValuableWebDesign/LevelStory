@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.13-direct-frozen-zone-stop-stable-crossing";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.14-direct-frozen-zone-eight-tick-stop";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -48,6 +48,7 @@ export function formulaConfiguration(
       candidateSlippage: "use effective replay entry and exit slippage ticks exactly once",
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
+      directConsolidationStopFormula: "long=frozen-zone-low-minus-eight-ticks; short=frozen-zone-high-plus-eight-ticks",
       adaptiveManagement: {
         atrPeriod: config.executionManagementAtrPeriod,
          targetBuffer: "fixed 8 MES ticks (2.00 points), near side",
