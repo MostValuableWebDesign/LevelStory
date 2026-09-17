@@ -910,6 +910,7 @@ export function multiContractImportToReplayDataset(
     excludedDates: requestedDates.filter((date) =>
       (!startDate || date >= startDate) && date <= endDate && !selectedDateSet.has(date)),
     source: MULTI_CONTRACT_SOURCE,
+    orderedIntrabarEvidenceComplete: false,
     contentFingerprint: imported.contentFingerprint,
     quotesAvailable: false,
     gapReport: selectedGapReport(candles, normalizedSelectedOneMinute),

@@ -49,6 +49,126 @@ test("candidate entry observation does not evaluate exits inside the entry candl
   assert.equal(result.audit.exitCandle, null);
 });
 
+test("the incomplete-evidence reproduction preserves entry and exit-order ambiguity", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: {
+      open: 99,
+      high: 103,
+      low: 97,
+      close: 101,
+      openTime: 0,
+      closeTime: 300_000,
+    },
+    target: 102,
+    stop: 98,
+    evaluateEntryCandleForExit: true,
+    orderedIntrabarEvidenceComplete: false,
+    orderedIntrabarPoints: [
+      { timestamp: 60_000, price: 100 },
+      { timestamp: 120_000, price: 102 },
+    ],
+  });
+  assert.equal(result.modeledFill, null);
+  assert.equal(result.exitReason, "not filled");
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL));
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_OHLCV_SEQUENCE_LABEL));
+});
+
+test("incomplete short observations cannot manufacture a target fill", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    immediateTriggerCandle: timedCandle(101, 103, 97, 99, 6_000_000 + 300_000),
+    target: 98,
+    stop: 102,
+    evaluateEntryCandleForExit: true,
+    orderedIntrabarEvidenceComplete: false,
+    orderedIntrabarPoints: [
+      { timestamp: 6_000_000 + 60_000, price: 100 },
+      { timestamp: 6_000_000 + 120_000, price: 98 },
+    ],
+  });
+  assert.equal(result.modeledFill, null);
+  assert.equal(result.exitReason, "not filled");
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL));
+});
+
+test("incomplete points that omit entry crossing fall back to original OHLC reachability", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(99, 103, 99, 101, 6_500_000 + 300_000),
+    target: 102,
+    stop: 98,
+    evaluateEntryCandleForExit: false,
+    orderedIntrabarEvidenceComplete: false,
+    orderedIntrabarPoints: [
+      { timestamp: 6_500_000 + 60_000, price: 99.5 },
+    ],
+  });
+  assert.equal(result.modeledFill, 100);
+  assert.equal(result.exitReason, "manual");
+});
+
+test("incomplete points cannot suppress an OHLC stop touch on a later candle", () => {
+  const start = 7_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 101, start + 600_000)],
+    orderedIntrabarEvidenceComplete: false,
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 100.5 },
+    ],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.modeledExitTimestamp, null);
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
+});
+
+test("malformed or out-of-candle points are ignored instead of becoming execution evidence", () => {
+  const start = 7_500_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 101.5, 98.5, 100, start + 600_000)],
+    orderedIntrabarEvidenceComplete: false,
+    orderedIntrabarPoints: [
+      { timestamp: Number.NaN, price: 101 },
+      { timestamp: start - 1, price: 101 },
+    ],
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: Number.NaN },
+      { timestamp: start + 900_000, price: 101 },
+    ],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.modeledExitTimestamp, null);
+});
+
+test("equal-time incomplete points retain conservative OHLC ambiguity", () => {
+  const start = 8_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 100, start + 600_000)],
+    orderedIntrabarEvidenceComplete: false,
+    orderedPostEntryPoints: [
+      { timestamp: start + 360_000, price: 101 },
+      { timestamp: start + 360_000, price: 99 },
+    ],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
+  assert.equal(result.audit.modeledExitTimestamp, null);
+});
+
 test("ordered intrabar evidence ignores pre-entry stop touches and exits after the fill", () => {
   const start = 2_000_000;
   const result = simulateOhlcvExecution({
@@ -62,6 +182,7 @@ test("ordered intrabar evidence ignores pre-entry stop touches and exits after t
       { timestamp: start + 120_000, price: 100 },
       { timestamp: start + 180_000, price: 102.25 },
     ],
+    orderedIntrabarEvidenceComplete: true,
   });
   assert.equal(result.modeledFill, 100);
   assert.equal(result.modeledFillTimestamp, start + 120_000);
@@ -84,6 +205,7 @@ test("ordered post-entry evidence carries the exact exit timestamp and configure
     orderedPostEntryPoints: [
       { timestamp: start + 420_000, price: 101, },
     ],
+    orderedIntrabarEvidenceComplete: true,
   });
   assert.equal(result.exitReason, "target");
   assert.equal(result.audit.modeledExitTimestamp, start + 420_000);

@@ -395,11 +395,15 @@ export function evaluatePatienceCandleContinuation(context: Phase6Context): Setu
 }
 
 export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context): SetupEvaluation {
+  const completed = completedCandles(context.candles).filter(isCompletedFiveMinuteCandle);
+  const candidateCandle = context.breakout.candleOpenTime === null
+    ? completed.at(-1)
+    : completed.find((candle) => candle.openTime === context.breakout.candleOpenTime) ?? completed.at(-1);
   const consolidation = detectExtendedNtzConsolidation(
     context.candles,
     context.levels.ntz,
     context.config.phase6ConsolidationExpansionRatio,
-    context.breakout.candleOpenTime ?? context.breakout.time,
+    candidateCandle?.openTime ?? context.breakout.candleOpenTime ?? context.breakout.time,
     context.config.phase6ConsolidationMaxRangeTicks,
     context.config.phase6ConsolidationMinCandles,
     context.config.phase6ConsolidationVolatilityLookback,
@@ -413,10 +417,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     || context.orbTrend?.direction === undefined
     || context.breakout.direction === null
     || context.orbTrend.direction === context.breakout.direction;
-  const breakoutCandle = completedCandles(context.candles).find((candle) => candle.openTime === context.breakout.candleOpenTime);
-  const breakoutOutsideFrozenRange = breakoutCandle !== undefined && consolidation.frozenHigh !== null && consolidation.frozenLow !== null
-    && (direction === "long" ? breakoutCandle.close > consolidation.frozenHigh! : breakoutCandle.close < consolidation.frozenLow!);
-  const breakoutConfirmed = context.breakout.detected && breakoutDirectionMatchesTrend && !context.breakout.failed && context.breakout.continuationConfirmed && breakoutOutsideFrozenRange;
+  const breakoutCandle = candidateCandle;
   const directionalCloseLocationRatio = direction === "short"
     ? 1 - (context.breakout.closeLocationRatio ?? 0.5)
     : context.breakout.closeLocationRatio ?? 0.5;
@@ -431,6 +432,10 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
       : null;
   const strongBreakoutReached = breakoutCandle !== undefined && strongBreakoutThreshold !== null
     && (direction === "long" ? breakoutCandle.high >= strongBreakoutThreshold : breakoutCandle.low <= strongBreakoutThreshold);
+  const breakoutConfirmed = breakoutCandle !== undefined
+    && breakoutDirectionMatchesTrend
+    && !context.breakout.failed
+    && strongBreakoutReached;
   const rules: SetupRuleEvidence[] = [
     rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
@@ -438,7 +443,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
     rule("validPatienceNearLevel", "Strong breakout has no separate patience requirement", true, "This authorized strategy enters from the completed qualifying breakout; no patience candle is required."),
     rule("immediateTrigger", "Completed breakout is the authorized trigger", strongBreakoutReached, strongBreakoutReached ? "The completed breakout candle is the authorized trigger." : "The completed breakout candle did not reach the authorized threshold."),
-    rule("entryOutsideFinalizedNtz", "Breakout closed outside frozen range", breakoutConfirmed, breakoutConfirmed ? "Completed breakout closed outside the frozen consolidation range." : "The completed breakout close is not confirmed outside the frozen range."),
+     rule("entryOutsideFinalizedNtz", "Breakout crossed beyond frozen range", breakoutConfirmed, breakoutConfirmed ? "The breakout crossed the frozen-range eight-tick threshold; a breakout close is not required by this authorized contract." : "The breakout did not cross the frozen-range eight-tick threshold."),
     rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
   ];
   return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
@@ -661,9 +666,11 @@ export function evaluateConsolidationEntryGuard(input: {
   consolidationEvaluation?: Pick<SetupEvaluation, "setupType" | "decision"> | null;
   qualifyingPullback?: boolean;
   entryFillPrice?: number | null;
+  tickSize?: number;
 }): ConsolidationEntryEvidence | null {
   const completed = completedCandles(input.candles);
-  const patienceCandle = input.patience?.patienceCandle;
+  const directConsolidation = input.strategyType === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  const patienceCandle = directConsolidation ? null : input.patience?.patienceCandle;
   const breakoutCandle = input.breakout?.candleOpenTime === null || input.breakout?.candleOpenTime === undefined
     ? undefined
     : completed.find((candle) => candle.openTime === input.breakout!.candleOpenTime);
@@ -673,7 +680,9 @@ export function evaluateConsolidationEntryGuard(input: {
     && breakoutCandle.closeTime <= patienceCandle.openTime;
   const orbPullbackUsesEntryWindow = input.strategyType === "ORB_PULLBACK_CONTINUATION";
   const entryWindowClose = input.patience?.triggerCandle?.closeTime ?? patienceCandle?.closeTime ?? null;
-  const detectionCandles = orbPullbackUsesEntryWindow && entryWindowClose !== null
+  const detectionCandles = directConsolidation && breakoutCandle !== undefined
+    ? completed.filter((candle) => candle.closeTime <= breakoutCandle.openTime)
+    : orbPullbackUsesEntryWindow && entryWindowClose !== null
     ? completed.filter((candle) => candle.closeTime <= entryWindowClose)
     : breakoutIsBeforePatience
     ? completed.filter((candle) => candle.closeTime <= breakoutCandle!.openTime)
@@ -724,13 +733,15 @@ export function evaluateConsolidationEntryGuard(input: {
     && patienceCandle.low >= zoneLow;
   const consolidationEdgeQualified = input.consolidationEvaluation?.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     && input.consolidationEvaluation.decision === "SETUP QUALIFIED";
-  const entry = input.patience?.triggerCandle;
+  const entry = directConsolidation ? breakoutCandle : input.patience?.triggerCandle;
   const entryIsImmediate = Boolean(
     patienceCandle
     && entry
     && entry.openTime === patienceCandle.closeTime,
   );
-  const confirmationThreshold = direction && patienceCandle
+  const confirmationThreshold = directConsolidation
+    ? null
+    : direction && patienceCandle
     ? input.patience?.entryBufferPrice
       ?? effectiveConfirmationThreshold(
         patienceCandle,
@@ -741,12 +752,15 @@ export function evaluateConsolidationEntryGuard(input: {
       )
     : null;
   const patienceConfirmationThreshold = confirmationThreshold;
+  const consolidationBoundaryBufferTicks = directConsolidation ? 8 : 1;
   const consolidationBoundaryThreshold = direction === "long"
-    ? zoneHigh + 0.25
+    ? zoneHigh + consolidationBoundaryBufferTicks * (input.tickSize ?? 0.25)
     : direction === "short"
-      ? zoneLow - 0.25
+      ? zoneLow - consolidationBoundaryBufferTicks * (input.tickSize ?? 0.25)
       : null;
-  const effectiveEntryThreshold = direction && patienceConfirmationThreshold !== null && consolidationBoundaryThreshold !== null
+  const effectiveEntryThreshold = directConsolidation
+    ? consolidationBoundaryThreshold === null ? null : Number(consolidationBoundaryThreshold.toFixed(10))
+    : direction && patienceConfirmationThreshold !== null && consolidationBoundaryThreshold !== null
     ? Number((
       direction === "long"
         ? Math.max(patienceConfirmationThreshold, consolidationBoundaryThreshold)
@@ -791,17 +805,26 @@ export function evaluateConsolidationEntryGuard(input: {
     && input.qualifyingPullback
     && !pInside,
   );
-  const directBreakoutConfirmed = Boolean(
-    pInside
-    && entryIsImmediate
-    && entry?.isComplete
-    && entryReachedConfirmation
-    && entryCloseOutsideZone
-    && entryOutsideFinalizedNtz
-    && entryFillOutsideZone
-    && entryBeforeCutoff
-    && consolidationEdgeQualified,
-  );
+  const directBreakoutConfirmed = directConsolidation
+    ? Boolean(
+      entry
+      && entry.isComplete
+      && entryReachedConfirmation
+      && entryFillOutsideZone
+      && entryBeforeCutoff
+      && consolidationEdgeQualified,
+    )
+    : Boolean(
+      pInside
+      && entryIsImmediate
+      && entry?.isComplete
+      && entryReachedConfirmation
+      && entryCloseOutsideZone
+      && entryOutsideFinalizedNtz
+      && entryFillOutsideZone
+      && entryBeforeCutoff
+      && consolidationEdgeQualified,
+    );
   const breakoutPullbackConfirmed = Boolean(
     breakoutPullback
     && entryIsImmediate
@@ -833,31 +856,41 @@ export function evaluateConsolidationEntryGuard(input: {
     && entryOutsideFinalizedNtz === true
     && entryFillOutsideZone === true
     && entryBeforeCutoff === true;
-  const executionEligible = orbPullbackUsesEntryWindow
-    ? !pInside || orbPullbackOutsideZone
-    : !pInside
-    ? (!breakoutPullback || breakoutPullbackConfirmed)
-    : directBreakoutConfirmed;
+  const executionEligible = directConsolidation
+    ? directBreakoutConfirmed
+    : orbPullbackUsesEntryWindow
+      ? !pInside || orbPullbackOutsideZone
+      : !pInside
+        ? (!breakoutPullback || breakoutPullbackConfirmed)
+        : directBreakoutConfirmed;
   const entryWickedOutsideButClosedInside = direction && entry
     ? direction === "long"
       ? entry.high > zoneHigh && entry.close <= zoneHigh
       : entry.low < zoneLow && entry.close >= zoneLow
     : false;
-  const consolidationEntryDisposition = !pInside && !breakoutPullback
-    ? "CONSOLIDATION_ZONE_NOT_CAUSALLY_APPLICABLE"
-    : !entryIsImmediate || !entry?.isComplete
+  const consolidationEntryDisposition = directConsolidation
+    ? !entry || !entry.isComplete || !effectiveEntryThresholdReached
       ? "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
-      : !effectiveEntryThresholdReached
+      : !entryFillOutsideZone
+        ? "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE"
+        : executionEligible
+          ? "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE"
+          : "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
+    : !pInside && !breakoutPullback
+      ? "CONSOLIDATION_ZONE_NOT_CAUSALLY_APPLICABLE"
+      : !entryIsImmediate || !entry?.isComplete
         ? "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
-        : !entryClosedOutsideZone
-          ? entryWickedOutsideButClosedInside
-            ? "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT"
-            : "CONSOLIDATION_ENTRY_CLOSE_REMAINED_INSIDE_ZONE"
-          : !entryFillOutsideZone
-            ? "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE"
-            : executionEligible
-              ? "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE"
-              : "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED";
+        : !effectiveEntryThresholdReached
+          ? "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED"
+          : !entryClosedOutsideZone
+            ? entryWickedOutsideButClosedInside
+              ? "CONSOLIDATION_ENTRY_WICK_ONLY_BREAKOUT"
+              : "CONSOLIDATION_ENTRY_CLOSE_REMAINED_INSIDE_ZONE"
+            : !entryFillOutsideZone
+              ? "CONSOLIDATION_ENTRY_FILL_NOT_OUTSIDE_ZONE"
+              : executionEligible
+                ? "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE"
+                : "CONSOLIDATION_ENTRY_THRESHOLD_NOT_REACHED";
   const rejectionReason = executionEligible
     ? null
     : breakoutPullback

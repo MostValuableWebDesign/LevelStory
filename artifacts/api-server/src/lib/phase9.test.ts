@@ -1045,6 +1045,15 @@ test("close-gated consolidation does not defer an unexecutable same-candle break
       { timestamp: start + 60_000, price: 102, source: "tick" as const },
       { timestamp: start + 120_000, price: 103.25, source: "tick" as const },
     ],
+    orderedIntrabarEvidenceComplete: true,
+    orderedIntrabarEvidence: {
+      source: "tick",
+      contractSymbol: "MESU26",
+      coverageStart: start,
+      coverageEnd: start + 600_000,
+      ordering: "timestamp_ascending",
+      equalTimestampSemantics: "conservative",
+    },
   } as unknown as CausalReplayDataset;
   const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
     evaluatedCandleOpenTime: new Date(start).toISOString(),
@@ -1201,6 +1210,15 @@ test("candidate projection reports observed modeled fill separately from its tri
   dataset.ticks = [
     { timestamp: Date.parse(occurrence.eOpenTimestamp) + 60_000, price: 101.5, source: "tick" },
   ];
+  dataset.orderedIntrabarEvidenceComplete = true;
+  dataset.orderedIntrabarEvidence = {
+    source: "tick",
+    contractSymbol: occurrence.contractSymbol,
+    coverageStart: 0,
+    coverageEnd: Number.MAX_SAFE_INTEGER,
+    ordering: "timestamp_ascending",
+    equalTimestampSemantics: "conservative",
+  };
   const result = projectHistoricalTradeCandidates([occurrence], [], {
     dataset,
     specification: getFuturesContractSpecification("MES"),
@@ -1231,6 +1249,15 @@ test("candidate execution carries configured slippage and exact ordered exit tim
   delete occurrence.eligibilityArmState;
   const dataset = candidateProjectionDataset(occurrence, { high: 107, low: 100 }) as CausalReplayDataset & {
     ticks: Array<{ timestamp: number; price: number; source: "tick" }>;
+  };
+  dataset.orderedIntrabarEvidenceComplete = true;
+  dataset.orderedIntrabarEvidence = {
+    source: "tick",
+    contractSymbol: occurrence.contractSymbol,
+    coverageStart: 0,
+    coverageEnd: Number.MAX_SAFE_INTEGER,
+    ordering: "timestamp_ascending",
+    equalTimestampSemantics: "conservative",
   };
   const exitTimestamp = Date.parse(occurrence.entryObservationTimestamp) + 60_000;
   dataset.ticks = [{ timestamp: exitTimestamp, price: 106, source: "tick" }];
@@ -1275,6 +1302,14 @@ test("candidate projection uses the first complete ordered exit event before OHL
   };
   const entryClose = Date.parse(occurrence.entryObservationTimestamp);
   dataset.orderedIntrabarEvidenceComplete = true;
+  dataset.orderedIntrabarEvidence = {
+    source: "tick",
+    contractSymbol: occurrence.contractSymbol,
+    coverageStart: 0,
+    coverageEnd: Number.MAX_SAFE_INTEGER,
+    ordering: "timestamp_ascending",
+    equalTimestampSemantics: "conservative",
+  };
   dataset.ticks = [
     { timestamp: entryClose + 60_000, price: 106, source: "tick" },
     { timestamp: entryClose + 120_000, price: 97, source: "tick" },

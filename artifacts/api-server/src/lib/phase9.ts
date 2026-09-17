@@ -126,6 +126,15 @@ export type IntrabarPoint = {
   source: "tick";
 };
 
+export type OrderedIntrabarEvidenceMetadata = {
+  source: "tick";
+  contractSymbol: string;
+  coverageStart: number;
+  coverageEnd: number;
+  ordering: "timestamp_ascending";
+  equalTimestampSemantics: "conservative";
+};
+
 export type IntrabarResolution = {
   status: "open" | "target" | "stop" | "ambiguous";
   source: "tick" | "one-minute" | "ohlc";
@@ -162,6 +171,7 @@ export type CausalReplayDataset = {
    * sufficient to override OHLC ambiguity.
    */
   orderedIntrabarEvidenceComplete?: boolean;
+  orderedIntrabarEvidence?: OrderedIntrabarEvidenceMetadata;
   contentFingerprint?: string;
   quotesAvailable?: boolean;
   gapReport?: BacktestGapReport;
@@ -176,6 +186,35 @@ export type CausalReplayDataset = {
     }[];
   };
 };
+
+function hasVerifiedOrderedIntrabarEvidence(
+  dataset: CausalReplayDataset,
+  contractSymbol: string,
+  startTime: number,
+  endTime: number,
+): boolean {
+  const metadata = dataset.orderedIntrabarEvidence;
+  if (
+    dataset.orderedIntrabarEvidenceComplete !== true
+    || !metadata
+    || metadata.source !== "tick"
+    || metadata.contractSymbol !== contractSymbol
+    || metadata.ordering !== "timestamp_ascending"
+    || metadata.equalTimestampSemantics !== "conservative"
+    || !Number.isFinite(metadata.coverageStart)
+    || !Number.isFinite(metadata.coverageEnd)
+    || metadata.coverageStart > startTime
+    || metadata.coverageEnd < endTime
+  ) return false;
+  const points = dataset.ticks ?? [];
+  let previousTimestamp = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    if (point.source !== "tick" || !Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return false;
+    if (point.timestamp < previousTimestamp) return false;
+    previousTimestamp = point.timestamp;
+  }
+  return true;
+}
 
 export type CausalReplayProgress = {
   completedSessions: number;
@@ -983,7 +1022,11 @@ function sameCandleConsolidationEvidence(input: {
   threshold: number;
   qualificationTimestamp: string | null | undefined;
   ticks: readonly IntrabarPoint[];
+  evidenceComplete: boolean;
 }): { eligible: boolean; thresholdCrossingTimestamp: number | null } {
+  if (!input.evidenceComplete) {
+    return { eligible: false, thresholdCrossingTimestamp: null };
+  }
   const qualificationTimestamp = Date.parse(input.qualificationTimestamp ?? "");
   const thresholdCrossingTimestamp = directThresholdCrossingTimestamp(input);
   return {
@@ -2808,6 +2851,7 @@ function auditForEvaluation(
       && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)
       && !event.level.trim().toLowerCase().startsWith("fib"),
     ),
+    tickSize: contractSpecification.tickSize,
   }));
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
@@ -2817,7 +2861,7 @@ function auditForEvaluation(
     period,
     evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
     directQualificationTimestamp: evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-      ? new Date(candle.closeTime).toISOString()
+      ? new Date(candle.openTime).toISOString()
       : null,
     setupType: evaluation.setupType,
     direction: evaluation.direction,
@@ -3536,6 +3580,12 @@ export function buildHistoricalOccurrenceLedger(
           threshold,
           qualificationTimestamp: record.directQualificationTimestamp,
           ticks: dataset.ticks ?? [],
+           evidenceComplete: hasVerifiedOrderedIntrabarEvidence(
+             dataset,
+             record.contractSymbol,
+             signalCandle.openTime,
+             signalCandle.closeTime,
+           ),
         })
         : null;
       const executionCandle = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
@@ -5163,7 +5213,13 @@ function candidateDrivenEntryTrade(
   const executionSpecification = context.specification;
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
-  const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = direct
+  const orderedEvidenceComplete = hasVerifiedOrderedIntrabarEvidence(
+    context.dataset,
+    occurrence.contractSymbol,
+    entryOpenTime,
+    entryCloseTime,
+  );
+  const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = orderedEvidenceComplete
     ? (context.dataset.ticks ?? [])
       .filter((point) =>
         point.timestamp >= entryOpenTime
@@ -5174,6 +5230,7 @@ function candidateDrivenEntryTrade(
       .map((point) => ({ timestamp: point.timestamp, price: point.price }))
     : [];
   const explicitEntryFillTimestamp = occurrence.directThresholdCrossingTimestamp
+    && orderedEvidenceComplete
     ? Date.parse(occurrence.directThresholdCrossingTimestamp)
     : null;
   const executionCalendar = sessionCalendarForContract(executionSpecification);
@@ -5203,10 +5260,12 @@ function candidateDrivenEntryTrade(
     immediateTriggerCandle: entryCandle as any,
     evaluateEntryCandleForExit: direct,
     orderedIntrabarPoints,
-    orderedPostEntryPoints: (context.dataset.ticks ?? [])
-      .filter((point) => point.timestamp > (direct ? entryOpenTime : entryCloseTime))
-      .map((point) => ({ timestamp: point.timestamp, price: point.price })),
-    orderedIntrabarEvidenceComplete: context.dataset.orderedIntrabarEvidenceComplete === true,
+    orderedPostEntryPoints: orderedEvidenceComplete
+      ? (context.dataset.ticks ?? [])
+        .filter((point) => point.timestamp > (direct ? entryOpenTime : entryCloseTime))
+        .map((point) => ({ timestamp: point.timestamp, price: point.price }))
+      : [],
+    orderedIntrabarEvidenceComplete: orderedEvidenceComplete,
     entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
     subsequentCompletedCandles: postEntry,
     contracts,

@@ -634,6 +634,7 @@ export function historicalImportToReplayDataset(
     selectedDates: availableDates,
     excludedDates: requestedDates.filter((date) => !selectedDates.has(date)),
     source: "historical_databento",
+    orderedIntrabarEvidenceComplete: false,
     quotesAvailable: false,
     gapReport: {
       ...selectedGapReport,

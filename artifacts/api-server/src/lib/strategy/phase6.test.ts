@@ -433,6 +433,59 @@ test("consolidation breakout qualifies from direct breakout evidence without pat
   assert.equal(noPatience.rules.find((rule) => rule.key === "postBreakoutContext")?.passed, true);
 });
 
+test("authorized long consolidation entry uses the first eight-tick threshold crossing without a breakout close", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const result = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles: withCausalBaseline([
+      ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+      candle(breakoutOpenTime, 9.96, 12.1, 9.94, 9.95, 300),
+    ]),
+    breakout: {
+      ...baseContext().breakout,
+      detected: false,
+      direction: "long",
+      candleOpenTime: breakoutOpenTime,
+      time: null,
+      continuationConfirmed: false,
+      closeLocationRatio: 0.95,
+      bodyRatio: 0.95,
+      volumeSupported: true,
+    },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "entryOutsideFinalizedNtz")?.passed, true);
+  assert.match(result.rules.find((rule) => rule.key === "entryOutsideFinalizedNtz")?.detail ?? "", /close is not required/);
+});
+
+test("authorized short consolidation entry uses the first eight-tick threshold crossing without a breakout close", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const result = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles: withCausalBaseline([
+      ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 10.05, 9.91, 9.96)),
+      candle(breakoutOpenTime, 9.96, 10.05, 7.5, 9.95, 300),
+    ]),
+    breakout: {
+      ...baseContext().breakout,
+      detected: false,
+      direction: "short",
+      candleOpenTime: breakoutOpenTime,
+      time: null,
+      continuationConfirmed: false,
+      closeLocationRatio: 0.1,
+      bodyRatio: 0.95,
+      volumeSupported: true,
+    },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED", "bearish", "short"),
+    trend: { ...baseContext().trend, direction: "bearish" },
+  }));
+  assert.equal(result.direction, "short");
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "entryOutsideFinalizedNtz")?.passed, true);
+});
+
 test("consolidation breakout uses the active bearish ORB epoch and directional close location", () => {
   const breakoutOpenTime = 9 * 300_000;
   const context = baseContext({
