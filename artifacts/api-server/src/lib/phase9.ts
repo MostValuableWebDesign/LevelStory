@@ -4546,6 +4546,33 @@ function historicalCandidateId(occurrence: HistoricalOccurrence): string {
 }
 
 function effectiveEntryThresholdForOccurrence(occurrence: HistoricalOccurrence): number | null {
+  const directConsolidation = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  if (directConsolidation) {
+    const tickSize = getFuturesContractSpecification(
+      parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
+    ).tickSize;
+    const high = typeof occurrence.directConsolidationZoneHigh === "number"
+      ? occurrence.directConsolidationZoneHigh
+      : occurrence.consolidationGuard?.consolidationZoneHigh;
+    const low = typeof occurrence.directConsolidationZoneLow === "number"
+      ? occurrence.directConsolidationZoneLow
+      : occurrence.consolidationGuard?.consolidationZoneLow;
+    if (
+      Number.isFinite(tickSize)
+      && tickSize > 0
+      && typeof high === "number"
+      && Number.isFinite(high)
+      && typeof low === "number"
+      && Number.isFinite(low)
+    ) {
+      return occurrence.direction === "long"
+        ? Number((high + 8 * tickSize).toFixed(10))
+        : occurrence.direction === "short"
+          ? Number((low - 8 * tickSize).toFixed(10))
+          : null;
+    }
+  }
   const guardedThreshold = occurrence.consolidationGuard?.effectiveEntryThreshold;
   const guardMatches = consolidationGuardMatchesOccurrence(
     occurrence.consolidationGuard,
@@ -4748,8 +4775,23 @@ function targetPlanForOccurrence(
     initialRiskPoints,
     contracts,
   });
+  const targetIsDirectional = plan.targetPrice === null
+    || (occurrence.direction === "long"
+      ? plan.targetPrice > entryPrice
+      : plan.targetPrice < entryPrice);
+  const safePlan = targetIsDirectional
+    ? plan
+    : buildKeyLevelTargetPlan({
+      direction: occurrence.direction,
+      entryPrice,
+      levels: [],
+      placementMode: "NEAR_SIDE_8_TICKS",
+      targetBufferTicks: 8,
+      initialRiskPoints,
+      contracts,
+    });
   return {
-    ...plan,
+    ...safePlan,
     targetLevelSnapshot: snapshot,
   };
 }

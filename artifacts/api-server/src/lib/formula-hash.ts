@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.14-direct-frozen-zone-eight-tick-stop";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.15-direct-frozen-zone-entry-target-geometry";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -31,6 +31,7 @@ export function formulaConfiguration(
       directConsolidationSameCandleRule: "arm at the end of the completed frozen consolidation range; enter at the first eight-tick crossing without requiring breakout close, body, close-location, or final-volume gates; no automatic next-candle substitution",
       directConsolidationCrossingIdentity: "strategy, direction, contract, frozen range, constituent candle identity, arm timestamp, and crossing candle identity; evaluation cursor is provenance only",
       directConsolidationThresholdEvent: "intrabar crossing timestamp is emitted only for verified ordered evidence; OHLCV remains conservative",
+      directConsolidationEntryFormula: "long=frozen-zone-high-plus-eight-ticks; short=frozen-zone-low-minus-eight-ticks",
       noFutureData: true,
       noParameterOptimization: true,
       patienceEntryBufferTicks: config.patienceEntryBufferTicks,
@@ -49,6 +50,7 @@ export function formulaConfiguration(
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
       directConsolidationStopFormula: "long=frozen-zone-low-minus-eight-ticks; short=frozen-zone-high-plus-eight-ticks",
+      directConsolidationTargetGuard: "target must be strictly profitable in direction; invalid persisted target falls back to fresh 1R",
       adaptiveManagement: {
         atrPeriod: config.executionManagementAtrPeriod,
          targetBuffer: "fixed 8 MES ticks (2.00 points), near side",

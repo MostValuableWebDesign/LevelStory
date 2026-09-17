@@ -62,13 +62,13 @@ export function buildReviewQueue(
   }
   const snapshotForCandidate = (candidate: VisualValidationTradeCandidate): VisualValidationSnapshot | undefined => {
     const snapshots = snapshotsByCandidateId.get(candidate.candidateId) ?? [];
-    if (selectedStrategyKey) {
-      const requestedEdge = canonicalEdgeForStrategy(selectedStrategyKey);
-      const strategySnapshot = snapshots.find((snapshot) =>
-        canonicalEdgeForStrategy(snapshot.strategyKey) === requestedEdge,
-      );
-      if (strategySnapshot) return strategySnapshot;
-    }
+    const requestedEdge = canonicalEdgeForStrategy(
+      selectedStrategyKey ?? candidate.primaryEdge as StrategyId,
+    );
+    const strategySnapshot = snapshots.find((snapshot) =>
+      canonicalEdgeForStrategy(snapshot.strategyKey) === requestedEdge,
+    );
+    if (strategySnapshot) return strategySnapshot;
     return qualifiedSnapshots.find((snapshot) => snapshot.snapshotId === candidate.snapshotId);
   };
   const items = candidates

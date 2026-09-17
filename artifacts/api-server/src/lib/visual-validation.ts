@@ -35,6 +35,7 @@ import { causalEmaSeries } from "./strategy/indicators.js";
 import { validateIndicatorReplayContext, type IndicatorReplayContext } from "./strategy/ohlcv-execution.js";
 import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
+import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
 import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
 import type { AccountEntryBlock } from "./account-position-gate.js";
@@ -1346,13 +1347,29 @@ function auditEvidenceForOccurrence(
     ?? occurrence.expectedEntryTimestamp
     ?? safeDate(evidenceTime(occurrence.entryCandle, "openTime"));
   const triggerCloseTime = safeDate(evidenceTime(occurrence.entryCandle, "closeTime"));
-  const confirmationPrice = occurrence.confirmationThreshold
-    ?? occurrence.confirmationEntryPrice
-    ?? audit.entryTriggerPrice;
   const directStrategy = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  const directTickSize = getFuturesContractSpecification(
+    parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol
+      ?? occurrence.contractSymbol
+      ?? "MES",
+  ).tickSize;
+  const directConsolidationThreshold = occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    ? occurrence.direction === "long"
+      && typeof (occurrence.directConsolidationZoneHigh ?? occurrence.consolidationGuard?.consolidationZoneHigh) === "number"
+      ? (occurrence.directConsolidationZoneHigh ?? occurrence.consolidationGuard!.consolidationZoneHigh!) + 8 * directTickSize
+      : occurrence.direction === "short"
+        && typeof (occurrence.directConsolidationZoneLow ?? occurrence.consolidationGuard?.consolidationZoneLow) === "number"
+        ? (occurrence.directConsolidationZoneLow ?? occurrence.consolidationGuard!.consolidationZoneLow!) - 8 * directTickSize
+        : null
+    : null;
+  const confirmationPrice = directConsolidationThreshold
+    ?? occurrence.confirmationThreshold
+    ?? occurrence.confirmationEntryPrice
+    ?? audit.entryTriggerPrice;
   const occurrenceStrategyStop = directStrategy
     ? strategyStopPriceForOccurrence(occurrence)
     : null;

@@ -2539,7 +2539,7 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   const entryCandle = occurrence.entryCandle!;
   entryCandle.open = 101;
-  entryCandle.high = 102;
+  entryCandle.high = 104;
   entryCandle.low = 101.5;
   occurrence.targetLevelInputs = [{
     id: "identity-major-target",
@@ -3582,6 +3582,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
     pOpen: "2026-08-25T14:15:00.000Z",
     eOpen: "2026-08-25T14:20:00.000Z",
     eClose: "2026-08-25T14:25:00.000Z",
+    entryHigh: 104,
     entryLow: 100.5,
   });
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
@@ -3619,7 +3620,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
     entryClosedOutsideZone: true,
     entryRangeOutsideZone: false,
     entryRangeOverlappedZone: true,
-    effectiveEntryThreshold: 101.25,
+    effectiveEntryThreshold: 103,
     effectiveEntryThresholdReached: true,
     entryFillOutsideZone: true,
     consolidationEdgeQualified: true,
@@ -3632,9 +3633,9 @@ test("candidate projection enforces the consolidation guard before candidate-own
     executionMode: "ohlcv_modeled",
   });
   assert.equal(accepted.candidates.length, 1);
-  assert.equal(accepted.candidates[0]?.confirmationPrice, 101.25);
+   assert.equal(accepted.candidates[0]?.confirmationPrice, 103);
   assert.equal(accepted.authoritativeTrades.length, 1);
-  assert.equal(accepted.authoritativeTrades[0]?.entryPrice, 101.25);
+   assert.equal(accepted.authoritativeTrades[0]?.entryPrice, 103);
 });
 
 test("a causal consolidation guard blocks an ORB candidate inside the zone", () => {

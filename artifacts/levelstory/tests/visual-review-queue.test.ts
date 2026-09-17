@@ -155,7 +155,7 @@ test("overlapping strategy matches remain one row and empty filters have no acti
 });
 
 test("strategy filters select the matching causal snapshot for an overlapping candidate", () => {
-  const overlapping = candidate("c1", "orb-snapshot");
+  const overlapping = candidate("c1", "orb-snapshot", "STRONG_BREAKOUT_AFTER_CONSOLIDATION");
   overlapping.matchedEdges = [
     "ORB_BREAK_PULLBACK_PATIENCE_CONTINUATION",
     "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
@@ -168,4 +168,6 @@ test("strategy filters select the matching causal snapshot for an overlapping ca
   assert.equal(model.items.length, 1);
   assert.equal(model.items[0]?.snapshot.snapshotId, "consolidation-snapshot");
   assert.equal(model.unreviewableCandidates.length, 0);
+  const allStrategiesModel = buildReviewQueue(set, null);
+  assert.equal(allStrategiesModel.items[0]?.snapshot.snapshotId, "consolidation-snapshot");
 });
