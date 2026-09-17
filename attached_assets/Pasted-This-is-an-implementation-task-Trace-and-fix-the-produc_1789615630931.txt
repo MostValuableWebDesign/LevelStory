@@ -1,0 +1,181 @@
+This is an implementation task. Trace and fix the production paths, add meaningful regression coverage, and verify the results. Do not merely change test expectations, skip assertions, or force a desired trade count.
+
+PRESERVE AUTHORIZED RULES
+
+Strong Breakout After Consolidation:
+- Arm from completed, frozen consolidation evidence.
+- Long trigger: range high + 8 instrument ticks.
+- Long stop: range low − 8 ticks.
+- Short trigger: range low − 8 ticks.
+- Short stop: range high + 8 ticks.
+- No patience/P→E requirement.
+- Breakout body, close-location, breakout-close, and final-volume measurements remain diagnostic only.
+- Preserve authorized pre-entry direction, expiry, invalidation, and re-arming rules.
+
+Equivalent-Candle Reversal:
+- Two consecutive completed pattern candles.
+- Uptrend with exactly equal highs → short reversal.
+- Downtrend with exactly equal lows → long reversal.
+- Existing authorized body, wick, opposing-candle, and level-context measurements apply to the same two candles.
+- Long trigger: second candle high + 8 ticks.
+- Long stop: second candle low − 8 ticks.
+- Short trigger: second candle low − 8 ticks.
+- Short stop: second candle high + 8 ticks.
+- Only the immediate next candle may trigger; otherwise expire.
+- No separate patience/P→E requirement.
+
+Both:
+- Preserve key-level/1R targeting, risk controls, session windows, slippage, fees, account-position rules, and conservative OHLC ambiguity handling.
+- Do not add a peak-retracement percentage gate.
+- Preserve unrelated strategies.
+
+ISSUE 1 — REVERSAL INTEGRATION FIXTURES DO NOT REACH EXECUTION
+
+In phase9.integration.test.ts, the new raw direct-strategy test contains:
+
+  if (kind === "reversal") continue;
+
+This skips candidate projection, execution, account-entry, and authoritative-trade assertions for Equivalent-Candle Reversal.
+
+Independent diagnostic runs showed:
+- Long reversal: zero candidates, zero trades.
+- Short reversal: zero candidates, zero trades.
+- Rejection: REJECTED_NO_QUALIFIED_STRATEGY_EDGE.
+- Diagnostic text refers to a confirmed physical P→E sequence without a qualified strategy edge.
+
+Do not assume that rejection belongs to the intended direct occurrence. Trace the exact qualified audit, direct occurrence, rejection, and candidate identities to find where the intended reversal disappears.
+
+Required investigation and repair:
+1. Follow each fixture’s exact two-candle pattern and immediate trigger candle.
+2. Verify that the qualified audit belongs to that pattern, strategy, direction, and timestamp.
+3. Verify that the direct occurrence retains the qualified equivalent-candle edge.
+4. Trace canonical strategy IDs, matched/primary edges, occurrence deduplication, identity construction, candidate filtering, and any legacy patience routing.
+5. Check whether direct evidence is being replaced, merged with, or confused with a legacy P→E occurrence.
+6. Fix the actual handoff defect without fabricating patience fields or making unqualified patterns executable.
+7. If a fixture itself violates an authorized condition, correct its raw candles/context and explain the exact violation. Do not weaken the strategy.
+8. Remove the reversal-specific early continue.
+9. Require both long and short reversal fixtures to reach:
+   - Qualified audit.
+   - Confirmed direct occurrence.
+   - Eligible candidate.
+   - Established modeled fill.
+   - Account-entry arbitration.
+   - Authoritative trade.
+
+Assertions must link the same occurrence/candidate throughout. Do not use unrelated “some trade exists” assertions that can pass because another setup traded.
+
+ISSUE 2 — CONSOLIDATION CROSSING IDENTITY IS LOST ACROSS REPLAY CURSORS
+
+Current concern:
+- findDirectConsolidationSetup scans earlier candles and returns the latest qualifying setup.
+- auditForEvaluation records the current evaluation candle.
+- The ledger uses evaluatedCandleOpenTime as the signal candle.
+
+An older detected crossing can therefore be represented as a new crossing during a later evaluation.
+
+Required repair:
+1. Carry explicit direct-setup evidence from detection through the full pipeline:
+   - Strategy and direction.
+   - Frozen range boundaries.
+   - Range constituent identity or stable start/end identity.
+   - Arm timestamp.
+   - Actual crossing candle timestamp.
+   - Exact crossing event timestamp only when established by verified evidence.
+2. Keep evaluation cursor separate from setup/crossing identity.
+3. Audit, consolidation guard, occurrence, candidate, execution, and chart must reference the same frozen range and actual crossing.
+4. The ledger must not substitute the current evaluation candle for an earlier crossing.
+5. Repeated replay cursors must retain one physical crossing identity, not create additional entry opportunities.
+6. A consumed crossing must not become a new trade merely because the account becomes free later.
+7. A genuinely new authorized setup may create a new identity.
+8. Preserve authorized re-arming and expiry behavior. Do not invent unlimited validity, automatic re-entry, or an immediate-next-candle restriction.
+9. Preserve causal pre-entry direction; do not use current/later breakout state to reinterpret an earlier setup.
+
+Use a stable identity based on causal setup evidence. Do not deduplicate by broad date/strategy keys that could merge legitimately distinct setups.
+
+ISSUE 3 — UPDATE GOVERNED FORMULA/CACHE IDENTITY
+
+The last reviewed changes altered consolidation detection and ordered execution but retained formula v23.10.
+
+- Update the governed identity to reflect the final repaired semantics.
+- Include the relevant execution/identity contract in configuration hashing.
+- Ensure cached results from older behavior cannot appear current.
+- Preserve historical results with their original provenance.
+- Keep API, frontend, audit, and execution-policy descriptions consistent.
+
+REQUIRED REGRESSION TESTS
+
+Reversal:
+- Both directions from raw production inputs through authoritative execution.
+- Correct pattern pair and qualified edge survive the entire handoff.
+- Exact eight-tick trigger and second-candle stop geometry.
+- Immediate next candle misses → expiry; later candle cannot revive the pattern.
+- Invalid pattern → no executable candidate.
+- Legacy patience evidence cannot overwrite or masquerade as the direct reversal.
+- Entry/stop/target ambiguity remains explicit.
+
+Consolidation:
+- One crossing observed through multiple replay cursors → one stable occurrence/candidate identity.
+- Later evaluations do not change its crossing time or frozen range.
+- A later candle touching the old threshold does not create another trade from the consumed crossing.
+- Closing the account position does not revive the old crossing.
+- Two genuinely distinct authorized setups remain distinct.
+- Single-run and partitioned replay produce equivalent identities and account outcomes.
+- Both directions preserve eight-tick geometry and pre-entry causality.
+- Stale legacy breakout state does not redirect the crossing.
+
+Shared execution:
+- OHLC entry followed by a verified later target-before-stop interval → target first.
+- Verified entry followed by uncovered later interval → documented OHLC fallback.
+- Sparse unverified ticks cannot create falsely certain winners.
+- Unresolved entry and invalid management do not occupy the account.
+- Exact full-exit boundary, partial quantities, slippage, and fees remain correct.
+
+PRODUCTION-PATH ACCEPTANCE
+
+Use deterministic raw-candle/tick fixtures invoking the actual replay pipeline.
+
+Do not:
+- Manually insert SETUP QUALIFIED audits.
+- Fabricate qualification timestamps.
+- Hardcode candidates or trades.
+- Skip reversal execution assertions.
+- Label synthetic data as verified real-market evidence in the final report.
+
+For every accepted fixture assert:
+- Setup/pattern identity.
+- Arm or pattern completion time.
+- Actual trigger candle.
+- Trigger threshold.
+- Modeled fill and timestamp policy.
+- Stop.
+- Target disposition.
+- Account disposition.
+- Authoritative trade linkage.
+
+VERIFICATION
+
+Run:
+- Phase 6.
+- OHLCV execution.
+- Phase 9 unit and integration tests.
+- Account arbitration.
+- Batch aggregation.
+- Relevant Visual Review tests.
+- API typecheck/build.
+- git diff --check.
+
+Run a bounded historical replay if data is available. Zero historical trades may be legitimate; report the funnel and rejection reasons instead of changing rules to manufacture trades.
+
+FINAL REPORT
+
+Provide:
+1. Root cause of the reversal handoff failure.
+2. How consolidation crossing identity is preserved across cursors.
+3. Files changed.
+4. Long/short production-fixture results for both strategies.
+5. Test/build results and checks not run.
+6. Formula/cache identity.
+7. Historical replay results, if performed.
+8. Any remaining unresolved behavior.
+
+Do not claim completion unless both reversal directions execute through the production fixture path and repeated consolidation evaluations cannot create new identities for an old crossing.
