@@ -3161,7 +3161,107 @@ function occurrenceId(seed: string): string {
   return `occ-${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
 }
 
+function directCandleIdentity(
+  candle: Record<string, number | boolean> | null | undefined,
+  label: string,
+): { value: string; missing: string[] } {
+  const required = ["openTime", "closeTime", "open", "high", "low", "close"] as const;
+  const missing = required.filter((key) => typeof candle?.[key] !== "number" || !Number.isFinite(candle[key] as number));
+  const values = required.map((key) => `${key}=${candle?.[key] ?? "absent"}`);
+  const volume = typeof candle?.volume === "number" && Number.isFinite(candle.volume)
+    ? `|volume=${candle.volume}`
+    : "";
+  return {
+    value: `${label}[${values.join(",")}${volume}]`,
+    missing: missing.map((key) => `${label}.${key}`),
+  };
+}
+
+function directOccurrenceIdentityParts(value: HistoricalOccurrence): {
+  identity: string;
+  missing: string[];
+} {
+  const strategy = canonicalStrategyId(value.strategyCandidate)
+    ?? canonicalStrategyId(value.primaryEdge ?? "")
+    ?? value.strategyCandidate;
+  const missing: string[] = [];
+  const shared = [
+    "historical-direct-occurrence-v2",
+    value.sourceFingerprint,
+    value.formulaHash,
+    value.formulaVersion,
+    strategy,
+    value.contractSymbol,
+    value.tradingDate,
+    value.direction ?? "missing-direction",
+    value.directSignalOpenTimestamp ?? "missing-signal",
+  ];
+
+  if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+    const tickSize = getFuturesContractSpecification(
+      parseMesContractSymbol(value.contractSymbol)?.rootSymbol ?? value.contractSymbol,
+    ).tickSize;
+    const normalizedTicks = (price: number | null | undefined, field: string): string => {
+      if (typeof price !== "number" || !Number.isFinite(price)) {
+        missing.push(field);
+        return "missing";
+      }
+      return String(Math.round(price / tickSize));
+    };
+    const sourceCandleTimestamps = [...(value.directConsolidationSourceCandleTimestamps ?? [])]
+      .filter((timestamp) => typeof timestamp === "string" && timestamp.length > 0)
+      .sort();
+    if (!value.directQualificationTimestamp) missing.push("directQualificationTimestamp");
+    if (!value.directCrossingCandleOpenTimestamp) missing.push("directCrossingCandleOpenTimestamp");
+    if (!value.directConsolidationStartTimestamp) missing.push("directConsolidationStartTimestamp");
+    if (!value.directConsolidationEndTimestamp) missing.push("directConsolidationEndTimestamp");
+    if (sourceCandleTimestamps.length === 0) missing.push("directConsolidationSourceCandleTimestamps");
+    return {
+      identity: [
+        ...shared,
+        `qualification=${value.directQualificationTimestamp ?? "missing"}`,
+        `crossing=${value.directCrossingCandleOpenTimestamp ?? "missing"}`,
+        `rangeStart=${value.directConsolidationStartTimestamp ?? "missing"}`,
+        `rangeEnd=${value.directConsolidationEndTimestamp ?? "missing"}`,
+        `zoneHighTicks=${normalizedTicks(value.directConsolidationZoneHigh, "directConsolidationZoneHigh")}`,
+        `zoneLowTicks=${normalizedTicks(value.directConsolidationZoneLow, "directConsolidationZoneLow")}`,
+        `sourceCandles=${sourceCandleTimestamps.join(",") || "missing"}`,
+        `thresholdCrossing=${value.directThresholdCrossingTimestamp ?? "unobserved"}`,
+        ...(missing.length > 0 ? [`missing=${missing.join(",")}`, `audit=${value.auditId}`] : []),
+      ].join("|"),
+      missing,
+    };
+  }
+
+  if (strategy === "EQUIVALENT_CANDLE_REVERSAL") {
+    const first = directCandleIdentity(value.directPatternFirstCandle, "patternFirst");
+    const second = directCandleIdentity(value.directPatternSecondCandle, "patternSecond");
+    missing.push(...first.missing, ...second.missing);
+    if (!value.eOpenTimestamp) missing.push("eOpenTimestamp");
+    return {
+      identity: [
+        ...shared,
+        `first=${first.value}`,
+        `second=${second.value}`,
+        `trend=${value.directPatternTrend ?? "missing"}`,
+        `trigger=${value.eOpenTimestamp ?? "missing"}`,
+        ...(missing.length > 0 ? [`missing=${missing.join(",")}`, `audit=${value.auditId}`] : []),
+      ].join("|"),
+      missing,
+    };
+  }
+
+  missing.push("unsupportedDirectStrategy");
+  return {
+    identity: [...shared, `missing=${missing.join(",")}`, `audit=${value.auditId}`].join("|"),
+    missing,
+  };
+}
+
 function governedOccurrenceId(value: HistoricalOccurrence): string {
+  if (isAuthorizedDirectStrategyOccurrence(value)) {
+    return occurrenceId(directOccurrenceIdentityParts(value).identity);
+  }
   if (value.kind === "patience") {
     return occurrenceId([
       "historical-patience-occurrence-v4-complete-p-e-identity",
@@ -3675,25 +3775,20 @@ export function buildHistoricalOccurrenceLedger(
         const directPatternTrend = directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
           ? record.direction === "short" ? "bullish" : "bearish"
           : null;
-        const directConsolidationCrossingIdentity = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-          ? [
-            directStrategy,
-            record.direction,
-            record.contractSymbol,
-            record.directConsolidationStartTimestamp ?? "",
-            record.directConsolidationEndTimestamp ?? "",
-            record.directConsolidationZoneHigh ?? "",
-            record.directConsolidationZoneLow ?? "",
-            record.directCrossingCandleOpenTimestamp ?? new Date(signalCandle.openTime).toISOString(),
-          ].join("|")
-          : null;
-        const identity = [
-           "direct", fingerprint, formulaHash, record.tradingDate, record.contractSymbol,
-            directStrategy, record.direction,
-            directConsolidationCrossingIdentity ?? executionCandle.openTime,
-        ].join("|");
-        const directOccurrence = {
-          occurrenceId: occurrenceId(identity),
+         const directConsolidationCrossingIdentity = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+           ? [
+             directStrategy,
+             record.direction,
+             record.contractSymbol,
+             record.directConsolidationStartTimestamp ?? "",
+             record.directConsolidationEndTimestamp ?? "",
+             record.directConsolidationZoneHigh ?? "",
+             record.directConsolidationZoneLow ?? "",
+             record.directCrossingCandleOpenTimestamp ?? new Date(signalCandle.openTime).toISOString(),
+           ].join("|")
+           : null;
+         const directOccurrence = {
+           occurrenceId: "",
           auditId: record.id,
           kind: "patience",
           canonicalOccurrence: true,
@@ -3752,7 +3847,7 @@ export function buildHistoricalOccurrenceLedger(
           finalizedNtzHigh: record.finalizedNtzHigh ?? null,
           finalizedNtzLow: record.finalizedNtzLow ?? null,
           finalizedNtzComplete: record.finalizedNtzComplete,
-          identityInvariantViolations: [],
+           identityInvariantViolations: [],
           confirmationBufferTicks: 8,
           nextObservedCandle: null,
           consolidationThresholds: record.consolidationThresholds,
@@ -3771,8 +3866,12 @@ export function buildHistoricalOccurrenceLedger(
           sourceFingerprint: fingerprint,
           canonicalTrade: Boolean(trade),
           supportingConfluences: [],
-        } as HistoricalOccurrence;
-        upsert(identity, directOccurrence);
+         } as HistoricalOccurrence;
+         const directIdentity = directOccurrenceIdentityParts(directOccurrence);
+         directOccurrence.identityInvariantViolations = directIdentity.missing
+           .map((field) => `MISSING_DIRECT_IDENTITY_${field}`);
+         directOccurrence.directConsolidationCrossingIdentity = directConsolidationCrossingIdentity;
+         upsert(directIdentity.identity, directOccurrence);
       }
     }
     for (const event of record.pullbackOccurrences ?? []) {
@@ -4923,18 +5022,20 @@ export function projectHistoricalTradeCandidates(
       });
       continue;
     }
-    const physicalIdentity = [
-      occurrence.sourceFingerprint,
-      occurrence.formulaHash,
-      occurrence.contractSymbol,
-      occurrence.tradingDate,
-      occurrence.direction,
-      occurrence.eligibilityArmId ?? "no-arm",
-      occurrence.pOpenTimestamp,
-      occurrence.patienceCandle?.closeTime ?? "no-p-close",
-      occurrence.eOpenTimestamp,
-      occurrence.entryObservationTimestamp,
-    ].join("|");
+    const physicalIdentity = isAuthorizedDirectStrategyOccurrence(occurrence)
+      ? directOccurrenceIdentityParts(occurrence).identity
+      : [
+        occurrence.sourceFingerprint,
+        occurrence.formulaHash,
+        occurrence.contractSymbol,
+        occurrence.tradingDate,
+        occurrence.direction,
+        occurrence.eligibilityArmId ?? "no-arm",
+        occurrence.pOpenTimestamp,
+        occurrence.patienceCandle?.closeTime ?? "no-p-close",
+        occurrence.eOpenTimestamp,
+        occurrence.entryObservationTimestamp,
+      ].join("|");
     const existing = signalByPhysicalIdentity.get(physicalIdentity);
     if (!existing) {
       signalByPhysicalIdentity.set(physicalIdentity, occurrence);

@@ -1012,6 +1012,140 @@ test("authorized direct strategies emit candidates without fabricated patience o
   assert.equal(occurrence.status, "SIGNAL_CONFIRMED");
 });
 
+test("direct occurrence identity prevents cross-strategy and frozen-range collisions", () => {
+  const start = Date.parse("2026-08-25T14:00:00.000Z");
+  const iso = (offset: number) => new Date(start + offset).toISOString();
+  const candles = [
+    { contractSymbol: "MESU26", openTime: start, closeTime: start + 300_000, open: 100, high: 104, low: 100, close: 104, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 300_000, closeTime: start + 600_000, open: 104, high: 104, low: 100, close: 100, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 600_000, closeTime: start + 900_000, open: 101, high: 106, low: 101, close: 105, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 900_000, closeTime: start + 1_200_000, open: 104, high: 106, low: 103, close: 105, volume: 20, isComplete: true },
+  ];
+  const dataset = {
+    ...occurrenceDataset(),
+    candles,
+  } as unknown as CausalReplayDataset;
+  const consolidationGuard = (high: number, low: number) => ({
+    consolidationZoneHigh: high,
+    consolidationZoneLow: low,
+    effectiveEntryThreshold: high + 2,
+    executionEligible: true,
+  } as BacktestConsolidationGuardEvidence);
+  const consolidation = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    id: "direct-consolidation-identity",
+    evaluatedCandleOpenTime: iso(600_000),
+    directQualificationTimestamp: iso(300_000),
+    directSignalOpenTimestamp: iso(600_000),
+    directCrossingCandleOpenTimestamp: iso(600_000),
+    directConsolidationStartTimestamp: iso(0),
+    directConsolidationEndTimestamp: iso(600_000),
+    directConsolidationZoneHigh: 101,
+    directConsolidationZoneLow: 99,
+    directConsolidationSourceCandleTimestamps: [iso(0), iso(300_000)],
+    consolidationGuard: consolidationGuard(101, 99),
+    direction: "long",
+  });
+  const secondConsolidation = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    id: "direct-consolidation-different-range",
+    evaluatedCandleOpenTime: iso(600_000),
+    directQualificationTimestamp: iso(300_000),
+    directSignalOpenTimestamp: iso(600_000),
+    directCrossingCandleOpenTimestamp: iso(600_000),
+    directConsolidationStartTimestamp: iso(0),
+    directConsolidationEndTimestamp: iso(600_000),
+    directConsolidationZoneHigh: 102,
+    directConsolidationZoneLow: 99,
+    directConsolidationSourceCandleTimestamps: [iso(0), iso(300_000)],
+    consolidationGuard: consolidationGuard(102, 99),
+    direction: "long",
+  });
+  const reversal = occurrenceAudit("EQUIVALENT_CANDLE_REVERSAL", {
+    id: "direct-reversal-identity",
+    evaluatedCandleOpenTime: iso(300_000),
+    direction: "long",
+    patienceOccurrences: [],
+  });
+
+  const occurrences = buildHistoricalOccurrenceLedger(
+    dataset,
+    [consolidation, secondConsolidation, reversal],
+    [],
+  ).filter((item) => item.directSignalOpenTimestamp !== undefined);
+  assert.equal(occurrences.length, 3);
+  assert.equal(new Set(occurrences.map((item) => item.occurrenceId)).size, 3);
+  assert.equal(new Set(occurrences.map((item) => item.strategyCandidate)).size, 2);
+  assert.equal(
+    occurrences.filter((item) => item.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION").length,
+    2,
+  );
+  assert.notEqual(
+    occurrences.find((item) => item.auditId === consolidation.id)?.occurrenceId,
+    occurrences.find((item) => item.auditId === reversal.id)?.occurrenceId,
+  );
+
+  const projected = projectHistoricalTradeCandidates(occurrences, []);
+  assert.equal(projected.rejected.length, 0, JSON.stringify(projected.rejected));
+  assert.equal(projected.candidates.length, 3, JSON.stringify(projected.candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    signalOccurrenceId: candidate.signalOccurrenceId,
+    primaryEdge: candidate.primaryEdge,
+  }))));
+  assert.equal(new Set(projected.candidates.map((candidate) => candidate.candidateId)).size, 3);
+  assert.equal(
+    new Set(projected.candidates.map((candidate) => candidate.signalOccurrenceId)).size,
+    3,
+  );
+});
+
+test("direct occurrence identity is stable across repeated cursors and candidate projection", () => {
+  const start = Date.parse("2026-08-25T14:00:00.000Z");
+  const iso = (offset: number) => new Date(start + offset).toISOString();
+  const dataset = {
+    ...occurrenceDataset(),
+    candles: [
+      { contractSymbol: "MESU26", openTime: start, closeTime: start + 300_000, open: 100, high: 104, low: 100, close: 104, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 300_000, closeTime: start + 600_000, open: 104, high: 104, low: 100, close: 100, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 600_000, closeTime: start + 900_000, open: 101, high: 106, low: 101, close: 105, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 900_000, closeTime: start + 1_200_000, open: 104, high: 106, low: 103, close: 105, volume: 20, isComplete: true },
+    ],
+  } as unknown as CausalReplayDataset;
+  const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    id: "direct-repeated-first",
+    evaluatedCandleOpenTime: iso(600_000),
+    directQualificationTimestamp: iso(300_000),
+    directSignalOpenTimestamp: iso(600_000),
+    directCrossingCandleOpenTimestamp: iso(600_000),
+    directConsolidationStartTimestamp: iso(0),
+    directConsolidationEndTimestamp: iso(600_000),
+    directConsolidationZoneHigh: 101,
+    directConsolidationZoneLow: 99,
+    directConsolidationSourceCandleTimestamps: [iso(0), iso(300_000)],
+    consolidationGuard: {
+      consolidationZoneHigh: 101,
+      consolidationZoneLow: 99,
+      effectiveEntryThreshold: 103,
+      executionEligible: true,
+    } as BacktestConsolidationGuardEvidence,
+    direction: "long",
+  });
+  const repeated = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    ...audit,
+    id: "direct-repeated-later",
+    evaluatedCandleOpenTime: iso(900_000),
+  });
+  const first = buildHistoricalOccurrenceLedger(dataset, [audit], [])
+    .find((item) => item.directSignalOpenTimestamp !== undefined)!;
+  const merged = buildHistoricalOccurrenceLedger(dataset, [audit, repeated], [])
+    .filter((item) => item.directSignalOpenTimestamp !== undefined);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.occurrenceId, first.occurrenceId);
+  const projected = projectHistoricalTradeCandidates(merged, []);
+  assert.equal(projected.rejected.length, 0);
+  assert.equal(projected.candidates.length, 1);
+  assert.equal(projected.candidates[0]?.signalOccurrenceId, first.occurrenceId);
+  assert.equal(new Set(projected.candidates.map((candidate) => candidate.candidateId)).size, 1);
+});
+
 test("close-gated consolidation does not defer an unexecutable same-candle breakout", () => {
   const start = Date.parse("2026-08-25T14:05:00.000Z");
   const signal = {
