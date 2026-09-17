@@ -128,6 +128,48 @@ test("incomplete points cannot suppress an OHLC stop touch on a later candle", (
   assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
 });
 
+test("entry-candle coverage does not authorize sparse points on a later candle", () => {
+  const start = 7_250_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [timedCandle(100, 102, 98, 101, start + 600_000)],
+    orderedIntrabarEvidenceComplete: true,
+    orderedIntrabarPoints: [{ timestamp: start + 60_000, price: 100.25 }],
+    orderedPostEntryPoints: [{ timestamp: start + 360_000, price: 101 }],
+    orderedPostEntryEvidenceIntervals: [],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.modeledExitTimestamp, null);
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
+});
+
+test("one verified later interval does not authorize a following uncovered interval", () => {
+  const start = 7_400_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    immediateTriggerCandle: timedCandle(100, 100.25, 99.75, 100, start),
+    target: 101,
+    stop: 99,
+    subsequentCompletedCandles: [
+      timedCandle(100, 100.5, 99.5, 100, start + 600_000),
+      timedCandle(100, 102, 98, 100, start + 900_000),
+    ],
+    orderedIntrabarEvidenceComplete: true,
+    orderedIntrabarPoints: [{ timestamp: start + 60_000, price: 100.25 }],
+    orderedPostEntryEvidenceIntervals: [{
+      startTime: start + 300_000,
+      endTime: start + 600_000,
+      points: [{ timestamp: start + 360_000, price: 100.25 }],
+    }],
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.modeledExitTimestamp, null);
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_STOP_FIRST_LABEL));
+});
+
 test("malformed or out-of-candle points are ignored instead of becoming execution evidence", () => {
   const start = 7_500_000;
   const result = simulateOhlcvExecution({

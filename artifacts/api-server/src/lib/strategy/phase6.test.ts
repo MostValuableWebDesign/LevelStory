@@ -486,6 +486,33 @@ test("authorized short consolidation entry uses the first eight-tick threshold c
   assert.equal(result.rules.find((rule) => rule.key === "entryOutsideFinalizedNtz")?.passed, true);
 });
 
+test("authorized consolidation crossing does not require post-crossing breakout quality gates", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const result = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles: withCausalBaseline([
+      ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+      candle(breakoutOpenTime, 9.96, 12.1, 9.94, 9.95, 1),
+    ]),
+    breakout: {
+      ...baseContext().breakout,
+      detected: false,
+      direction: "long",
+      candleOpenTime: breakoutOpenTime,
+      time: null,
+      continuationConfirmed: false,
+      closeLocationRatio: 0,
+      bodyRatio: 0,
+      volumeSupported: false,
+    },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.equal(result.decision, "SETUP QUALIFIED");
+  assert.equal(result.rules.find((rule) => rule.key === "breakoutBody")?.mandatory, false);
+  assert.equal(result.rules.find((rule) => rule.key === "breakoutCloseLocation")?.mandatory, false);
+  assert.equal(result.rules.find((rule) => rule.key === "breakoutVolume")?.mandatory, false);
+});
+
 test("consolidation breakout uses the active bearish ORB epoch and directional close location", () => {
   const breakoutOpenTime = 9 * 300_000;
   const context = baseContext({

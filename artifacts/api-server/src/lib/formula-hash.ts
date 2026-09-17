@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.9-authorized-consolidation-threshold-entry-verified-intrabar-provenance";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.10-authorized-preentry-consolidation-arm-interval-intrabar-provenance";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -28,7 +28,7 @@ export function formulaConfiguration(
     fixedConstraints: {
       completedBarOnly: true,
       immediateNextCandleOnly: true,
-      directConsolidationSameCandleRule: "qualification is known at breakout close; breakout candle cannot execute and no automatic next-candle substitution is applied",
+      directConsolidationSameCandleRule: "arm at the end of the completed frozen consolidation range; enter at the first eight-tick crossing without requiring breakout close, body, close-location, or final-volume gates; no automatic next-candle substitution",
       noFutureData: true,
       noParameterOptimization: true,
       patienceEntryBufferTicks: config.patienceEntryBufferTicks,

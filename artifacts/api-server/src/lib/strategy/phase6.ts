@@ -436,15 +436,20 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     && breakoutDirectionMatchesTrend
     && !context.breakout.failed
     && strongBreakoutReached;
+  const breakoutBodySupported = (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio;
+  const breakoutCloseLocationSupported = directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio;
+  const breakoutVolumeSupported = context.breakout.volumeSupported || context.volume.supportingBreakoutVolume;
   const rules: SetupRuleEvidence[] = [
     rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
-    rule("strongBreakout", "Strong directional breakout outside frozen consolidation", breakoutConfirmed && strongBreakoutReached && direction !== null && context.breakout.volumeSupported && (context.breakout.bodyRatio ?? 0) >= context.config.phase4StrongBodyRatio && directionalCloseLocationRatio >= context.config.phase4StrongCloseLocationRatio, strongBreakoutReached ? `Completed breakout reached the frozen-range eight-tick threshold at ${strongBreakoutThreshold}.` : "Strong breakout evidence must reach eight ticks beyond the frozen consolidation range."),
+    rule("strongBreakout", "Directional breakout crossed eight ticks beyond frozen consolidation", breakoutConfirmed && direction !== null, strongBreakoutReached ? `Breakout reached the frozen-range eight-tick threshold at ${strongBreakoutThreshold}; post-crossing candle quality is diagnostic only for this authorized contract.` : "Breakout evidence must reach eight ticks beyond the frozen consolidation range."),
     rule("postBreakoutContext", "Post-breakout pullback or consolidation context", postBreakoutContext, postBreakoutContext ? "A qualifying pullback or post-breakout consolidation context is recorded." : "The strong breakout must be followed by a qualifying pullback or valid post-breakout consolidation."),
     rule("validPatienceNearLevel", "Strong breakout has no separate patience requirement", true, "This authorized strategy enters from the completed qualifying breakout; no patience candle is required."),
     rule("immediateTrigger", "Completed breakout is the authorized trigger", strongBreakoutReached, strongBreakoutReached ? "The completed breakout candle is the authorized trigger." : "The completed breakout candle did not reach the authorized threshold."),
      rule("entryOutsideFinalizedNtz", "Breakout crossed beyond frozen range", breakoutConfirmed, breakoutConfirmed ? "The breakout crossed the frozen-range eight-tick threshold; a breakout close is not required by this authorized contract." : "The breakout did not cross the frozen-range eight-tick threshold."),
-    rule("breakoutVolume", "Breakout volume supports the move", context.breakout.volumeSupported || context.volume.supportingBreakoutVolume, context.breakout.volumeSupported || context.volume.supportingBreakoutVolume ? "Breakout volume meets the configured support threshold." : "Breakout volume support is not confirmed."),
+    diagnosticRule("breakoutBody", "Breakout body supports the move", breakoutBodySupported, breakoutBodySupported ? "Breakout body meets the configured ratio; retained as diagnostic evidence." : "Breakout body ratio is below the configured threshold; this does not block the authorized crossing entry."),
+    diagnosticRule("breakoutCloseLocation", "Breakout close location supports the move", breakoutCloseLocationSupported, breakoutCloseLocationSupported ? "Breakout close location meets the configured ratio; retained as diagnostic evidence." : "Breakout close location is below the configured threshold; this does not block the authorized crossing entry."),
+    diagnosticRule("breakoutVolume", "Breakout volume supports the move", breakoutVolumeSupported, breakoutVolumeSupported ? "Breakout volume meets the configured support threshold; retained as diagnostic evidence." : "Breakout volume support is not confirmed; this does not block the authorized crossing entry."),
   ];
   return buildEvaluation("CONSOLIDATION_BREAKOUT_CONTINUATION", direction, rules, false, context.patience.state, consolidation);
 }
@@ -1054,6 +1059,10 @@ function evidenceRules(evidence: ReversalEvidence): SetupRuleEvidence[] {
 
 function rule(key: string, label: string, passed: boolean, detail: string): SetupRuleEvidence {
   return { key, label, passed, mandatory: true, detail };
+}
+
+function diagnosticRule(key: string, label: string, passed: boolean, detail: string): SetupRuleEvidence {
+  return { key, label, passed, mandatory: false, detail };
 }
 
 function hasQualifyingPullback(pullback: PullbackAnalysis): boolean {

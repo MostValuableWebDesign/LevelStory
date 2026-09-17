@@ -207,17 +207,17 @@ function verifiedOrderedIntrabarEvidenceInterval(
     || metadata.coverageStart > startTime
     || metadata.coverageEnd < endTime
   ) return null;
-  const points = (dataset.ticks ?? [])
+  const rawPoints = (dataset.ticks ?? [])
     .filter((point) =>
       point.timestamp >= startTime
       && point.timestamp <= endTime
       && point.timestamp >= metadata.coverageStart
       && point.timestamp <= metadata.coverageEnd,
-    )
-    .map((point) => ({ timestamp: point.timestamp, price: point.price }));
+    );
   let previousTimestamp = Number.NEGATIVE_INFINITY;
-  for (const point of points) {
-    if (!Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return null;
+  const points = rawPoints.map((point) => ({ timestamp: point.timestamp, price: point.price }));
+  for (const point of rawPoints) {
+    if (point.source !== "tick" || !Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return null;
     if (point.timestamp < previousTimestamp) return null;
     previousTimestamp = point.timestamp;
   }
@@ -1129,14 +1129,14 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
       violations.push("DIRECT_EXECUTION_EVIDENCE_MISMATCH");
     }
     if (directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION" && entryOpen === signalOpen) {
-      if (!Number.isFinite(qualification) || !Number.isFinite(thresholdCrossing)) {
-        violations.push("DIRECT_SAME_CANDLE_CAUSAL_ORDER_MISSING");
-      } else if (
-        qualification < signalOpen
+      if (!Number.isFinite(qualification) || qualification > signalOpen) {
+        violations.push("DIRECT_SAME_CANDLE_ARM_TIME_INVALID");
+      } else if (Number.isFinite(thresholdCrossing) && (
+        thresholdCrossing < signalOpen
         || qualification >= thresholdCrossing
         || entryCandleClose === null
         || thresholdCrossing > entryCandleClose
-      ) {
+      )) {
         violations.push("DIRECT_SAME_CANDLE_CAUSAL_ORDER_INVALID");
       }
     }
@@ -2870,6 +2870,11 @@ function auditForEvaluation(
     ),
     tickSize: contractSpecification.tickSize,
   }));
+  const directQualificationTime = evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    && evaluation.consolidation?.endTime !== null
+    && evaluation.consolidation?.endTime !== undefined
+    ? new Date(evaluation.consolidation.endTime).toISOString()
+    : null;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2877,9 +2882,7 @@ function auditForEvaluation(
     contractMonth,
     period,
     evaluatedCandleOpenTime: new Date(candle.openTime).toISOString(),
-    directQualificationTimestamp: evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-      ? new Date(candle.openTime).toISOString()
-      : null,
+    directQualificationTimestamp: directQualificationTime,
     setupType: evaluation.setupType,
     direction: evaluation.direction,
     decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
@@ -3647,9 +3650,9 @@ export function buildHistoricalOccurrenceLedger(
             : null,
           candidateShapeResult: true,
             // The setup becomes knowable from completed causal evidence. Equivalent
-            // reversal uses the immediate next candle. Consolidation never
-            // substitutes that next candle when its breakout candle was not an
-            // executable same-candle entry under the close-gated contract.
+            // reversal uses the immediate next candle. Authorized consolidation
+            // arms at the end of the completed frozen range and never substitutes
+            // a later candle for a threshold crossing.
            directQualificationTimestamp: record.directQualificationTimestamp ?? null,
            directThresholdCrossingTimestamp: sameCandleEvidence?.thresholdCrossingTimestamp !== null
              && sameCandleEvidence?.thresholdCrossingTimestamp !== undefined
@@ -4369,20 +4372,19 @@ function candidateEntryDisposition(occurrence: HistoricalOccurrence): CandidateE
   const entryHigh = numericCandleValue(occurrence.entryCandle, "high");
   const entryLow = numericCandleValue(occurrence.entryCandle, "low");
   const entryCloseTime = numericCandleValue(occurrence.entryCandle, "closeTime");
+  const entryOpenTime = occurrence.eOpenTimestamp ? Date.parse(occurrence.eOpenTimestamp) : Number.NaN;
   const qualificationTime = occurrence.directQualificationTimestamp
     ? Date.parse(occurrence.directQualificationTimestamp)
     : Number.NaN;
-  // The production consolidation contract requires the breakout candle to
-  // close outside the frozen range. If that same candle is also the proposed
-  // entry candle, no causal entry exists: do not use intrabar threshold data
-  // to bypass the close gate and do not silently move the entry to the next
-  // candle.
+  // The authorized consolidation contract arms from the completed frozen range.
+  // The trigger candle may cross the threshold before it closes; do not
+  // substitute a later candle when OHLC cannot provide an exact crossing time.
   if (
     sameCandleConsolidation
     && (
       !Number.isFinite(qualificationTime)
-      || entryCloseTime === null
-      || qualificationTime >= entryCloseTime
+      || !Number.isFinite(entryOpenTime)
+      || qualificationTime > entryOpenTime
     )
   ) {
     return { status: "ENTRY_AMBIGUOUS", reached: null };

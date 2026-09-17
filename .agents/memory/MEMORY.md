@@ -93,3 +93,4 @@
 - [Direct strategy entry timing](direct-strategy-entry-timing.md) — the two authorized no-patience strategies qualify on completed setup evidence and execute only in the following completed candle.
 - [Ordered intrabar completeness](ordered-intrabar-completeness.md) — timestamped ticks override OHLC stop-first only when source coverage is explicitly verified; partial or equal-time evidence stays conservative.
 - [Verified intrabar provenance](verified-intrabar-provenance.md) — a completeness flag alone is insufficient; exact chronology also needs validated source, contract, coverage, ordering, and tie semantics.
+- [Interval-scoped intrabar coverage](interval-intrabar-coverage.md) — ordered evidence authorizes only its validated candle interval; uncovered candles retain conservative OHLC behavior.
