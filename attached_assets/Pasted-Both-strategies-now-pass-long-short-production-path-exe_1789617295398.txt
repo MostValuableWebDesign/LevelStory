@@ -1,0 +1,165 @@
+Both strategies now pass long/short production-path execution fixtures. Preserve that behavior. This task concerns identity, deduplication, and downstream linkage—not strategy thresholds or execution rules.
+
+CONFIRMED DEFECT
+
+In phase9.ts:
+- buildHistoricalOccurrenceLedger creates a strategy-specific direct crossing key.
+- Direct occurrences still use kind: "patience".
+- upsert() replaces occurrenceId using governedOccurrenceId().
+- The patience branch of governedOccurrenceId() excludes strategy and frozen consolidation identity.
+
+Therefore, distinct direct setups sharing contract, direction, entry candle, and observation time can receive the same final occurrenceId despite having different ledger keys.
+
+Adding directConsolidationCrossingIdentity as a field does not fix this if the final occurrence ID ignores it.
+
+REQUIRED REPAIR
+
+1. Inspect the entire identity chain:
+   - Detector setup evidence.
+   - Audit identity.
+   - Ledger map key.
+   - governedOccurrenceId().
+   - historicalCandidateId().
+   - Candidate causal identity.
+   - Trade signalOccurrenceId and candidateId.
+   - Account arbitration.
+   - Batch merging/conflict detection.
+   - Visual Review selection, snapshots, and persisted review linkage.
+
+2. Implement explicit strategy-specific identity handling for direct occurrences.
+
+Prefer a dedicated direct-strategy identity branch before the legacy patience branch. Do not globally change patience identity semantics.
+
+Use actual direct evidence to distinguish authorized direct occurrences from legacy patience records that happen to carry a similar strategy label.
+
+3. Consolidation identity must include stable causal evidence:
+   - Canonical strategy ID.
+   - Contract and trading date.
+   - Direction.
+   - Frozen range boundaries, normalized to instrument ticks.
+   - Consolidation constituent identity or equivalent stable range identity.
+   - Arm timestamp.
+   - Actual crossing candle identity.
+   - Existing source/formula provenance required by the repository.
+
+Preserve the same identity across repeated evaluations of the same physical setup and crossing.
+
+4. Equivalent-Candle Reversal identity must include:
+   - Canonical strategy ID.
+   - Contract and trading date.
+   - Direction.
+   - Both completed pattern-candle identities.
+   - Immediate trigger-candle identity.
+   - Existing source/formula provenance required by the repository.
+
+Do not fabricate patience fields to satisfy identity requirements.
+
+5. Keep identity separate from evolving provenance:
+   - Evaluation cursor.
+   - Audit row ID.
+   - Later diagnostic observations.
+   - Review status.
+   - Later execution outcome.
+
+Those fields must not create a new physical occurrence.
+
+Exact tick evidence becoming available for an already-identified crossing should enrich evidence without accidentally creating a duplicate trade. Follow the existing source-versioning policy and document its implications.
+
+6. Make ledger keys and final IDs consistent:
+   - Use a shared canonical identity representation where practical.
+   - Do not maintain two subtly different definitions of the same direct setup.
+   - Ensure upsert cannot discard strategy-specific identity.
+   - Missing required identity evidence should produce an explicit diagnostic rather than collapse into a generic ID full of null fields.
+   - Preserve conflicting duplicate diagnostics; do not silently overwrite conflicts.
+
+7. Preserve downstream behavior:
+   - Distinct setups remain distinct evidence.
+   - Distinct evidence does not automatically authorize multiple simultaneous positions.
+   - Account-wide position arbitration still decides which executable candidate may enter.
+   - A consumed crossing cannot become a new trade simply because the account later becomes free.
+   - Do not introduce new expiry or re-entry rules.
+
+REQUIRED REGRESSION TESTS
+
+A. Cross-strategy collision:
+Create a valid consolidation occurrence and a valid equivalent-candle reversal occurrence with the same:
+- Contract.
+- Trading date.
+- Direction.
+- Entry candle.
+- Observation time.
+
+Assert:
+- Different occurrence IDs.
+- Different candidate IDs where both project validly.
+- Correct strategy-specific linkage.
+- Account arbitration remains intact.
+
+B. Distinct consolidation setup identities:
+Using otherwise valid evidence, verify different frozen setup identities are not merged merely because they share an entry candle.
+
+C. Repeated evaluation:
+Feed repeated audit observations for the same physical consolidation crossing.
+Assert:
+- One stable occurrence ID.
+- One stable candidate identity.
+- No duplicate authoritative execution.
+- Evaluation cursor changes do not change identity.
+
+Repeat the equivalent stability check for the same reversal pattern and immediate trigger.
+
+D. Lifecycle:
+A later candle touching an already-consumed crossing’s threshold does not create a new trade from that old crossing.
+
+E. Batch consistency:
+Under the same governed source/formula provenance, single-run and partitioned aggregation preserve the intended identity and do not introduce collisions or duplicate trades.
+
+F. Conflict handling:
+Conflicting payloads for the same claimed causal identity remain explicitly diagnosed.
+
+G. Production-path preservation:
+Keep the existing raw-input long/short fixtures for both strategies passing through:
+- Detection.
+- Qualified audit.
+- Confirmed direct occurrence.
+- Candidate projection.
+- Account arbitration.
+- Authoritative trade.
+
+Assert that every stage links to the exact intended occurrence and candidate.
+
+H. Legacy protection:
+Existing patience-based occurrence identities and behavior remain unchanged except where a documented migration is necessary.
+
+VERSIONING AND PERSISTENCE
+
+- Update governed formula/cache identity for the changed direct-identity semantics.
+- Preserve historical results with their original provenance.
+- Do not silently attach existing human reviews to new occurrence IDs.
+- If review persistence or cache compatibility requires migration/invalidation, implement an explicit safe policy and document it.
+- Keep API and frontend identity contracts consistent.
+
+VERIFICATION
+
+Run:
+- Phase 9 unit and integration tests.
+- Relevant strategy and execution tests.
+- Account arbitration and batch tests.
+- Visual Review identity/cache/persistence tests relevant to the change.
+- API typecheck/build.
+- git diff --check.
+
+Do not run costly broad historical replays merely to demonstrate an identity fix. Use focused deterministic fixtures first.
+
+FINAL REPORT
+
+Provide:
+1. Root cause and files changed.
+2. The canonical identity fields for each direct strategy.
+3. Before/after collision-test results.
+4. Repeated-cursor and batch consistency results.
+5. Confirmation that all four production execution fixtures still pass.
+6. Formula/cache version and review-linkage compatibility handling.
+7. Tests/builds passed, failed, or not run.
+
+Do not claim completion just because the crossing-identity field exists. Verify that the final occurrence ID, candidate ID, and downstream trade/review linkage actually use the corrected identity.
