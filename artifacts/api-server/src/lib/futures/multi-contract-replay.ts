@@ -1311,13 +1311,13 @@ async function readPersistedIndex(identity: MultiContractIdentity): Promise<Hist
   }
 }
 
-async function readCommittedIndex(options: { validateSources?: boolean } = {}): Promise<{
+async function readCommittedIndex(options: { validateSources?: boolean; readOnly?: boolean } = {}): Promise<{
   value: HistoricalMultiContractImport | null;
   error: string | null;
 }> {
   let store: HistoricalIndexStore | null = null;
   try {
-    store = HistoricalIndexStore.create(INDEX_CACHE_PATH);
+    store = HistoricalIndexStore.create(INDEX_CACHE_PATH, { readOnly: options.readOnly });
     const metadata = store.readMetadata();
     const manifest = store.readManifest();
     if (!metadata || !manifest) {
@@ -1998,7 +1998,7 @@ export async function getReadyHistoricalMultiContractIndex(): Promise<Historical
   if (readyIndexLoad) return readyIndexLoad;
   readyIndexLoad = (async () => {
     try {
-       const committed = await readCommittedIndex();
+       const committed = await readCommittedIndex({ readOnly: true });
       if (!committed.value) return null;
       const persisted = committed.value;
       cachedImport = { indexKey: persisted.summary.indexKey, value: persisted };

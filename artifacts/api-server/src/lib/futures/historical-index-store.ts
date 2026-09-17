@@ -95,8 +95,10 @@ export class HistoricalIndexStore {
     readonly path: string,
   ) {}
 
-  static create(path: string): HistoricalIndexStore {
-    const database = new DatabaseSync(path);
+  static create(path: string, options: { readOnly?: boolean } = {}): HistoricalIndexStore {
+    const database = new DatabaseSync(path, options.readOnly
+      ? { readOnly: true, timeout: 30_000 }
+      : undefined);
     const existingVersion = Number(
       (database.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version ?? 0,
     );
@@ -108,7 +110,7 @@ export class HistoricalIndexStore {
       );
     }
     const store = new HistoricalIndexStore(database, path);
-    store.initialize();
+    if (!options.readOnly) store.initialize();
     return store;
   }
 
