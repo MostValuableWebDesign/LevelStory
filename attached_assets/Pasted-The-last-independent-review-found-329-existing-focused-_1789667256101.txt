@@ -1,0 +1,154 @@
+The last independent review found:
+- 329 existing focused tests passed; one production-path integration test failed.
+- Two additional regressions failed: future breakout evidence authorized an earlier setup, and candidate projection accepted missing causal trend evidence.
+- Duplicate-conflict rejection is fixed. Preserve it.
+
+1. FIX THE PRODUCTION REPLAY CRASH
+
+market-data.ts serializes directSetupEvidence without the new causal trend fields.
+
+phase9.ts auditForEvaluation then calls:
+new Date(directSetupEvidence.causalTrendTimestamp).toISOString()
+
+The missing timestamp causes:
+RangeError: Invalid time value
+
+Repair the complete data contract:
+- Detector evidence.
+- Market snapshot types and serialization.
+- Audit creation.
+- Historical occurrence ledger.
+- Candidate and management context.
+- Execution and review evidence.
+
+Carry causalTrendDirection, causalTrendSource, and the actual causal evidence timestamp consistently.
+
+Define timestamp types explicitly at each boundary. Do not use unsafe casts to pretend serialized evidence has the detector’s numeric timestamp type.
+
+Validate missing, malformed, and non-finite timestamps before conversion. Invalid evidence must produce a clear rejection diagnostic, not a crash, fabricated timestamp, or silently authorized setup.
+
+Do not “fix” the crash by defaulting the timestamp to the setup time.
+
+2. PREVENT FUTURE BREAKOUT EVIDENCE FROM AUTHORIZING EARLIER ENTRIES
+
+In strategy/phase6.ts, directCausalTrend accepts context.breakout.direction without establishing that the breakout evidence existed at the historical setup time.
+
+Confirmed reproduction:
+- An earlier consolidation candle crosses the long threshold.
+- ORB trend is unavailable at that time.
+- The supplied breakout direction belongs to a later candle.
+- Evaluation incorrectly returns SETUP QUALIFIED.
+
+Use the repository’s authoritative causal trend source and documented precedence.
+
+If a breakout-direction fallback is legitimately supported:
+- Require independently established, valid breakout evidence.
+- Verify when that evidence actually became knowable.
+- Its availability time must be no later than the authorization time.
+- A candle’s opening timestamp must not stand in for the time a close-confirmed breakout became knowable.
+- Do not use the current evaluation cursor’s breakout direction to authorize an earlier crossing.
+- Do not infer trend from the consolidation crossing itself.
+- Reject unavailable, neutral, ambiguous, or conflicting required evidence.
+
+If that fallback cannot satisfy the causal contract, reject rather than inventing evidence.
+
+Preserve the actual source evidence timestamp separately from the time at which trend was queried. The implementation currently writes the candidate candle’s opening time into causalTrendTimestamp; that alone does not prove when the trend became established.
+
+Inspect both findDirectConsolidationSetup and the fallback path in evaluateStrongBreakoutAfterConsolidation.
+
+3. ENFORCE TREND EVIDENCE DOWNSTREAM
+
+The direct occurrence ledger currently does not copy the new causal trend fields from the audit, and candidate projection does not require them.
+
+Confirmed reproduction:
+- An otherwise valid consolidation occurrence has no causal trend evidence.
+- Candidate projection creates one candidate.
+- Expected result: zero candidates and a clear rejection.
+
+For CONSOLIDATION_BREAKOUT_CONTINUATION:
+- Preserve the exact setup’s causal trend evidence through the ledger.
+- Require valid source, direction, and evidence-availability timestamp during candidate validation.
+- Require trend direction to match trade direction.
+- Require evidence to have been available at the authorized setup/entry time.
+- Reject missing, malformed, future, or contradictory evidence.
+- Do not backfill it from trade direction, threshold-crossing direction, or a later snapshot.
+- Ensure duplicate merging cannot discard a contradiction or replace invalid evidence with an unrelated observation.
+- Ensure invalid candidates cannot reach authoritative execution.
+
+Keep these requirements specific to this strategy. Do not impose its continuation-trend contract on Equivalent-Candle Reversal.
+
+4. PRESERVE CORRECT BEHAVIOR
+
+Keep these formulas unchanged:
+- Bullish LONG entry threshold = frozen range HIGH + 8 instrument ticks.
+- Bullish LONG stop = frozen range LOW − 8 instrument ticks.
+- Bearish SHORT entry threshold = frozen range LOW − 8 instrument ticks.
+- Bearish SHORT stop = frozen range HIGH + 8 instrument ticks.
+
+Also preserve:
+- Actual fills strictly outside the original frozen zone.
+- Price-crossing entry and stop semantics without requiring a close.
+- Valid trigger candles that open or wick inside the zone.
+- Stable occurrence/candidate identity during valid evidence enrichment.
+- Persistent rejection of conflicting duplicate identities.
+- Existing account arbitration.
+- Other strategies’ behavior.
+
+5. REQUIRED REGRESSION TESTS
+
+Production data contract:
+- Valid detector trend evidence survives snapshot serialization, audit creation, occurrence construction, candidate projection, and execution.
+- Assert the actual values at each stage, not merely that fields exist.
+- Missing or invalid timestamps reject without throwing.
+- Restore the existing long/short production-path fixtures for both strategies without weakening assertions.
+
+Causality:
+- A later breakout cannot authorize an earlier consolidation crossing.
+- A future ORB trend cannot authorize an earlier crossing.
+- A breakout known only at candle close cannot be treated as known at candle open.
+- Missing historical trend cannot fall back to the current cursor’s trend.
+- Valid prior causal trend permits the appropriate long/short setup.
+- Opposite, missing, neutral, or conflicting trend evidence rejects.
+
+Downstream validation:
+- Otherwise valid consolidation occurrences with missing trend evidence produce zero candidates and zero trades.
+- Future or contradictory trend evidence also produces zero candidates and zero trades.
+- Duplicate input order cannot bypass these rejections.
+- Valid evidence retains exact linkage to the intended setup.
+
+Preservation:
+- Assert both entry and stop formulas.
+- Keep the three-record crossing-conflict permutation tests passing.
+- Keep valid timestamp enrichment and cross-strategy identity tests passing.
+
+Use production functions. Do not replace failing fixtures with mocked qualification or fabricate trend fields solely to satisfy tests.
+
+6. VERSIONING AND VERIFICATION
+
+Update formula/cache versions for the changed causal qualification semantics. Preserve historical provenance and prevent stale results from being presented as current.
+
+Run:
+- Phase 6 tests.
+- Phase 9 unit and integration tests.
+- Execution, account-arbitration, and batch tests.
+- Relevant Visual Review tests.
+- API typecheck/build.
+- git diff --check.
+
+Report the existing visualValidationReviewsTable export and expectedRevision schema errors accurately if they remain. Do not hide them or claim a clean typecheck.
+
+Use focused tests before any broad historical replay.
+
+FINAL REPORT
+
+Provide:
+1. Root causes and files changed.
+2. The authoritative trend source, precedence, and evidence-availability timestamp.
+3. Before/after production-crash results.
+4. Before/after future-breakout regression results.
+5. Before/after downstream missing-trend regression results.
+6. Confirmation that both strategies pass long/short production execution fixtures.
+7. Formula/cache version changes.
+8. Tests/builds passed, failed, or not run.
+
+Do not claim completion based solely on detector tests. Verify the full serialized production path and downstream rejection behavior.
