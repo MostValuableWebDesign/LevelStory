@@ -1,0 +1,162 @@
+Complete this as a focused implementation and verification task. Do not merely change test expectations or force historical trades to appear.
+
+ISSUE 1 — LATER-CANDLE EVIDENCE INCORRECTLY DEPENDS ON ENTRY-CANDLE COVERAGE
+
+Current behavior:
+- Evidence intervals are collected separately.
+- However, exit-selection branches still require the entry candle’s orderedEvidenceComplete flag.
+- Consequently, verified later-candle evidence can be ignored when entry used OHLC fallback.
+
+Inspect strategy/ohlcv-execution.ts, particularly the strategyHit, catastropheHit, trailingHit, breakevenHit, favorable, oneRReachedInCandle, recoveryReached, and remaining-position branches.
+
+Reproduction:
+- Long entry: 100.
+- Stop: 98.
+- Target: 102.
+- Entry candle: open 100, high 100.5, low 99.5, close 100.
+- Entry interval: 0–300000.
+- evaluateEntryCandleForExit: false.
+- orderedIntrabarEvidenceComplete: false.
+- Subsequent candle: open 100, high 103, low 97, close 100.
+- Subsequent interval: 300000–600000.
+- Verified orderedPostEntryEvidenceIntervals:
+  [{
+    startTime: 300000,
+    endTime: 600000,
+    points: [
+      { timestamp: 360000, price: 102 },
+      { timestamp: 480000, price: 98 }
+    ]
+  }]
+
+Current incorrect result:
+- Stop at 480000.
+- Ambiguous stop-first classification.
+
+Expected:
+- Target at 360000.
+- No ordering ambiguity, because the subsequent interval establishes target before stop.
+
+Required fix:
+1. Separate entry-evidence validity from each execution interval’s evidence validity.
+2. For every candle, determine whether THAT interval has verified ordered evidence.
+3. Use that local decision consistently for all barrier types and partial-position handling.
+4. Entry OHLC fallback must not disable verified later evidence.
+5. Verified entry evidence must not authorize an uncovered later interval.
+6. Preserve exact event timestamps only where established.
+7. Preserve the conservative OHLC policy in uncovered or unresolved intervals.
+8. Remove remaining global-flag dependencies that can override valid interval-specific decisions.
+9. Keep selected exit event, reason, price, quantity, and timestamp together; do not independently rescan for a different timestamp.
+
+Preserve the already-fixed sparse-entry-tick ambiguity behavior.
+
+ISSUE 2 — CONSOLIDATION STILL DEPENDS ON THE OLD BREAKOUT LIFECYCLE
+
+Inspect evaluateStrongBreakoutAfterConsolidation in strategy/phase6.ts and its production callers.
+
+Current concerns:
+- candidateCandle prefers context.breakout.candleOpenTime.
+- Qualification still requires !context.breakout.failed.
+- The separate breakout detector can mark failure based on a later close back inside the ORB.
+- The authorized consolidation threshold entry must not be selected or retroactively invalidated by that unrelated breakout lifecycle.
+
+AUTHORIZED CONSOLIDATION CONTRACT:
+- Arm using the completed frozen consolidation range and other authorized information available before entry.
+- Long trigger: range high + 8 instrument ticks.
+- Long stop: range low − 8 ticks.
+- Short trigger: range low − 8 ticks.
+- Short stop: range high + 8 ticks.
+- Range boundaries use constituent candle highs/lows.
+- No patience candle or P→E requirement.
+- Breakout body, breakout close-location, breakout-close, and final-volume measurements are diagnostic only.
+- Entry does not wait for breakout-candle close.
+- OHLC may establish modeled execution without an exact intrabar timestamp, subject to the existing ambiguity policy.
+
+Required fix:
+1. Trace and separate consolidation setup identity from the legacy ORB breakout identity.
+2. Associate the frozen range, arm time, direction, and trigger with the same consolidation setup.
+3. Select the crossing candle from that armed setup’s eligible causal observations—not a stale context.breakout.candleOpenTime.
+4. Remove legacy breakout failure as an implicit gate unless it represents a separately authorized pre-entry invalidation rule.
+5. A later close back inside ORB must not erase or prevent an entry that was already valid at its crossing.
+6. Keep authorized direction/market-context rules, but evaluate their pre-entry values rather than later state.
+7. Ensure detection, consolidation guard, audit, occurrence identity, candidate geometry, and chart zone all reference the same frozen setup.
+8. Prevent repeated evaluation from duplicating an already-consumed crossing.
+9. Preserve existing authorized expiry, invalidation, and re-arming behavior. If genuinely undefined, identify the exact decision rather than inventing unlimited validity, immediate expiry, or automatic re-entry.
+
+Do not modify the general ORB/patience strategy lifecycle to repair the consolidation strategy.
+
+PRESERVE EQUIVALENT-CANDLE REVERSAL
+
+- Two consecutive completed pattern candles.
+- Uptrend with exactly equal highs → short reversal.
+- Downtrend with exactly equal lows → long reversal.
+- Existing authorized body, wick, opposing-candle, and level-context measurements apply to the same two candles.
+- Long trigger: second candle high + 8 ticks.
+- Long stop: second candle low − 8 ticks.
+- Short trigger: second candle low − 8 ticks.
+- Short stop: second candle high + 8 ticks.
+- Only the immediate next candle may trigger; otherwise expire the pattern.
+- No separate patience requirement.
+
+For both strategies retain existing key-level/1R targeting, risk controls, session windows, configured slippage, fees, and account-position rules. Do not introduce a peak-retracement percentage gate.
+
+REQUIRED TESTS
+
+Evidence coverage:
+- Exact reproduction above.
+- Short equivalent.
+- Verified later interval with target before stop.
+- Verified later interval with stop before target.
+- Verified entry interval followed by uncovered later interval.
+- Uncovered entry interval followed by verified later interval.
+- A coverage gap between verified intervals.
+- Partial target followed by remaining-position stop.
+- Equal-time competing events without reliable sequence remain ambiguous.
+- Sparse unverified entry ticks cannot erase OHLC barrier touches.
+- Account arbitration uses the resolved full-exit time and preserves the exact-time boundary.
+
+Consolidation:
+- A stale legacy breakout timestamp does not redirect the consolidation trigger.
+- Legacy breakout.failed does not suppress an otherwise valid independent consolidation crossing.
+- A later ORB re-entry does not retroactively invalidate an established entry.
+- Long and short thresholds/stops use the frozen range.
+- Range and pre-entry direction do not change using future candles.
+- Repeated replay cursors do not duplicate the crossing.
+- Changing later candle body, close-location, or volume does not alter an earlier authorized entry.
+- Guard, audit, candidate, and chart evidence share the same setup identity and range.
+
+PRODUCTION-PATH ACCEPTANCE
+
+Add deterministic integration fixtures that start with raw candle/tick inputs and invoke the production detection → audit → occurrence → candidate → execution → account pipeline.
+
+Require:
+- At least one established consolidation entry.
+- At least one established equivalent-candle reversal entry.
+- Both directions covered across focused tests.
+- Assertions for arm/pattern time, trigger, modeled fill, stop, target disposition, execution timestamps, and account disposition.
+- No manually fabricated SETUP QUALIFIED audit rows or earlier qualification timestamps in these acceptance fixtures.
+
+Use synthetic fixtures to prove behavior, clearly labeled as such. Do not alter real data or weaken rules to make historical replay produce trades.
+
+A historical replay with HTTP 200 and zero trades is only a successful request, not proof that the new entry path works. If a bounded historical replay produces zero trades, report the rejection/qualification funnel and distinguish it from the passing synthetic integration fixtures.
+
+VERIFICATION AND DELIVERY
+
+- Update formula/cache identity if execution semantics change.
+- Preserve historical results and original provenance.
+- Run focused strategy, execution, account, batch, and relevant Visual Review tests.
+- Run relevant typechecks/builds.
+- Run a bounded historical replay if data is available.
+- State whether execution used OHLC fallback or verified ordered evidence.
+
+Report:
+1. Root causes and files changed.
+2. Before/after result of the mixed-coverage reproduction.
+3. Evidence that consolidation no longer relies on a stale legacy breakout.
+4. Production-path integration results for both strategies.
+5. Test/build results and checks not run.
+6. Formula/cache version.
+7. Historical replay funnel, if run.
+8. Any unresolved rule decision.
+
+Do not claim completion based solely on passing existing tests or a zero-trade HTTP 200 response.
