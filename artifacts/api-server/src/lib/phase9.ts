@@ -36,6 +36,7 @@ import type {
   ModeledExecutionLeg,
   DynamicTargetSource,
   OrderedIntrabarPoint,
+  OrderedIntrabarEvidenceInterval,
 } from "./strategy/ohlcv-execution.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
@@ -187,12 +188,12 @@ export type CausalReplayDataset = {
   };
 };
 
-function hasVerifiedOrderedIntrabarEvidence(
+function verifiedOrderedIntrabarEvidenceInterval(
   dataset: CausalReplayDataset,
   contractSymbol: string,
   startTime: number,
   endTime: number,
-): boolean {
+): OrderedIntrabarEvidenceInterval | null {
   const metadata = dataset.orderedIntrabarEvidence;
   if (
     dataset.orderedIntrabarEvidenceComplete !== true
@@ -205,15 +206,31 @@ function hasVerifiedOrderedIntrabarEvidence(
     || !Number.isFinite(metadata.coverageEnd)
     || metadata.coverageStart > startTime
     || metadata.coverageEnd < endTime
-  ) return false;
-  const points = dataset.ticks ?? [];
+  ) return null;
+  const points = (dataset.ticks ?? [])
+    .filter((point) =>
+      point.timestamp >= startTime
+      && point.timestamp <= endTime
+      && point.timestamp >= metadata.coverageStart
+      && point.timestamp <= metadata.coverageEnd,
+    )
+    .map((point) => ({ timestamp: point.timestamp, price: point.price }));
   let previousTimestamp = Number.NEGATIVE_INFINITY;
   for (const point of points) {
-    if (point.source !== "tick" || !Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return false;
-    if (point.timestamp < previousTimestamp) return false;
+    if (!Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return null;
+    if (point.timestamp < previousTimestamp) return null;
     previousTimestamp = point.timestamp;
   }
-  return true;
+  return { startTime, endTime, points };
+}
+
+function hasVerifiedOrderedIntrabarEvidence(
+  dataset: CausalReplayDataset,
+  contractSymbol: string,
+  startTime: number,
+  endTime: number,
+): boolean {
+  return verifiedOrderedIntrabarEvidenceInterval(dataset, contractSymbol, startTime, endTime) !== null;
 }
 
 export type CausalReplayProgress = {
@@ -5213,22 +5230,14 @@ function candidateDrivenEntryTrade(
   const executionSpecification = context.specification;
   const entryOpenTime = numericCandleValue(entryCandle, "openTime") ?? Date.parse(occurrence.eOpenTimestamp!);
   const entryCloseTime = numericCandleValue(entryCandle, "closeTime") ?? Date.parse(entryObservationTimestamp);
-  const orderedEvidenceComplete = hasVerifiedOrderedIntrabarEvidence(
+  const orderedEntryEvidence = verifiedOrderedIntrabarEvidenceInterval(
     context.dataset,
     occurrence.contractSymbol,
     entryOpenTime,
     entryCloseTime,
   );
-  const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = orderedEvidenceComplete
-    ? (context.dataset.ticks ?? [])
-      .filter((point) =>
-        point.timestamp >= entryOpenTime
-        && point.timestamp <= entryCloseTime
-        && Number.isFinite(point.price)
-        && Number.isFinite(point.timestamp),
-      )
-      .map((point) => ({ timestamp: point.timestamp, price: point.price }))
-    : [];
+  const orderedEvidenceComplete = orderedEntryEvidence !== null;
+  const orderedIntrabarPoints: readonly OrderedIntrabarPoint[] = orderedEntryEvidence?.points ?? [];
   const explicitEntryFillTimestamp = occurrence.directThresholdCrossingTimestamp
     && orderedEvidenceComplete
     ? Date.parse(occurrence.directThresholdCrossingTimestamp)
@@ -5243,6 +5252,14 @@ function candidateDrivenEntryTrade(
       && item.openTime >= regular.openTime
       && item.closeTime <= regular.closeTime,
     );
+  const orderedPostEntryEvidenceIntervals: readonly OrderedIntrabarEvidenceInterval[] = postEntry
+    .map((candle) => verifiedOrderedIntrabarEvidenceInterval(
+      context.dataset,
+      occurrence.contractSymbol,
+      candle.openTime,
+      candle.closeTime,
+    ))
+    .filter((interval): interval is OrderedIntrabarEvidenceInterval => interval !== null);
   const sessionCloseCandle = regular
     ? contractCandles.filter((item) =>
       item.isComplete
@@ -5261,10 +5278,9 @@ function candidateDrivenEntryTrade(
     evaluateEntryCandleForExit: direct,
     orderedIntrabarPoints,
     orderedPostEntryPoints: orderedEvidenceComplete
-      ? (context.dataset.ticks ?? [])
-        .filter((point) => point.timestamp > (direct ? entryOpenTime : entryCloseTime))
-        .map((point) => ({ timestamp: point.timestamp, price: point.price }))
+      ? orderedPostEntryEvidenceIntervals.flatMap((interval) => interval.points)
       : [],
+    orderedPostEntryEvidenceIntervals,
     orderedIntrabarEvidenceComplete: orderedEvidenceComplete,
     entryFillTimestamp: Number.isFinite(explicitEntryFillTimestamp) ? explicitEntryFillTimestamp : null,
     subsequentCompletedCandles: postEntry,

@@ -107,6 +107,12 @@ export type OrderedIntrabarPoint = {
   price: number;
 };
 
+export type OrderedIntrabarEvidenceInterval = {
+  startTime: number;
+  endTime: number;
+  points: readonly OrderedIntrabarPoint[];
+};
+
 export function buildIndicatorReplayContext(input: {
   source: DynamicTargetSource;
   candles: readonly OhlcvCandle[];
@@ -308,6 +314,11 @@ export type OhlcvExecutionInput = {
   orderedIntrabarPoints?: readonly OrderedIntrabarPoint[];
   /** Ordered tick observations after entry, used only when exact exit chronology is known. */
   orderedPostEntryPoints?: readonly OrderedIntrabarPoint[];
+  /**
+   * Verified ordered evidence for individual post-entry candle intervals.
+   * An interval absent from this list must use the normal OHLC policy.
+   */
+  orderedPostEntryEvidenceIntervals?: readonly OrderedIntrabarEvidenceInterval[];
   /**
    * The caller has verified that the ordered points cover the complete
    * competing-barrier sequence for the candles being simulated. A non-empty
@@ -528,11 +539,16 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       )
       .sort((first, second) => first.timestamp - second.timestamp)
     : [];
-  const orderedPostEntryPoints = [...(input.orderedPostEntryPoints ?? [])]
+  const intervalEvidence = input.orderedPostEntryEvidenceIntervals;
+  const orderedPostEntryPoints = intervalEvidence !== undefined
+    ? intervalEvidence.flatMap((interval) => interval.points)
+    : [...(input.orderedPostEntryPoints ?? [])]
     .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
     .sort((first, second) => first.timestamp - second.timestamp);
   const orderedEvidenceComplete = input.orderedIntrabarEvidenceComplete === true;
-  const orderedExitPoints = orderedEvidenceComplete
+  const orderedExitPoints = intervalEvidence !== undefined
+    ? orderedPostEntryPoints
+    : orderedEvidenceComplete
     ? (orderedPostEntryPoints.length > 0 ? orderedPostEntryPoints : orderedPoints)
     : [];
   const subsequentCandles = [
@@ -805,7 +821,16 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
     const breakevenStopArmed = breakevenMode === "stop";
     const recoveryExitArmed = breakevenMode === "recovery";
-    const candleOrderedPoints = orderedExecutionPoints.length > 0
+    const candleOrderedPoints = intervalEvidence !== undefined
+      ? intervalEvidence.find((interval) =>
+        (typeof candle.openTime !== "number" || interval.startTime <= candle.openTime)
+        && (typeof candle.closeTime !== "number" || interval.endTime >= candle.closeTime),
+      )?.points.filter((point) =>
+        point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
+        && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
+        && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+      ) ?? []
+      : orderedExecutionPoints.length > 0
       ? orderedExecutionPoints.filter((point) =>
         point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
         && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
