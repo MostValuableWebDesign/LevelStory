@@ -1356,9 +1356,30 @@ function auditEvidenceForOccurrence(
   const occurrenceStrategyStop = directStrategy
     ? strategyStopPriceForOccurrence(occurrence)
     : null;
+  const directSourceCandleTimestamps = occurrence.directConsolidationSourceCandleTimestamps?.length
+    ? occurrence.directConsolidationSourceCandleTimestamps
+    : occurrence.consolidationGuard?.sourceCandleTimestamps?.length
+      ? occurrence.consolidationGuard.sourceCandleTimestamps
+      : audit.directConsolidationSourceCandleTimestamps;
   return {
     ...audit,
     direction: occurrence.direction ?? audit.direction,
+    directQualificationTimestamp: occurrence.directQualificationTimestamp ?? audit.directQualificationTimestamp,
+    directSignalOpenTimestamp: occurrence.directSignalOpenTimestamp ?? audit.directSignalOpenTimestamp,
+    directCrossingCandleOpenTimestamp: occurrence.directCrossingCandleOpenTimestamp ?? audit.directCrossingCandleOpenTimestamp,
+    directConsolidationStartTimestamp: occurrence.directConsolidationStartTimestamp
+      ?? occurrence.consolidationGuard?.consolidationStartTime
+      ?? audit.directConsolidationStartTimestamp,
+    directConsolidationEndTimestamp: occurrence.directConsolidationEndTimestamp ?? audit.directConsolidationEndTimestamp,
+    directConsolidationZoneHigh: occurrence.directConsolidationZoneHigh
+      ?? occurrence.consolidationGuard?.consolidationZoneHigh
+      ?? audit.directConsolidationZoneHigh,
+    directConsolidationZoneLow: occurrence.directConsolidationZoneLow
+      ?? occurrence.consolidationGuard?.consolidationZoneLow
+      ?? audit.directConsolidationZoneLow,
+    directConsolidationSourceCandleTimestamps: directSourceCandleTimestamps,
+    directConsolidationCrossingIdentity: occurrence.directConsolidationCrossingIdentity
+      ?? audit.directConsolidationCrossingIdentity,
     patienceCandle: occurrence.patienceCandle,
     triggerCandle: occurrence.entryCandle,
     patienceCandleOpenTime: patienceOpenTime,
@@ -2599,6 +2620,27 @@ function buildMachineSnapshot(
       ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(" "),
     }
     : audit;
+  const displayedTrade = trade
+    ? {
+      ...trade,
+      audit: trade.audit
+        ? {
+          ...trade.audit,
+          strategyStopPrice: displayedAudit.strategyStopPrice,
+          finalStrategyStopBoundary: displayedAudit.finalStrategyStopBoundary,
+          stopDirection: displayedAudit.stopDirection,
+          stopBufferTicks: displayedAudit.stopBufferTicks,
+          stopBufferPoints: displayedAudit.stopBufferPoints,
+          directConsolidationZoneHigh: displayedAudit.directConsolidationZoneHigh,
+          directConsolidationZoneLow: displayedAudit.directConsolidationZoneLow,
+          directConsolidationStartTimestamp: displayedAudit.directConsolidationStartTimestamp,
+          directConsolidationEndTimestamp: displayedAudit.directConsolidationEndTimestamp,
+          directConsolidationSourceCandleTimestamps: displayedAudit.directConsolidationSourceCandleTimestamps,
+          consolidationGuard: displayedAudit.consolidationGuard,
+        }
+        : trade.audit,
+    }
+    : null;
   return {
     snapshotId: `visual-${hash}`,
     ...(occurrence ? { occurrenceId: occurrence.occurrenceId, sourceFingerprint: occurrence.sourceFingerprint } : {}),
@@ -2638,17 +2680,17 @@ function buildMachineSnapshot(
     reviewCandles,
     premarketCandles,
     indicatorSeries,
-    tradeEvents: buildTradeEvents(audit, trade, evaluationCloseTime, occurrence),
+    tradeEvents: buildTradeEvents(displayedAudit, displayedTrade, evaluationCloseTime, occurrence),
     coverage: buildCoverage(visibleReview, audit.tradingDate, calendar),
     outcomeContextEnd: new Date(reviewTime).toISOString(),
     futureCandleAccess: false,
     categoryAnchor,
-    annotations: buildAnnotations(evaluationSnapshot, audit, trade, indicatorSeries, occurrence),
+    annotations: buildAnnotations(evaluationSnapshot, displayedAudit, displayedTrade, indicatorSeries, occurrence),
     machineEvidence: {
       quotesAvailable: report.executionMode === "quote_based_shadow",
       sourceSchema: report.executionMode === "quote_based_shadow" ? "quote_bbo" : "historical_ohlcv",
       audit: displayedAudit,
-      trade,
+      trade: displayedTrade,
       market: {
         levels: evaluationSnapshot.levels,
         breakout: evaluationSnapshot.breakout,
