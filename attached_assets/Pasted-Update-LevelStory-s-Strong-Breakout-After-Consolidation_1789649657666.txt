@@ -1,0 +1,120 @@
+Update LevelStory’s Strong Breakout After Consolidation stop-loss rule and fix the remaining direct-occurrence identity instability.
+
+Inspect current HEAD first. The last reviewed commit was ceb1ee5. Preserve newer valid changes and the existing Equivalent-Candle Reversal behavior.
+
+1. CHANGE THE CONSOLIDATION STOP
+
+For CONSOLIDATION_BREAKOUT_CONTINUATION, exit when price returns four ticks inside the original frozen consolidation zone:
+
+- Long stop = frozen consolidation HIGH − 4 × instrument tick size.
+- Short stop = frozen consolidation LOW + 4 × instrument tick size.
+
+For MES, four ticks = 1.00 point.
+
+Example with a frozen range of 5200.00–5206.00:
+- Long stop: 5205.00.
+- Short stop: 5201.00.
+
+Replace the current long stop below the range low and short stop above the range high.
+
+This is a price-touch/crossing stop. Do not require a candle close inside the zone. Preserve the existing execution engine’s gap, slippage, and intrabar-ordering rules. Do not assume an exact stop-price fill through a gap or fabricate favorable ordering from OHLC data.
+
+Use the original frozen range belonging to that exact setup. Never recalculate the stop from a later consolidation range.
+
+Preserve the existing entry threshold of eight ticks beyond the breakout boundary. Do not change Equivalent-Candle Reversal stops or any patience-based strategy.
+
+Trace this stop through:
+- Candidate projection.
+- Initial risk and reward-to-risk qualification.
+- Position sizing where applicable.
+- Authoritative execution.
+- Trade records, P/L, and R calculations.
+- Visual Review and displayed stop information.
+
+All dependent values must use the new stop consistently. Preserve existing target-selection rules while recalculating any values legitimately derived from initial risk.
+
+Fail closed with a clear diagnostic when frozen range evidence is missing or invalid, the stop is on the wrong side of entry, or the range is too narrow for the requested four-tick depth. Do not silently fall back to the old stop or clamp the requested distance.
+
+2. FIX CONSOLIDATION IDENTITY INSTABILITY
+
+In phase9.ts, directOccurrenceIdentityParts currently includes:
+
+thresholdCrossing=<exact timestamp or "unobserved">
+
+This makes the same physical setup receive a different occurrence identity when exact crossing evidence becomes available.
+
+Separate stable physical identity from execution evidence.
+
+Under the same governed source/formula provenance:
+- The same frozen setup and crossing candle must retain the same occurrence ID and candidate ID.
+- Adding an exact crossing timestamp should enrich execution evidence.
+- It must not create a second occurrence or trade.
+- Evaluation cursor changes and audit-row changes must not change identity.
+
+Preserve the existing distinctions between:
+- Different strategies.
+- Different frozen consolidation setups.
+- Different legitimate crossing occurrences.
+
+Do not introduce new re-entry or expiry rules.
+
+Keep the precise timestamp available for causal validation and execution ordering; remove only its inappropriate role in stable physical identity. Review the existing merge path so more complete evidence is retained and conflicting evidence is explicitly diagnosed.
+
+If enriched source data legitimately changes sourceFingerprint under repository policy, retain that provenance distinction. Do not collapse different source versions; document the behavior separately from same-provenance identity stability.
+
+Preserve the recently fixed cross-strategy and frozen-range collision handling and legacy patience identities.
+
+3. REQUIRED FOCUSED TESTS
+
+Stop behavior:
+- Long and short stop formulas using frozen range boundaries.
+- Exact touch and crossing trigger the stop.
+- Price stopping one tick short does not trigger it.
+- A candle that touches the stop and closes back outside still exits.
+- A stop touched before entry does not retrospectively stop a later entry.
+- Ordered intrabar evidence resolves entry/stop sequence correctly.
+- Ambiguous OHLC sequencing preserves the existing ambiguity policy.
+- Gap/slippage handling remains correct.
+- A later range change does not move the original stop.
+- Invalid or missing range evidence fails closed.
+- Candidate risk, execution stop, P/L, R, and displayed stop agree.
+- Equivalent-Candle Reversal and patience stops remain unchanged.
+
+Identity:
+- Same setup first without an exact crossing timestamp, then with one, under identical provenance: one stable occurrence ID and candidate ID.
+- Reverse input order produces the same identity and retains the best valid evidence.
+- Repeated evaluation does not duplicate authoritative execution.
+- Conflicting exact crossing evidence is diagnosed.
+- Different strategies and frozen ranges remain distinct.
+- Existing long/short production-path fixtures for both strategies still pass.
+
+Use actual production functions and focused deterministic fixtures. Do not rely only on handcrafted IDs or assertions that a field exists.
+
+4. VERSIONING AND VERIFICATION
+
+Update governed formula/cache versions for the changed stop and identity semantics.
+
+Preserve historical results under their original provenance. Do not silently reuse stale results or attach existing human reviews to incompatible new results.
+
+Run relevant:
+- Phase 9 unit and integration tests.
+- Strategy and execution tests.
+- Account arbitration and batch tests.
+- Visual Review/cache/linkage tests.
+- API typecheck/build.
+- git diff --check.
+
+Use focused tests first; do not launch costly broad historical replays for this repair.
+
+FINAL REPORT
+
+Provide:
+- Commit and files changed.
+- Exact long/short stop formulas.
+- Confirmation that stops trigger on price touch, without requiring a close.
+- Before/after identity-enrichment test results.
+- Evidence that both strategies still execute correctly in both directions.
+- Formula/cache version and historical-review compatibility handling.
+- Tests/builds passed, failed, or not run.
+
+Do not claim completion solely because existing tests pass. Add and run regressions that specifically demonstrate the new stop behavior and stable identity when crossing evidence is enriched.
