@@ -414,6 +414,9 @@ export type MarketSnapshot = {
         frozenHigh: number;
         frozenLow: number;
         sourceCandleOpenTimes: string[];
+        causalTrendDirection: Direction;
+        causalTrendSource: "ORB_TREND" | "BREAKOUT_DIRECTION";
+        causalTrendTimestamp: string;
       } | null;
     }>;
   };
@@ -1401,6 +1404,9 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
           frozenLow: evaluation.directSetupEvidence.frozenLow,
           sourceCandleOpenTimes: evaluation.directSetupEvidence.sourceCandleOpenTimes
             .map((time) => new Date(time).toISOString()),
+          causalTrendDirection: evaluation.directSetupEvidence.causalTrendDirection,
+          causalTrendSource: evaluation.directSetupEvidence.causalTrendSource,
+          causalTrendTimestamp: new Date(evaluation.directSetupEvidence.causalTrendTimestamp).toISOString(),
         }
         : null,
     })),

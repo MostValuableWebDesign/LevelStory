@@ -14,6 +14,7 @@ import {
   isCausalPositionActiveAt,
   applyHistoricalAccountPositionGate,
   reconcileOrbTrendTransitionPositionEvidence,
+  deserializeDirectSetupEvidence,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -863,6 +864,11 @@ function occurrenceAudit(
     contractMonth: "2026-09",
     period: "in_sample",
     evaluatedCandleOpenTime: new Date(eOpen).toISOString(),
+    causalTrendDirection: setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION" ? "long" : null,
+    causalTrendSource: setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION" ? "BREAKOUT_DIRECTION" : null,
+    causalTrendTimestamp: setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      ? new Date(0).toISOString()
+      : null,
     setupType,
     direction: "long",
     decision: "SETUP QUALIFIED",
@@ -938,6 +944,62 @@ function occurrenceAudit(
     ...overrides,
   };
 }
+
+test("serialized direct causal-trend evidence rejects missing and malformed timestamps without throwing", () => {
+  const valid = {
+    signalOpenTime: "2026-08-25T14:00:00.000Z",
+    qualificationTime: "2026-08-25T13:55:00.000Z",
+    crossingCandleOpenTime: "2026-08-25T14:00:00.000Z",
+    consolidationStartTime: "2026-08-25T13:50:00.000Z",
+    consolidationEndTime: "2026-08-25T14:00:00.000Z",
+    frozenHigh: 101,
+    frozenLow: 99,
+    sourceCandleOpenTimes: ["2026-08-25T13:50:00.000Z"],
+    causalTrendDirection: "long",
+    causalTrendSource: "BREAKOUT_DIRECTION",
+    causalTrendTimestamp: "2026-08-25T13:45:00.000Z",
+  };
+  const accepted = deserializeDirectSetupEvidence(valid, "long");
+  assert.deepEqual(accepted.issues, []);
+  assert.equal(accepted.evidence?.causalTrendTimestamp, Date.parse(valid.causalTrendTimestamp));
+
+  for (const malformedTimestamp of [undefined, "not-a-time", "NaN"]) {
+    const malformed = { ...valid, causalTrendTimestamp: malformedTimestamp };
+    assert.doesNotThrow(() => deserializeDirectSetupEvidence(malformed, "long"));
+    const result = deserializeDirectSetupEvidence(malformed, "long");
+    assert.equal(result.evidence, null);
+    assert.ok(result.issues.includes("INVALID_DIRECT_EVIDENCE_causalTrendTimestamp"));
+  }
+});
+
+test("candidate projection rejects missing, malformed, future, and contradictory direct causal trend evidence", () => {
+  const base = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    id: "causal-trend-rejection",
+    directQualificationTimestamp: "2026-08-25T14:00:00.000Z",
+    directSignalOpenTimestamp: "2026-08-25T14:00:00.000Z",
+    direction: "long",
+  });
+  const dataset = occurrenceDataset();
+  for (const [label, overrides, expectedDetail] of [
+    ["missing", { causalTrendDirection: null, causalTrendSource: null, causalTrendTimestamp: null }, "MISSING_OR_INVALID_CAUSAL_TREND_DIRECTION"],
+    ["malformed", { causalTrendDirection: "long", causalTrendSource: "BREAKOUT_DIRECTION", causalTrendTimestamp: "not-a-time" }, "MISSING_OR_INVALID_CAUSAL_TREND_TIMESTAMP"],
+    ["future", { causalTrendDirection: "long", causalTrendSource: "BREAKOUT_DIRECTION", causalTrendTimestamp: "2026-08-25T14:05:00.000Z" }, "CAUSAL_TREND_EVIDENCE_AVAILABLE_AFTER_AUTHORIZATION"],
+    ["contradictory", { causalTrendDirection: "short", causalTrendSource: "BREAKOUT_DIRECTION", causalTrendTimestamp: "2026-08-25T13:55:00.000Z" }, "CAUSAL_TREND_DIRECTION_MISMATCH"],
+  ] as const) {
+    const occurrence = buildHistoricalOccurrenceLedger(dataset, [{ ...base, id: `${base.id}-${label}` }], [])
+      .find((item) => item.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION");
+    assert.ok(occurrence);
+    Object.assign(occurrence, overrides);
+    const projected = projectHistoricalTradeCandidates([occurrence!], []);
+    assert.equal(projected.candidates.length, 0, label);
+    assert.equal(projected.rejected.length, 1, label);
+    assert.ok(projected.rejected[0]?.reasonCodes.includes("INVALID_CAUSAL_TREND_EVIDENCE"), label);
+    assert.ok(
+      projected.rejected[0]?.details.includes(expectedDetail),
+      `${label}: ${JSON.stringify(projected.rejected)}`,
+    );
+  }
+});
 
 function occurrenceDataset(): CausalReplayDataset {
   return {
@@ -1331,6 +1393,9 @@ test("consolidation continuation uses an eight-tick stop outside the opposite fr
       id: `direct-frozen-stop-${direction}`,
       evaluatedCandleOpenTime: iso(600_000),
       direction,
+      causalTrendDirection: direction,
+      causalTrendSource: "BREAKOUT_DIRECTION",
+      causalTrendTimestamp: iso(0),
       directQualificationTimestamp: iso(600_000),
       directSignalOpenTimestamp: iso(600_000),
       directCrossingCandleOpenTimestamp: iso(600_000),
@@ -2552,6 +2617,9 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
   }) as HistoricalOccurrence;
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.causalTrendDirection = "long";
+  occurrence.causalTrendSource = "BREAKOUT_DIRECTION";
+  occurrence.causalTrendTimestamp = "2026-08-25T14:55:00.000Z";
   const entryCandle = occurrence.entryCandle!;
   entryCandle.open = 101;
   entryCandle.high = 104;
@@ -2597,6 +2665,9 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
     signalOccurrenceId: occurrence.occurrenceId,
     eligibilityArmId: "identity-arm",
     activeConsolidationZoneId: "identity-zone",
+    causalTrendDirection: "long",
+    causalTrendSource: "BREAKOUT_DIRECTION",
+    causalTrendTimestamp: "2026-08-25T14:55:00.000Z",
   };
   assert.equal(result.rejected.length, 0);
   assert.equal(candidate.executionStatus, "MODELED_TRADE_CREATED");
@@ -3602,6 +3673,9 @@ test("candidate projection enforces the consolidation guard before candidate-own
   });
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.causalTrendDirection = "long";
+  occurrence.causalTrendSource = "BREAKOUT_DIRECTION";
+  occurrence.causalTrendTimestamp = "2026-08-25T14:10:00.000Z";
   occurrence.consolidationGuard = consolidationGuard();
   occurrence.management = {
     strategyStopPrice: 98,
@@ -3623,7 +3697,11 @@ test("candidate projection enforces the consolidation guard before candidate-own
   assert.equal(rejected.candidates.length, 0);
   assert.equal(rejected.authoritativeTrades.length, 0);
   assert.equal(rejected.rejected.length, 1);
-  assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD"), true);
+  assert.equal(
+    rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_GUARD"),
+    true,
+    JSON.stringify(rejected.rejected),
+  );
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("REJECTED_CONSOLIDATION_ENTRY_CANDLE_OVERLAPS_ZONE"), false);
   assert.equal(rejected.rejected[0]?.reasonCodes.includes("PATIENCE_EXPIRED_INSIDE_CONSOLIDATION"), true);
 

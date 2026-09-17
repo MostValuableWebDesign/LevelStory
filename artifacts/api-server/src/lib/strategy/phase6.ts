@@ -428,27 +428,52 @@ type DirectConsolidationSetup = {
 
 type DirectCausalTrend = {
   direction: Direction | null;
-  source: "ORB_TREND" | "BREAKOUT_DIRECTION" | "NONE" | "CONFLICTING";
+  source: "ORB_TREND" | "BREAKOUT_DIRECTION" | "NONE" | "CONFLICTING" | "INVALID";
   timestamp: number;
 };
 
 function directCausalTrend(context: Phase6Context, candleOpenTime: number): DirectCausalTrend {
   const orbDirection = context.orbTrend?.trendDirectionAt(candleOpenTime) ?? null;
+  const orbTransition = orbDirection
+    ? [...(context.orbTrend?.transitions ?? [])]
+      .filter((transition) =>
+        transition.direction === orbDirection
+        && Number.isFinite(transition.effectiveFromTimestamp)
+        && transition.effectiveFromTimestamp <= candleOpenTime,
+      )
+      .at(-1) ?? null
+    : null;
   const breakoutDirection = context.breakout.direction;
-  if (orbDirection && breakoutDirection && orbDirection !== breakoutDirection) {
+  const breakoutTimestamp = context.breakout.time;
+  const breakoutAvailable = breakoutDirection !== null
+    && !context.breakout.failed
+    && typeof breakoutTimestamp === "number"
+    && Number.isFinite(breakoutTimestamp)
+    && breakoutTimestamp <= candleOpenTime;
+  if (orbDirection && !orbTransition) {
+    return { direction: null, source: "INVALID", timestamp: Number.NaN };
+  }
+  if (orbDirection && breakoutAvailable && breakoutDirection && orbDirection !== breakoutDirection) {
     return { direction: null, source: "CONFLICTING", timestamp: candleOpenTime };
   }
   if (orbDirection) {
-    return { direction: orbDirection, source: "ORB_TREND", timestamp: candleOpenTime };
+    return {
+      direction: orbDirection,
+      source: "ORB_TREND",
+      timestamp: orbTransition!.effectiveFromTimestamp,
+    };
   }
-  if (breakoutDirection) {
+  if (breakoutDirection && breakoutAvailable) {
     return {
       direction: breakoutDirection,
       source: "BREAKOUT_DIRECTION",
-      timestamp: context.breakout.candleOpenTime ?? candleOpenTime,
+      timestamp: breakoutTimestamp!,
     };
   }
-  return { direction: null, source: "NONE", timestamp: candleOpenTime };
+  if (breakoutDirection) {
+    return { direction: null, source: "INVALID", timestamp: Number.NaN };
+  }
+  return { direction: null, source: "NONE", timestamp: Number.NaN };
 }
 
 function findDirectConsolidationSetup(context: Phase6Context): DirectConsolidationSetup | null {
@@ -479,7 +504,10 @@ function findDirectConsolidationSetup(context: Phase6Context): DirectConsolidati
       : causalTrend.direction === "short" && shortCrossing
         ? "short"
         : null;
-    if (direction && causalTrend.source !== "NONE" && causalTrend.source !== "CONFLICTING") {
+    if (direction
+      && causalTrend.source !== "NONE"
+      && causalTrend.source !== "CONFLICTING"
+      && causalTrend.source !== "INVALID") {
       latestSetup = {
         candidateCandle,
         consolidation,
@@ -540,14 +568,18 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     rule(
       "causalTrend",
       "Established causal trend direction",
-      causalTrend.direction !== null && causalTrend.source !== "CONFLICTING",
+      causalTrend.direction !== null
+        && causalTrend.source !== "CONFLICTING"
+        && causalTrend.source !== "INVALID",
       causalTrend.source === "ORB_TREND"
         ? `The ORB trend epoch authorizes the ${causalTrend.direction} direction at the setup candle.`
         : causalTrend.source === "BREAKOUT_DIRECTION"
           ? `The established breakout direction authorizes the ${causalTrend.direction} direction at the setup candle.`
           : causalTrend.source === "CONFLICTING"
             ? "ORB trend and breakout direction conflict at the setup candle."
-            : "No established causal trend direction is available at the setup candle.",
+            : causalTrend.source === "INVALID"
+              ? "The causal trend evidence is missing, malformed, or was only available after the setup candle."
+              : "No established causal trend direction is available at the setup candle.",
     ),
     rule("extendedConsolidation", "Tight/stable price consolidation", consolidation.detected, consolidation.detail),
     rule("rangeStable", "Consolidation range did not materially expand", consolidation.detected && consolidation.expansionRatio !== null && consolidation.expansionRatio <= context.config.phase6ConsolidationExpansionRatio, consolidation.detected ? `Consolidation expansion ratio ${formatRatio(consolidation.expansionRatio)}; maximum allowed is ${context.config.phase6ConsolidationExpansionRatio.toFixed(2)}×.` : "The required extended consolidation window is not complete."),
@@ -580,7 +612,7 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
         .map((candle) => candle.openTime),
       causalTrendDirection: directSetup.direction,
       causalTrendSource: directSetup.causalTrendSource,
-      causalTrendTimestamp: directSetup.candidateCandle.openTime,
+      causalTrendTimestamp: directCausalTrend(context, directSetup.candidateCandle.openTime).timestamp,
     }
     : null;
   return buildEvaluation(

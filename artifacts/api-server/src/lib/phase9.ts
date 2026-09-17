@@ -298,6 +298,9 @@ export type CandidateCausalIdentity = {
   signalOccurrenceId: string;
   eligibilityArmId: string | null;
   activeConsolidationZoneId: string | null;
+  causalTrendDirection?: Direction | null;
+  causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
+  causalTrendTimestamp?: string | null;
   /** Stable causal crossing identity for direct consolidation entries. */
   directConsolidationCrossingIdentity?: string | null;
   /** Stable identity for this independent entry attempt within the shared arm. */
@@ -1267,6 +1270,47 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
   }
   return [...new Set(violations)];
 }
+
+function candidateCausalTrendRejection(occurrence: HistoricalOccurrence): {
+  reasonCodes: string[];
+  details: string[];
+} | null {
+  const strategy = canonicalStrategyId(occurrence.strategyCandidate) ?? occurrence.strategyCandidate;
+  if (strategy !== "CONSOLIDATION_BREAKOUT_CONTINUATION") return null;
+  const details: string[] = [];
+  const source = occurrence.causalTrendSource;
+  const direction = occurrence.causalTrendDirection;
+  const evidenceTimestamp = Date.parse(occurrence.causalTrendTimestamp ?? "");
+  const authorizationTimestamp = Date.parse(
+    occurrence.directQualificationTimestamp
+      ?? occurrence.directSignalOpenTimestamp
+      ?? occurrence.eOpenTimestamp
+      ?? "",
+  );
+  if (source !== "ORB_TREND" && source !== "BREAKOUT_DIRECTION") {
+    details.push("MISSING_OR_INVALID_CAUSAL_TREND_SOURCE");
+  }
+  if (direction !== "long" && direction !== "short") {
+    details.push("MISSING_OR_INVALID_CAUSAL_TREND_DIRECTION");
+  } else if (direction !== occurrence.direction) {
+    details.push("CAUSAL_TREND_DIRECTION_MISMATCH");
+  }
+  if (!Number.isFinite(evidenceTimestamp)) {
+    details.push("MISSING_OR_INVALID_CAUSAL_TREND_TIMESTAMP");
+  }
+  if (!Number.isFinite(authorizationTimestamp)) {
+    details.push("MISSING_OR_INVALID_CAUSAL_AUTHORIZATION_TIMESTAMP");
+  } else if (Number.isFinite(evidenceTimestamp) && evidenceTimestamp > authorizationTimestamp) {
+    details.push("CAUSAL_TREND_EVIDENCE_AVAILABLE_AFTER_AUTHORIZATION");
+  }
+  return details.length > 0
+    ? {
+      reasonCodes: ["INVALID_CAUSAL_TREND_EVIDENCE"],
+      details,
+    }
+    : null;
+}
+
 type CandidateEntryDisposition = {
   status: HistoricalTradeCandidate["executionStatus"];
   reached: boolean | null;
@@ -1492,6 +1536,13 @@ function candidateCausalIdentityForOccurrence(
     signalOccurrenceId: occurrence.occurrenceId,
     eligibilityArmId: occurrence.eligibilityArmId ?? null,
     activeConsolidationZoneId: occurrence.consolidationGuard?.activeConsolidationZoneId ?? null,
+    ...(occurrence.causalTrendDirection || occurrence.causalTrendSource || occurrence.causalTrendTimestamp
+      ? {
+        causalTrendDirection: occurrence.causalTrendDirection ?? null,
+        causalTrendSource: occurrence.causalTrendSource ?? null,
+        causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
+      }
+      : {}),
     ...(occurrence.directConsolidationCrossingIdentity
       ? { directConsolidationCrossingIdentity: occurrence.directConsolidationCrossingIdentity }
       : {}),
@@ -2824,6 +2875,64 @@ function preferredTargetLevelSnapshot(
     )[0];
 }
 
+type SerializedDirectSetupEvidence = NonNullable<
+  MarketSnapshot["setupAnalysis"]["evaluations"][number]["directSetupEvidence"]
+>;
+
+export function deserializeDirectSetupEvidence(
+  input: unknown,
+  evaluationDirection: Direction | null,
+): { evidence: DirectSetupEvidence | null; issues: string[] } {
+  if (!input || typeof input !== "object") return { evidence: null, issues: [] };
+  const serialized = input as Partial<SerializedDirectSetupEvidence>;
+  const parseSerializedTimestamp = (value: unknown): number | null =>
+    typeof value === "string" && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
+  const timestampValues = {
+    signalOpenTime: parseSerializedTimestamp(serialized.signalOpenTime),
+    qualificationTime: parseSerializedTimestamp(serialized.qualificationTime),
+    crossingCandleOpenTime: parseSerializedTimestamp(serialized.crossingCandleOpenTime),
+    consolidationStartTime: parseSerializedTimestamp(serialized.consolidationStartTime),
+    consolidationEndTime: parseSerializedTimestamp(serialized.consolidationEndTime),
+    causalTrendTimestamp: parseSerializedTimestamp(serialized.causalTrendTimestamp),
+  };
+  const issues: string[] = [];
+  for (const [field, value] of Object.entries(timestampValues)) {
+    if (value === null) issues.push(`INVALID_DIRECT_EVIDENCE_${field}`);
+  }
+  if (serialized.causalTrendDirection !== "long" && serialized.causalTrendDirection !== "short") {
+    issues.push("INVALID_DIRECT_EVIDENCE_causalTrendDirection");
+  }
+  if (serialized.causalTrendSource !== "ORB_TREND" && serialized.causalTrendSource !== "BREAKOUT_DIRECTION") {
+    issues.push("INVALID_DIRECT_EVIDENCE_causalTrendSource");
+  }
+  if (serialized.causalTrendDirection !== evaluationDirection) {
+    issues.push("DIRECT_EVIDENCE_TREND_DIRECTION_MISMATCH");
+  }
+  const sourceCandleOpenTimes = serialized.sourceCandleOpenTimes;
+  if (!Array.isArray(sourceCandleOpenTimes)
+    || sourceCandleOpenTimes.length === 0
+    || sourceCandleOpenTimes.some((time) => parseSerializedTimestamp(time) === null)) {
+    issues.push("INVALID_DIRECT_EVIDENCE_sourceCandleOpenTimes");
+  }
+  if (issues.length > 0) return { evidence: null, issues };
+  return {
+    evidence: {
+      signalOpenTime: timestampValues.signalOpenTime!,
+      qualificationTime: timestampValues.qualificationTime!,
+      crossingCandleOpenTime: timestampValues.crossingCandleOpenTime!,
+      consolidationStartTime: timestampValues.consolidationStartTime!,
+      consolidationEndTime: timestampValues.consolidationEndTime!,
+      frozenHigh: serialized.frozenHigh!,
+      frozenLow: serialized.frozenLow!,
+      sourceCandleOpenTimes: sourceCandleOpenTimes!.map((time) => parseSerializedTimestamp(time)!),
+      causalTrendDirection: serialized.causalTrendDirection!,
+      causalTrendSource: serialized.causalTrendSource!,
+      causalTrendTimestamp: timestampValues.causalTrendTimestamp!,
+    },
+    issues,
+  };
+}
+
 function auditForEvaluation(
   evaluation: MarketSnapshot["setupAnalysis"]["evaluations"][number],
   snapshot: MarketSnapshot,
@@ -2838,6 +2947,12 @@ function auditForEvaluation(
   causalContractSymbol?: string,
   visibleCausalCandles?: readonly SimulatedFuturesCandle[],
 ): BacktestAuditRecord {
+  const serializedDirectSetupEvidence = evaluation.directSetupEvidence;
+  const directEvidenceValidation = serializedDirectSetupEvidence
+    ? deserializeDirectSetupEvidence(serializedDirectSetupEvidence, evaluation.direction)
+    : { evidence: null, issues: [] };
+  const directEvidenceIssues = directEvidenceValidation.issues;
+  const directSetupEvidence = directEvidenceValidation.evidence;
   const contractSpecification = getFuturesContractSpecification(
     parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
   );
@@ -2855,7 +2970,9 @@ function auditForEvaluation(
     : snapshot.patience;
   const earlyEvidenceMissing = evaluation.setupType === "EARLY_ORB_MOMENTUM_CONTINUATION" && !signalPatience;
   const effectiveSignalPatience = signalPatience ?? snapshot.patience;
-  const rejectionReason = earlyEvidenceMissing
+  const rejectionReason = directEvidenceIssues.length > 0
+    ? `INVALID_CAUSAL_TREND_EVIDENCE:${directEvidenceIssues.join(",")}`
+    : earlyEvidenceMissing
     ? "MISSING_EARLY_ORB_EVIDENCE"
     : evaluation.decision === "SETUP QUALIFIED" ? null : `RULES_NOT_QUALIFIED:${evaluation.setupType}`;
   const consolidationEdgeEvaluation = snapshot.setupAnalysis.evaluations
@@ -2911,7 +3028,6 @@ function auditForEvaluation(
     ),
     tickSize: contractSpecification.tickSize,
   }));
-  const directSetupEvidence = (evaluation as unknown as { directSetupEvidence?: DirectSetupEvidence | null }).directSetupEvidence ?? null;
   const directQualificationTime = directSetupEvidence
     ? new Date(directSetupEvidence.qualificationTime).toISOString()
     : evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
@@ -2960,24 +3076,29 @@ function auditForEvaluation(
     directConsolidationSourceCandleTimestamps: directSetupEvidence
       ? directSetupEvidence.sourceCandleOpenTimes.map((time) => new Date(time).toISOString())
       : [],
-    causalTrendDirection: directSetupEvidence?.causalTrendDirection ?? null,
-    causalTrendSource: directSetupEvidence?.causalTrendSource ?? null,
-    causalTrendTimestamp: directSetupEvidence
-      ? new Date(directSetupEvidence.causalTrendTimestamp).toISOString()
-      : null,
+     causalTrendDirection: directSetupEvidence?.causalTrendDirection ?? null,
+     causalTrendSource: directSetupEvidence?.causalTrendSource ?? null,
+     causalTrendTimestamp: directSetupEvidence
+       ? new Date(directSetupEvidence.causalTrendTimestamp).toISOString()
+       : null,
     setupType: evaluation.setupType,
     direction: evaluation.direction,
     decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
     alertOnly: evaluation.alertOnly,
     rejectionReason,
     rejectionCategory: classifyRejection(rejectionReason, evaluation.decision),
-    rejectionSummary: earlyEvidenceMissing
+     rejectionSummary: directEvidenceIssues.length > 0
+       ? `Direct causal trend evidence was rejected: ${directEvidenceIssues.join(", ")}.`
+       : earlyEvidenceMissing
       ? "Early ORB Momentum was selected, but its isolated patience evidence was unavailable at this causal cursor."
       : evaluation.decision === "SETUP QUALIFIED"
       ? null
       : evaluation.rules.filter((rule) => !rule.passed).map((rule) => `${rule.key}: ${rule.detail}`).join("; ") || evaluation.explanation,
     ruleEvidence: [
       ...evaluation.rules.map((rule) => `${rule.passed ? "PASS" : "FAIL"} ${rule.key}: ${rule.detail}`),
+       ...(directEvidenceIssues.length > 0
+         ? [`FAIL causalTrendEvidence: ${directEvidenceIssues.join(", ")}`]
+         : []),
       ...(earlyEvidenceMissing ? ["FAIL earlyOrbEvidence: Isolated Early ORB patience evidence is missing at this causal cursor."] : []),
     ],
     orbState: snapshot.breakout.state,
@@ -3892,6 +4013,9 @@ export function buildHistoricalOccurrenceLedger(
             directConsolidationZoneLow: record.directConsolidationZoneLow ?? null,
             directConsolidationSourceCandleTimestamps: record.directConsolidationSourceCandleTimestamps ?? [],
             directConsolidationCrossingIdentity,
+            causalTrendDirection: record.causalTrendDirection ?? null,
+            causalTrendSource: record.causalTrendSource ?? null,
+            causalTrendTimestamp: record.causalTrendTimestamp ?? null,
            directThresholdCrossingTimestamp: sameCandleEvidence?.thresholdCrossingTimestamp !== null
              && sameCandleEvidence?.thresholdCrossingTimestamp !== undefined
              ? new Date(sameCandleEvidence.thresholdCrossingTimestamp).toISOString()
@@ -5135,6 +5259,15 @@ export function projectHistoricalTradeCandidates(
         signalOccurrenceId: occurrence.occurrenceId,
         reasonCodes: lifecycleRejection.reasonCodes,
         details: lifecycleRejection.details,
+      });
+      continue;
+    }
+    const causalTrendRejection = candidateCausalTrendRejection(occurrence);
+    if (causalTrendRejection) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: causalTrendRejection.reasonCodes,
+        details: causalTrendRejection.details,
       });
       continue;
     }

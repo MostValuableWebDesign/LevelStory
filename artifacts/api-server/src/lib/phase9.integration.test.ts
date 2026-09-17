@@ -106,8 +106,29 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
   );
   const signalIndex = kind === "reversal" ? 37 : 40;
   const base = regular[25]!.close;
+  const orbHigh = Math.max(...regular.slice(0, 3).map((item) => item.high));
+  const orbLow = Math.min(...regular.slice(0, 3).map((item) => item.low));
   const candles = source.map((item) => {
     const index = regular.findIndex((candidate) => candidate.openTime === item.openTime);
+    if (kind === "consolidation" && index === 3) {
+      return direction === "long"
+        ? {
+          ...item,
+          open: orbHigh + 0.25,
+          high: orbHigh + 1,
+          low: orbHigh + 0.25,
+          close: orbHigh + 0.75,
+          volume: 2_000,
+        }
+        : {
+          ...item,
+          open: orbLow - 0.25,
+          high: orbLow - 0.25,
+          low: orbLow - 1,
+          close: orbLow - 0.75,
+          volume: 2_000,
+        };
+    }
     if (kind === "consolidation" && index >= 25 && index < signalIndex) {
       return {
         ...item,
@@ -373,6 +394,24 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
       assert.equal(candidate?.entryReachedThreshold, true);
       assert.ok(candidate?.strategyStopPrice !== null && Number.isFinite(candidate?.strategyStopPrice));
       assert.ok(candidate?.targetDisposition);
+      if (kind === "consolidation") {
+        const causalTrendSource = qualifiedAudit?.causalTrendSource;
+        assert.equal(qualifiedAudit?.causalTrendDirection, direction);
+        assert.ok(causalTrendSource === "ORB_TREND" || causalTrendSource === "BREAKOUT_DIRECTION");
+        assert.ok(qualifiedAudit?.causalTrendTimestamp);
+        assert.equal(occurrence?.causalTrendDirection, direction);
+        assert.equal(occurrence?.causalTrendSource, causalTrendSource);
+        assert.equal(occurrence?.causalTrendTimestamp, qualifiedAudit?.causalTrendTimestamp);
+        assert.equal(candidate?.causalTrendDirection, direction);
+        assert.equal(candidate?.causalTrendSource, causalTrendSource);
+        assert.equal(candidate?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+        assert.equal(candidate?.causalIdentity.causalTrendDirection, direction);
+        assert.equal(candidate?.causalIdentity.causalTrendSource, causalTrendSource);
+        assert.equal(candidate?.causalIdentity.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+        assert.equal(candidate?.managementContext?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+        const execution = report.candidateExecutionEvidence?.find((trade) => trade.candidateId === candidate?.candidateId);
+        assert.equal(execution?.causalIdentity?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+      }
     }
   }
 });

@@ -97,3 +97,4 @@
 - [Causal fixture visibility](causal-fixture-visibility.md) — next-candle opens share the current close boundary but remain hidden until their own completed close.
 - [Direct crossing identity](direct-crossing-identity.md) — direct consolidation entries must carry frozen-zone and crossing identity separately from the replay evaluation cursor.
 - [Direct review projection](direct-review-projection.md) — visual snapshots must copy frozen direct-zone fields into the audit and reconcile the trade audit before chart rendering.
+- [Serialized causal evidence](serialized-causal-evidence.md) — direct trend evidence must retain its source and availability timestamp through replay, and malformed evidence must fail closed.
