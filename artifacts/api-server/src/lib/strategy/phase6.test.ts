@@ -486,6 +486,87 @@ test("authorized short consolidation entry uses the first eight-tick threshold c
   assert.equal(result.rules.find((rule) => rule.key === "entryOutsideFinalizedNtz")?.passed, true);
 });
 
+test("strong consolidation breakout rejects missing, future, and conflicting causal trend evidence", () => {
+  const breakoutOpenTime = 9 * 300_000;
+  const candles = withCausalBaseline([
+    ...Array.from({ length: 9 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+    candle(breakoutOpenTime, 9.96, 12.1, 9.94, 9.95, 300),
+  ]);
+  const withoutTrend = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles,
+    breakout: {
+      ...baseContext().breakout,
+      detected: false,
+      direction: null,
+      candleOpenTime: breakoutOpenTime,
+      time: null,
+    },
+    trend: { ...baseContext().trend, direction: "neutral", structure: "mixed structure" },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.notEqual(withoutTrend.decision, "SETUP QUALIFIED");
+  assert.equal(withoutTrend.rules.find((rule) => rule.key === "causalTrend")?.passed, false);
+
+  const futureTrend = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles,
+    breakout: {
+      ...baseContext().breakout,
+      detected: false,
+      direction: null,
+      candleOpenTime: breakoutOpenTime,
+      time: null,
+    },
+    orbTrend: {
+      state: "NEUTRAL",
+      direction: null,
+      epochId: null,
+      finalizedOrbHigh: 10,
+      finalizedOrbLow: 9,
+      finalizedAt: 0,
+      confirmationBufferTicks: 2,
+      confirmationBufferPoints: 0.5,
+      transitions: [],
+      trendDirectionAt: (openTime) => openTime > breakoutOpenTime ? "long" : null,
+      trendStateAt: () => "NEUTRAL",
+      epochIdAt: () => null,
+    },
+    trend: baseContext().trend,
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.notEqual(futureTrend.decision, "SETUP QUALIFIED");
+
+  const conflictingTrend = evaluateStrongBreakoutAfterConsolidation(baseContext({
+    candles,
+    breakout: {
+      ...baseContext().breakout,
+      detected: true,
+      direction: "long",
+      candleOpenTime: breakoutOpenTime,
+      time: breakoutOpenTime + 300_000,
+    },
+    orbTrend: {
+      state: "BEARISH_ORB_TREND",
+      direction: "short",
+      epochId: "bearish-epoch",
+      finalizedOrbHigh: 10,
+      finalizedOrbLow: 9,
+      finalizedAt: 0,
+      confirmationBufferTicks: 2,
+      confirmationBufferPoints: 0.5,
+      transitions: [],
+      trendDirectionAt: () => "short",
+      trendStateAt: () => "BEARISH_ORB_TREND",
+      epochIdAt: () => "bearish-epoch",
+    },
+    pullback: { ...baseContext().pullback, events: [] },
+    patience: patience("PATIENCE_CANDLE_EXPIRED"),
+  }));
+  assert.notEqual(conflictingTrend.decision, "SETUP QUALIFIED");
+  assert.equal(conflictingTrend.rules.find((rule) => rule.key === "causalTrend")?.passed, false);
+});
+
 test("authorized consolidation crossing does not require post-crossing breakout quality gates", () => {
   const breakoutOpenTime = 9 * 300_000;
   const result = evaluateStrongBreakoutAfterConsolidation(baseContext({

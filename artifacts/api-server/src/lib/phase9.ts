@@ -560,6 +560,9 @@ export type BacktestAuditRecord = {
   directConsolidationZoneLow?: number | null;
   directConsolidationSourceCandleTimestamps?: string[];
   directConsolidationCrossingIdentity?: string | null;
+  causalTrendDirection?: Direction | null;
+  causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
+  causalTrendTimestamp?: string | null;
   setupType: string;
   direction: Direction | null;
   decision: string;
@@ -843,6 +846,9 @@ export type HistoricalTradeCandidate = {
   contractSymbol: string;
   tradingDate: string;
   direction: "long" | "short";
+  causalTrendDirection?: Direction | null;
+  causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
+  causalTrendTimestamp?: string | null;
   primaryEdge: string;
   matchedEdges: string[];
   supportingConfluences: string[];
@@ -910,6 +916,9 @@ export type CandidateManagementContext = {
   targetPlan?: KeyLevelTargetPlan;
   frozenAt: string;
   direction: Direction;
+  causalTrendDirection?: Direction | null;
+  causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
+  causalTrendTimestamp?: string | null;
   contracts: number;
   entryPrice: number;
   strategyStopPrice: number | null;
@@ -1391,6 +1400,9 @@ export type HistoricalOccurrence = {
   directConsolidationZoneLow?: number | null;
   directConsolidationSourceCandleTimestamps?: string[];
   directConsolidationCrossingIdentity?: string | null;
+  causalTrendDirection?: Direction | null;
+  causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
+  causalTrendTimestamp?: string | null;
   directPatternFirstCandle?: Record<string, number | boolean> | null;
   directPatternSecondCandle?: Record<string, number | boolean> | null;
   directPatternTrend?: "bullish" | "bearish" | null;
@@ -2948,6 +2960,11 @@ function auditForEvaluation(
     directConsolidationSourceCandleTimestamps: directSetupEvidence
       ? directSetupEvidence.sourceCandleOpenTimes.map((time) => new Date(time).toISOString())
       : [],
+    causalTrendDirection: directSetupEvidence?.causalTrendDirection ?? null,
+    causalTrendSource: directSetupEvidence?.causalTrendSource ?? null,
+    causalTrendTimestamp: directSetupEvidence
+      ? new Date(directSetupEvidence.causalTrendTimestamp).toISOString()
+      : null,
     setupType: evaluation.setupType,
     direction: evaluation.direction,
     decision: earlyEvidenceMissing ? "SETUP REJECTED" : evaluation.decision,
@@ -4860,6 +4877,9 @@ function freezeCandidateManagementContext(
     candidateId,
     causalIdentity: candidateCausalIdentityForOccurrence(occurrence),
     signalOccurrenceId: occurrence.occurrenceId,
+    causalTrendDirection: occurrence.causalTrendDirection ?? null,
+    causalTrendSource: occurrence.causalTrendSource ?? null,
+    causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
     patienceCandleOpenTime: occurrence.patienceTimestamp ?? null,
     patienceCandleHigh: patienceHigh,
     patienceCandleLow: patienceLow,
@@ -5097,6 +5117,7 @@ export function projectHistoricalTradeCandidates(
   const candidates: HistoricalTradeCandidate[] = [];
   const rejected: RejectedCandidateSignal[] = [];
   const signalByPhysicalIdentity = new Map<string, HistoricalOccurrence>();
+  const conflictedPhysicalIdentities = new Set<string>();
   for (const occurrence of confirmed) {
     if (occurrence.edgeQualified === false) {
       rejected.push({
@@ -5182,6 +5203,16 @@ export function projectHistoricalTradeCandidates(
         occurrence.eOpenTimestamp,
         occurrence.entryObservationTimestamp,
       ].join("|");
+    if (conflictedPhysicalIdentities.has(physicalIdentity)) {
+      rejected.push({
+        signalOccurrenceId: occurrence.occurrenceId,
+        reasonCodes: ["INVALID_CAUSAL_IDENTITY"],
+        details: [
+          "CONFLICTING_DIRECT_THRESHOLD_CROSSING_EVIDENCE: physical identity was previously rejected and cannot be restored by a later duplicate.",
+        ],
+      });
+      continue;
+    }
     const existing = signalByPhysicalIdentity.get(physicalIdentity);
     if (!existing) {
       signalByPhysicalIdentity.set(physicalIdentity, occurrence);
@@ -5213,6 +5244,7 @@ export function projectHistoricalTradeCandidates(
         : []),
     ];
     if (directThresholdEvidenceViolations.length > 0) {
+      conflictedPhysicalIdentities.add(physicalIdentity);
       signalByPhysicalIdentity.delete(physicalIdentity);
       rejected.push({
         signalOccurrenceId: existing.occurrenceId,
@@ -5291,6 +5323,9 @@ export function projectHistoricalTradeCandidates(
       contractSymbol: occurrence.contractSymbol,
       tradingDate: occurrence.tradingDate,
       direction: occurrence.direction!,
+      causalTrendDirection: occurrence.causalTrendDirection ?? null,
+      causalTrendSource: occurrence.causalTrendSource ?? null,
+      causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
       primaryEdge: occurrence.primaryEdge ?? occurrence.strategyCandidate,
       matchedEdges: [...new Set(occurrence.matchedEdges ?? [occurrence.strategyCandidate])].sort(),
       supportingConfluences: [...new Set(occurrence.supportingConfluences ?? [])].sort(),

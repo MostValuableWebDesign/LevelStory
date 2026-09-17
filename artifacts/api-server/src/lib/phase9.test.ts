@@ -1302,6 +1302,21 @@ test("direct crossing evidence enriches one stable occurrence and candidate", ()
     conflicting.rejected[0]?.details.some((detail) => detail.startsWith("CONFLICTING_DIRECT_THRESHOLD_CROSSING_EVIDENCE:")),
     true,
   );
+
+  const conflictingDuplicate = { ...exact, directThresholdCrossingTimestamp: iso(720_000) };
+  for (const records of [
+    [exact, conflictingDuplicate, exact],
+    [conflictingDuplicate, exact, exact],
+    [exact, exact, conflictingDuplicate],
+  ]) {
+    const persistentConflict = projectHistoricalTradeCandidates(records, []);
+    assert.equal(persistentConflict.candidates.length, 0);
+    assert.equal(persistentConflict.authoritativeTrades.length, 0);
+    assert.equal(
+      persistentConflict.rejected.some((item) => item.reasonCodes.includes("INVALID_CAUSAL_IDENTITY")),
+      true,
+    );
+  }
 });
 
 test("consolidation continuation uses an eight-tick stop outside the opposite frozen range edge", () => {

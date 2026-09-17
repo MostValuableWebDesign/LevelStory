@@ -4,7 +4,7 @@ import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.15-direct-frozen-zone-entry-target-geometry";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.16-direct-causal-trend-and-identity-conflicts";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -32,6 +32,8 @@ export function formulaConfiguration(
       directConsolidationCrossingIdentity: "strategy, direction, contract, frozen range, constituent candle identity, arm timestamp, and crossing candle identity; evaluation cursor is provenance only",
       directConsolidationThresholdEvent: "intrabar crossing timestamp is emitted only for verified ordered evidence; OHLCV remains conservative",
       directConsolidationEntryFormula: "long=frozen-zone-high-plus-eight-ticks; short=frozen-zone-low-minus-eight-ticks",
+      directConsolidationTrendAuthorization: "require causal ORB trend at the setup candle, or an independently established breakout direction; never infer from the crossing or current evaluation trend",
+      directConsolidationConflictHandling: "conflicting causal trend or crossing identity evidence fails closed and remains rejected for the full projection",
       noFutureData: true,
       noParameterOptimization: true,
       patienceEntryBufferTicks: config.patienceEntryBufferTicks,
