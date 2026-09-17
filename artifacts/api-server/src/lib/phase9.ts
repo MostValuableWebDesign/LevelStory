@@ -1175,11 +1175,12 @@ function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[]
         const expectedThreshold = occurrence.direction === "long" ? high + 8 * tickSize : low - 8 * tickSize;
         if (Math.abs(threshold - expectedThreshold) > tickSize / 100) violations.push("DIRECT_CONSOLIDATION_THRESHOLD_MISMATCH");
       }
-      const expectedStop = strategyStopPriceForOccurrence(occurrence);
-      if (expectedStop === null) violations.push("MISSING_DIRECT_CONSOLIDATION_STOP");
+      const stopEvidence = directConsolidationStopForOccurrence(occurrence);
+      if (stopEvidence.reason) violations.push(stopEvidence.reason);
+      else if (stopEvidence.price === null) violations.push("MISSING_DIRECT_CONSOLIDATION_STOP");
       else if (occurrence.management?.strategyStopPrice !== null
         && occurrence.management?.strategyStopPrice !== undefined
-        && Math.abs(occurrence.management.strategyStopPrice - expectedStop) > tickSize / 100) {
+        && Math.abs(occurrence.management.strategyStopPrice - stopEvidence.price) > tickSize / 100) {
         violations.push("DIRECT_CONSOLIDATION_STOP_MISMATCH");
       }
     } else if (directStrategy === "EQUIVALENT_CANDLE_REVERSAL") {
@@ -2493,8 +2494,14 @@ function managementFromAudit(
   const calendar = sessionCalendarForContract(specification);
   const close = sessionWindow(record.tradingDate, "regular", calendar)?.closeTime ?? null;
   const strategyStopPrice = strategyStopPriceForOccurrence({
+    strategyCandidate: canonicalStrategyId(record.setupType) ?? record.setupType,
+    primaryEdge: canonicalStrategyId(record.setupType) ?? record.setupType,
+    contractSymbol: record.contractSymbol,
     direction: record.direction,
     patienceCandle: record.patienceCandle,
+    consolidationGuard: record.consolidationGuard,
+    directConsolidationZoneHigh: record.directConsolidationZoneHigh,
+    directConsolidationZoneLow: record.directConsolidationZoneLow,
     atrTicks: typeof record.atr14 === "number" && Number.isFinite(record.atr14)
       ? record.atr14 / specification.tickSize
       : null,
@@ -2900,6 +2907,22 @@ function auditForEvaluation(
       && evaluation.consolidation?.endTime !== undefined
       ? new Date(evaluation.consolidation.endTime).toISOString()
       : null;
+  const directStrategyStop = evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    && directSetupEvidence
+    ? strategyStopPriceForOccurrence({
+      strategyCandidate: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      primaryEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      contractSymbol,
+      direction: evaluation.direction,
+      directConsolidationZoneHigh: directSetupEvidence.frozenHigh,
+      directConsolidationZoneLow: directSetupEvidence.frozenLow,
+      confirmationThreshold: consolidationGuard?.effectiveEntryThreshold ?? null,
+      consolidationGuard,
+    } as HistoricalOccurrence)
+    : null;
+  const strategyStopForAudit = directSetupEvidence
+    ? directStrategyStop
+    : effectiveSignalPatience.strategyStopPrice;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -2963,8 +2986,8 @@ function auditForEvaluation(
         ? effectiveSignalPatience.patienceCandle.low
         : effectiveSignalPatience.patienceCandle.high
       : null,
-    stopBufferTicks: effectiveSignalPatience.stopBufferTicks,
-    stopBufferPoints: effectiveSignalPatience.stopBufferTicks * getFuturesContractSpecification(
+     stopBufferTicks: directSetupEvidence ? 4 : effectiveSignalPatience.stopBufferTicks,
+     stopBufferPoints: (directSetupEvidence ? 4 : effectiveSignalPatience.stopBufferTicks) * getFuturesContractSpecification(
       parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol,
     ).tickSize,
     runnerBufferTicks: adaptiveExecutionManagement(
@@ -2972,7 +2995,7 @@ function auditForEvaluation(
         ? snapshot.pullback.atr14 / getFuturesContractSpecification(parseMesContractSymbol(contractSymbol)?.rootSymbol ?? contractSymbol).tickSize
         : null,
     ).runnerBufferTicks,
-    finalStrategyStopBoundary: effectiveSignalPatience.strategyStopPrice,
+     finalStrategyStopBoundary: strategyStopForAudit,
     stopDirection: evaluation.direction ?? null,
     stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     triggerCandleOpenTime: effectiveSignalPatience.triggerCandle?.openTime ?? null,
@@ -2990,7 +3013,7 @@ function auditForEvaluation(
      entryRangeOverlappedZone: consolidationGuard?.entryRangeOverlappedZone ?? null,
      entryFillOutsideZone: consolidationGuard?.entryFillOutsideZone ?? null,
      consolidationEntryDisposition: consolidationGuard?.consolidationEntryDisposition,
-    strategyStopPrice: snapshot.riskPlan.strategyStop,
+     strategyStopPrice: strategyStopForAudit,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
     targetLevelInputs: targetLevelsForSnapshot(
@@ -3186,7 +3209,7 @@ function directOccurrenceIdentityParts(value: HistoricalOccurrence): {
     ?? value.strategyCandidate;
   const missing: string[] = [];
   const shared = [
-    "historical-direct-occurrence-v2",
+     "historical-direct-occurrence-v3",
     value.sourceFingerprint,
     value.formulaHash,
     value.formulaVersion,
@@ -3226,7 +3249,6 @@ function directOccurrenceIdentityParts(value: HistoricalOccurrence): {
         `zoneHighTicks=${normalizedTicks(value.directConsolidationZoneHigh, "directConsolidationZoneHigh")}`,
         `zoneLowTicks=${normalizedTicks(value.directConsolidationZoneLow, "directConsolidationZoneLow")}`,
         `sourceCandles=${sourceCandleTimestamps.join(",") || "missing"}`,
-        `thresholdCrossing=${value.directThresholdCrossingTimestamp ?? "unobserved"}`,
         ...(missing.length > 0 ? [`missing=${missing.join(",")}`, `audit=${value.auditId}`] : []),
       ].join("|"),
       missing,
@@ -3587,6 +3609,28 @@ export function buildHistoricalOccurrenceLedger(
       [existing.targetLevelSnapshot, value.targetLevelSnapshot],
       primaryByEvidence,
     );
+    const directThresholdEvidence = [
+      existing.directThresholdCrossingTimestamp,
+      value.directThresholdCrossingTimestamp,
+    ].filter((timestamp): timestamp is string =>
+      typeof timestamp === "string" && timestamp.trim().length > 0,
+    );
+    const uniqueDirectThresholdEvidence = [...new Set(directThresholdEvidence)].sort();
+    const validDirectThresholdEvidence = uniqueDirectThresholdEvidence.filter((timestamp) =>
+      Number.isFinite(Date.parse(timestamp)),
+    );
+    const invalidDirectThresholdEvidence = uniqueDirectThresholdEvidence.filter((timestamp) =>
+      !Number.isFinite(Date.parse(timestamp)),
+    );
+    const selectedDirectThresholdEvidence = validDirectThresholdEvidence[0] ?? null;
+    const directThresholdEvidenceViolations = [
+      ...(invalidDirectThresholdEvidence.length > 0
+        ? [`INVALID_DIRECT_THRESHOLD_CROSSING_EVIDENCE:${invalidDirectThresholdEvidence.join(",")}`]
+        : []),
+      ...(validDirectThresholdEvidence.length > 1
+        ? [`CONFLICTING_DIRECT_THRESHOLD_CROSSING_EVIDENCE:${validDirectThresholdEvidence.join(",")}`]
+        : []),
+    ];
     const matches = [...new Set([
       ...(existing.edgeQualified === true
         ? [existing.strategyCandidate, ...existing.secondaryStrategyMatches]
@@ -3617,7 +3661,11 @@ export function buildHistoricalOccurrenceLedger(
       identityInvariantViolations: [...new Set([
         ...existing.identityInvariantViolations,
         ...value.identityInvariantViolations,
+        ...directThresholdEvidenceViolations,
       ])].sort(),
+      ...(isAuthorizedDirectStrategyOccurrence(existing) || isAuthorizedDirectStrategyOccurrence(value)
+        ? { directThresholdCrossingTimestamp: selectedDirectThresholdEvidence }
+        : {}),
       levelIdentifiers: [...new Set([...existing.levelIdentifiers, ...value.levelIdentifiers])].sort(),
       levelValues: { ...value.levelValues, ...existing.levelValues },
       // Target inputs belong to the completed-E snapshot, not to the union of
@@ -3866,6 +3914,7 @@ export function buildHistoricalOccurrenceLedger(
           sourceFingerprint: fingerprint,
           canonicalTrade: Boolean(trade),
           supportingConfluences: [],
+           management: managementFromAudit(record, trade),
          } as HistoricalOccurrence;
          const directIdentity = directOccurrenceIdentityParts(directOccurrence);
          directOccurrence.identityInvariantViolations = directIdentity.missing
@@ -4593,10 +4642,7 @@ function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): numbe
   if (!Number.isFinite(tickSize) || tickSize <= 0) return null;
   if (occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
-    const high = occurrence.consolidationGuard?.consolidationZoneHigh;
-    const low = occurrence.consolidationGuard?.consolidationZoneLow;
-    if (occurrence.direction === "long" && typeof low === "number") return Number((low - 8 * tickSize).toFixed(10));
-    if (occurrence.direction === "short" && typeof high === "number") return Number((high + 8 * tickSize).toFixed(10));
+    return directConsolidationStopForOccurrence(occurrence).price;
   }
   if (occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL") {
@@ -4616,6 +4662,61 @@ function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence): numbe
     return initialStopForPatience("short", patienceLow ?? patienceHigh, patienceHigh, management.stopBufferTicks, tickSize);
   }
   return null;
+}
+
+function directConsolidationStopForOccurrence(occurrence: HistoricalOccurrence): {
+  price: number | null;
+  reason: string | null;
+} {
+  const specification = getFuturesContractSpecification(
+    parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
+  );
+  const tickSize = specification.tickSize;
+  const directHigh = occurrence.directConsolidationZoneHigh;
+  const directLow = occurrence.directConsolidationZoneLow;
+  const guardHigh = occurrence.consolidationGuard?.consolidationZoneHigh;
+  const guardLow = occurrence.consolidationGuard?.consolidationZoneLow;
+  const finite = (value: number | null | undefined): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  const normalizedEqual = (left: number, right: number): boolean =>
+    Math.abs(Math.round(left / tickSize) - Math.round(right / tickSize)) === 0;
+  if (
+    finite(directHigh)
+    && finite(guardHigh)
+    && !normalizedEqual(directHigh, guardHigh)
+    || finite(directLow)
+    && finite(guardLow)
+    && !normalizedEqual(directLow, guardLow)
+  ) {
+    return { price: null, reason: "CONFLICTING_FROZEN_CONSOLIDATION_RANGE" };
+  }
+  const high = finite(directHigh) ? directHigh : guardHigh;
+  const low = finite(directLow) ? directLow : guardLow;
+  if (!finite(high) || !finite(low)) {
+    return { price: null, reason: "MISSING_FROZEN_CONSOLIDATION_RANGE" };
+  }
+  if (!(high > low) || !Number.isFinite(tickSize) || tickSize <= 0) {
+    return { price: null, reason: "INVALID_FROZEN_CONSOLIDATION_RANGE" };
+  }
+  const rangeTicks = (high - low) / tickSize;
+  if (!Number.isFinite(rangeTicks) || rangeTicks <= 4) {
+    return { price: null, reason: "DIRECT_CONSOLIDATION_RANGE_TOO_NARROW_FOR_FOUR_TICK_STOP" };
+  }
+  const stop = occurrence.direction === "long"
+    ? high - 4 * tickSize
+    : occurrence.direction === "short"
+      ? low + 4 * tickSize
+      : null;
+  if (stop === null || !Number.isFinite(stop)) {
+    return { price: null, reason: "MISSING_DIRECT_CONSOLIDATION_DIRECTION" };
+  }
+  const entry = effectiveEntryThresholdForOccurrence(occurrence);
+  if (entry !== null && (
+    occurrence.direction === "long" ? stop >= entry : stop <= entry
+  )) {
+    return { price: null, reason: "DIRECT_CONSOLIDATION_STOP_WRONG_SIDE_OF_ENTRY" };
+  }
+  return { price: Number(stop.toFixed(10)), reason: null };
 }
 
 function targetPlanForOccurrence(
@@ -5045,8 +5146,46 @@ export function projectHistoricalTradeCandidates(
       [existing.targetLevelSnapshot, occurrence.targetLevelSnapshot],
       existing,
     );
+    const directThresholdEvidence = [
+      existing.directThresholdCrossingTimestamp,
+      occurrence.directThresholdCrossingTimestamp,
+    ].filter((timestamp): timestamp is string =>
+      typeof timestamp === "string" && timestamp.trim().length > 0,
+    );
+    const uniqueDirectThresholdEvidence = [...new Set(directThresholdEvidence)].sort();
+    const validDirectThresholdEvidence = uniqueDirectThresholdEvidence.filter((timestamp) =>
+      Number.isFinite(Date.parse(timestamp)),
+    );
+    const invalidDirectThresholdEvidence = uniqueDirectThresholdEvidence.filter((timestamp) =>
+      !Number.isFinite(Date.parse(timestamp)),
+    );
+    const directThresholdEvidenceViolations = [
+      ...(invalidDirectThresholdEvidence.length > 0
+        ? [`INVALID_DIRECT_THRESHOLD_CROSSING_EVIDENCE:${invalidDirectThresholdEvidence.join(",")}`]
+        : []),
+      ...(validDirectThresholdEvidence.length > 1
+        ? [`CONFLICTING_DIRECT_THRESHOLD_CROSSING_EVIDENCE:${validDirectThresholdEvidence.join(",")}`]
+        : []),
+    ];
+    if (directThresholdEvidenceViolations.length > 0) {
+      signalByPhysicalIdentity.delete(physicalIdentity);
+      rejected.push({
+        signalOccurrenceId: existing.occurrenceId,
+        reasonCodes: ["INVALID_CAUSAL_IDENTITY"],
+        details: directThresholdEvidenceViolations,
+      });
+      continue;
+    }
     signalByPhysicalIdentity.set(physicalIdentity, {
       ...existing,
+      ...(isAuthorizedDirectStrategyOccurrence(existing) || isAuthorizedDirectStrategyOccurrence(occurrence)
+        ? { directThresholdCrossingTimestamp: validDirectThresholdEvidence[0] ?? null }
+        : {}),
+      identityInvariantViolations: [...new Set([
+        ...(existing.identityInvariantViolations ?? []),
+        ...(occurrence.identityInvariantViolations ?? []),
+        ...directThresholdEvidenceViolations,
+      ])].sort(),
       ...(selectedTargetSnapshot ? {
         targetLevelSnapshot: selectedTargetSnapshot,
         targetLevelInputs: [...selectedTargetSnapshot.frozenLevelInputs],

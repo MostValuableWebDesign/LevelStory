@@ -1218,6 +1218,168 @@ test("close-gated consolidation does not defer an unexecutable same-candle break
   assert.equal(result.authoritativeTrades.length, 0);
 });
 
+test("direct crossing evidence enriches one stable occurrence and candidate", () => {
+  const start = Date.parse("2026-08-25T14:00:00.000Z");
+  const iso = (offset: number) => new Date(start + offset).toISOString();
+  const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+    id: "direct-crossing-enrichment",
+    evaluatedCandleOpenTime: iso(600_000),
+    directQualificationTimestamp: iso(600_000),
+    directSignalOpenTimestamp: iso(600_000),
+    directCrossingCandleOpenTimestamp: iso(600_000),
+    directConsolidationStartTimestamp: iso(0),
+    directConsolidationEndTimestamp: iso(600_000),
+    directConsolidationZoneHigh: 101,
+    directConsolidationZoneLow: 99,
+    directConsolidationSourceCandleTimestamps: [iso(0), iso(300_000)],
+    consolidationGuard: {
+      consolidationZoneHigh: 101,
+      consolidationZoneLow: 99,
+      effectiveEntryThreshold: 103,
+      executionEligible: true,
+    } as BacktestConsolidationGuardEvidence,
+    targetLevelInputs: [{ id: "major-resistance", type: "major resistance", price: 110 }],
+  });
+  const candles = [
+    { contractSymbol: "MESU26", openTime: start, closeTime: start + 300_000, open: 100, high: 101, low: 99, close: 100, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 300_000, closeTime: start + 600_000, open: 100, high: 101, low: 99, close: 100, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 600_000, closeTime: start + 900_000, open: 103, high: 104, low: 102, close: 103, volume: 20, isComplete: true },
+    { contractSymbol: "MESU26", openTime: start + 900_000, closeTime: start + 1_200_000, open: 103, high: 104, low: 102, close: 103, volume: 20, isComplete: true },
+  ];
+  const exactDataset = {
+    ...occurrenceDataset(),
+    candles,
+    ticks: [{ timestamp: start + 660_000, price: 103, source: "tick" as const }],
+    orderedIntrabarEvidenceComplete: true,
+    orderedIntrabarEvidence: {
+      source: "tick" as const,
+      contractSymbol: "MESU26",
+      coverageStart: start,
+      coverageEnd: start + 1_200_000,
+      ordering: "timestamp_ascending" as const,
+      equalTimestampSemantics: "conservative" as const,
+    },
+  } as unknown as CausalReplayDataset;
+  const incompleteDataset = { ...exactDataset, ticks: [], orderedIntrabarEvidenceComplete: false };
+  const sourceFingerprint = "a".repeat(64);
+  const formulaHash = "b".repeat(64);
+  const incomplete = buildHistoricalOccurrenceLedger(
+    incompleteDataset,
+    [audit],
+    [],
+    formulaHash,
+    sourceFingerprint,
+  ).find((item) => item.directSignalOpenTimestamp !== undefined)!;
+  const exact = buildHistoricalOccurrenceLedger(
+    exactDataset,
+    [audit],
+    [],
+    formulaHash,
+    sourceFingerprint,
+  ).find((item) => item.directSignalOpenTimestamp !== undefined)!;
+  assert.equal(incomplete.occurrenceId, exact.occurrenceId);
+  assert.equal(incomplete.directThresholdCrossingTimestamp, null);
+  assert.equal(exact.directThresholdCrossingTimestamp, iso(660_000));
+
+  const projection = projectHistoricalTradeCandidates([incomplete, exact], [], {
+    dataset: exactDataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  assert.equal(projection.rejected.length, 0, JSON.stringify(projection.rejected));
+  assert.equal(projection.candidates.length, 1);
+  assert.equal(projection.authoritativeTrades.length, 1);
+  assert.equal(projection.authoritativeTrades[0]?.entryTime, iso(660_000));
+  assert.equal(projection.authoritativeTrades[0]?.candidateId, projection.candidates[0]?.candidateId);
+
+  const conflicting = projectHistoricalTradeCandidates([
+    exact,
+    { ...exact, directThresholdCrossingTimestamp: iso(720_000) },
+  ], []);
+  assert.equal(conflicting.candidates.length, 0);
+  assert.equal(conflicting.rejected.length, 1);
+  assert.equal(
+    conflicting.rejected[0]?.details.some((detail) => detail.startsWith("CONFLICTING_DIRECT_THRESHOLD_CROSSING_EVIDENCE:")),
+    true,
+  );
+});
+
+test("consolidation continuation uses the frozen range four-tick stop for long and short execution", () => {
+  const makeFixture = (direction: "long" | "short") => {
+    const start = Date.parse("2026-08-25T14:00:00.000Z");
+    const iso = (offset: number) => new Date(start + offset).toISOString();
+    const long = direction === "long";
+    const high = long ? 101 : 105;
+    const low = long ? 99 : 99;
+    const threshold = long ? 103 : 97;
+    const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
+      id: `direct-frozen-stop-${direction}`,
+      evaluatedCandleOpenTime: iso(600_000),
+      direction,
+      directQualificationTimestamp: iso(600_000),
+      directSignalOpenTimestamp: iso(600_000),
+      directCrossingCandleOpenTimestamp: iso(600_000),
+      directConsolidationStartTimestamp: iso(0),
+      directConsolidationEndTimestamp: iso(600_000),
+      directConsolidationZoneHigh: high,
+      directConsolidationZoneLow: low,
+      directConsolidationSourceCandleTimestamps: [iso(0), iso(300_000)],
+      consolidationGuard: {
+        consolidationZoneHigh: high,
+        consolidationZoneLow: low,
+        effectiveEntryThreshold: threshold,
+        executionEligible: true,
+      } as BacktestConsolidationGuardEvidence,
+      targetLevelInputs: [{
+        id: long ? "major-resistance" : "major-support",
+        type: long ? "major resistance" : "major support",
+        price: long ? 110 : 90,
+      }],
+    });
+    const candles = [
+      { contractSymbol: "MESU26", openTime: start, closeTime: start + 300_000, open: 100, high, low, close: 100, volume: 20, isComplete: true },
+      { contractSymbol: "MESU26", openTime: start + 300_000, closeTime: start + 600_000, open: 100, high, low, close: 100, volume: 20, isComplete: true },
+      {
+        contractSymbol: "MESU26",
+        openTime: start + 600_000,
+        closeTime: start + 900_000,
+        open: long ? 103 : 96,
+        high: long ? 104 : 99,
+        low: long ? 101 : 95,
+        close: long ? 103 : 97,
+        volume: 20,
+        isComplete: true,
+      },
+      {
+        contractSymbol: "MESU26",
+        openTime: start + 900_000,
+        closeTime: start + 1_200_000,
+        open: long ? 103 : 97,
+        high: long ? 104 : 100,
+        low: long ? 100 : 96,
+        close: long ? 102 : 98,
+        volume: 20,
+        isComplete: true,
+      },
+    ];
+    const dataset = { ...occurrenceDataset(), candles } as unknown as CausalReplayDataset;
+    const occurrence = buildHistoricalOccurrenceLedger(dataset, [audit], [])
+      .find((item) => item.directSignalOpenTimestamp !== undefined)!;
+    const result = projectHistoricalTradeCandidates([occurrence], [], {
+      dataset,
+      specification: getFuturesContractSpecification("MES"),
+      executionMode: "ohlcv_modeled",
+    });
+    const expectedStop = long ? 100 : 100;
+    assert.equal(result.rejected.length, 0, JSON.stringify(result.rejected));
+    assert.equal(result.candidates[0]?.strategyStopPrice, expectedStop);
+    assert.equal(result.authoritativeTrades[0]?.audit?.strategyStopPrice, expectedStop);
+    assert.equal(result.authoritativeTrades[0]?.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
+  };
+  makeFixture("long");
+  makeFixture("short");
+});
+
 test("equivalent direct reversals project both directions through candidate-owned execution", () => {
   const makeFixture = (direction: "long" | "short") => {
     const start = Date.parse("2026-08-25T14:00:00.000Z");
@@ -2357,7 +2519,7 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
     eOpen: "2026-08-25T15:05:00.000Z",
     eClose: "2026-08-25T15:10:00.000Z",
     entryHigh: 104,
-    entryLow: 100,
+    entryLow: 101,
     management: {
       strategyStopPrice: 97,
       catastropheStopPrice: null,
@@ -2374,6 +2536,10 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
   }) as HistoricalOccurrence;
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  const entryCandle = occurrence.entryCandle!;
+  entryCandle.open = 101;
+  entryCandle.high = 102;
+  entryCandle.low = 101.5;
   occurrence.targetLevelInputs = [{
     id: "identity-major-target",
     type: "major resistance",
@@ -3415,6 +3581,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
     pOpen: "2026-08-25T14:15:00.000Z",
     eOpen: "2026-08-25T14:20:00.000Z",
     eClose: "2026-08-25T14:25:00.000Z",
+    entryLow: 100.5,
   });
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";

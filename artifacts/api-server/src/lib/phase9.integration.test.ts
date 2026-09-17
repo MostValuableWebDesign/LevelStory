@@ -112,8 +112,8 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
       return {
         ...item,
         open: base,
-        high: base + 0.5,
-        low: base - 0.5,
+        high: base + 0.75,
+        low: base - 0.75,
         close: base + (index % 2 ? 0.25 : -0.25),
         volume: 1_000,
         bid: base,
@@ -124,20 +124,20 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
       return direction === "long"
         ? {
           ...item,
-          open: base,
-          high: base + 2.5,
-          low: base - 0.25,
-          close: base + 0.25,
+          open: base + 0.25,
+          high: base + 2.75,
+          low: base + 0.25,
+          close: base + 0.5,
           volume: 2_000,
           bid: base,
           ask: base + specification.tickSize,
         }
         : {
           ...item,
-          open: base,
-          high: base + 0.25,
-          low: base - 2.5,
-          close: base - 0.25,
+          open: base - 0.25,
+          high: base - 0.25,
+          low: base - 2.75,
+          close: base - 0.5,
           volume: 2_000,
           bid: base - specification.tickSize,
           ask: base,
@@ -185,7 +185,7 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
   const signalCandle = regular[signalIndex]!;
   const entryCandle = kind === "reversal" ? regular[signalIndex + 2]! : signalCandle;
   const entryThreshold = kind === "consolidation"
-    ? direction === "long" ? base + 2.5 : base - 2.5
+    ? direction === "long" ? base + 2.75 : base - 2.75
     : direction === "short" ? 6_805.5 : 6_810.25;
   const ticks = [{
     timestamp: entryCandle.openTime + 60_000,
