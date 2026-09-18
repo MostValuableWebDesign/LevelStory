@@ -223,6 +223,32 @@ test("missing patience is attributed after a valid ORB breakout", () => {
   assert.doesNotMatch(candidate?.rejectionDetail ?? "", /strong breakout candidate/i);
 });
 
+test("early ORB missing patience is reported as an ORB-specific qualification failure", () => {
+  const record = audit({
+    id: "early-orb-missing-patience",
+    setupType: "EARLY_ORB_MOMENTUM_CONTINUATION",
+    decision: "SETUP FORMING",
+    rejectionReason: "PATIENT",
+    rejectionCategory: "WAITING",
+    rejectionSummary: "patienceCandleOutsideOrb: Waiting for patience.",
+    orbState: "ORB_PROBE_WAIT",
+    breakoutEvidence: "The opening range is still being evaluated.",
+    ruleEvidence: [
+      "PASS ntzComplete: The opening range must be finalized before an early momentum arm can open.",
+      "FAIL patienceCandleOutsideOrb: No qualifying patience candle closed at least one MES tick outside the finalized ORB.",
+      "FAIL noPullbackRequired: The isolated early ORB path is not active.",
+      "FAIL immediateTrigger: Early momentum state is WAITING_FOR_VALID_CONTEXT; only ENTRY_TRIGGERED qualifies.",
+    ],
+    patienceState: "WAITING_FOR_VALID_CONTEXT",
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(candidate?.primaryRejectionStage, "strong_breakout_candidate");
+  assert.match(candidate?.rejectionDetail ?? "", /patienceCandleOutsideOrb/);
+  assert.match(candidate?.rejectionDetail ?? "", /outside the finalized ORB/);
+  assert.doesNotMatch(candidate?.rejectionDetail ?? "", /eight ticks|breakout boundary/i);
+});
+
 test("missing immediate trigger is attributed after patience passes", () => {
   const record = audit({
     id: "orb-missing-trigger",

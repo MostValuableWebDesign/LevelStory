@@ -1579,7 +1579,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v4-strategy-context-stage";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v5-strategy-specific-orb-details";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -3305,10 +3305,10 @@ function stageRuleKeys(
         return ["causalTrend", "strongBreakout"];
       }
       if (strategy === "ORB_PULLBACK_CONTINUATION") {
-        return ["ntzComplete", "closeOutsideNtz", "strongBreakout"];
+        return ["ntzComplete", "closeOutsideNtz"];
       }
       if (strategy === "EARLY_ORB_MOMENTUM_CONTINUATION") {
-        return ["ntzComplete", "strongBreakout", "closeOutsideNtz"];
+        return ["ntzComplete", "patienceCandleOutsideOrb"];
       }
       return ["causalTrend", "strongBreakout", "closeOutsideNtz", "breakout"];
     case "strategy_context_confirmed":
@@ -3359,8 +3359,11 @@ function stageFailureDetail(
     if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
       return breakoutDetail || "Required causal trend or breakout boundary evidence was not established.";
     }
-    if (strategy === "ORB_PULLBACK_CONTINUATION" || strategy === "EARLY_ORB_MOMENTUM_CONTINUATION") {
-      return breakoutDetail || "Required breakout boundary evidence was not established.";
+    if (strategy === "ORB_PULLBACK_CONTINUATION") {
+      return breakoutDetail || "closeOutsideNtz: No completed candle closed outside the finalized ORB/NTZ.";
+    }
+    if (strategy === "EARLY_ORB_MOMENTUM_CONTINUATION") {
+      return "patienceCandleOutsideOrb: No qualifying patience candle closed at least one MES tick outside the finalized ORB.";
     }
     return "Required breakout evidence was missing or noncausal.";
   }
@@ -3403,9 +3406,9 @@ function stageEvidence(
         || (ruleResult(record, ["closeOutsideNtz", "strongBreakout"]) === null
           && /(?:close.*outside|breakout.*confirmed|qualified.*breakout)/i.test(record.breakoutEvidence))
       : earlyOrb
-        ? anyRulePassed(record, ["strongBreakout", "closeOutsideNtz"])
-          || (ruleResult(record, ["strongBreakout", "closeOutsideNtz"]) === null
-            && /(?:close.*outside|breakout.*confirmed|qualified.*breakout|boundary.*crossed)/i.test(record.breakoutEvidence))
+        ? anyRulePassed(record, ["patienceCandleOutsideOrb"])
+          || (ruleResult(record, ["patienceCandleOutsideOrb"]) === null
+            && hasCompletedPatienceEvidence(record))
         : equivalentReversal || peakReversal
           ? true
           : passedRule(record, /(?:breakout|orb|impulse|strong)/i)

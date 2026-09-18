@@ -573,7 +573,7 @@ function WalkForwardPanel({ report }: { report: BatchBacktestReport }) {
 const funnelStageLabels: Record<QualificationFunnelStage, string> = {
   session_loaded: "Trading session loaded",
   ntz_orb_completed: "NTZ / ORB completed",
-  strong_breakout_candidate: "Strong breakout candidate",
+  strong_breakout_candidate: "Initial breakout / ORB qualification",
   strategy_context_confirmed: "Strategy-specific context confirmed",
   pullback_or_consolidation: "Pullback / consolidation",
   critical_level_interaction: "Critical-level interaction",
