@@ -13934,6 +13934,7 @@ export const GetHistoricalDataResponse = zod.object({
   "validationStatus": zod.enum(['validated', 'failed']),
   "sourceFingerprint": zod.string(),
   "ingestionVersion": zod.string(),
+  "normalizationVersion": zod.string(),
   "schemaVersion": zod.number().min(1)
 })).optional(),
   "scheduleVersion": zod.string().nullish(),

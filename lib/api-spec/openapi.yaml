@@ -3069,8 +3069,9 @@ components:
         validationStatus: { type: string, enum: [validated, failed] }
         sourceFingerprint: { type: string }
         ingestionVersion: { type: string }
+        normalizationVersion: { type: string }
         schemaVersion: { type: number, minimum: 1 }
-      required: [tradingDate, contractSymbol, sessionType, timeZone, calendarIdentity, partitionIdentity, availableTimeframes, candleCounts, tickCoverage, earliestTimestamp, latestTimestamp, coverageStatus, completenessStatus, validationStatus, sourceFingerprint, ingestionVersion, schemaVersion]
+      required: [tradingDate, contractSymbol, sessionType, timeZone, calendarIdentity, partitionIdentity, availableTimeframes, candleCounts, tickCoverage, earliestTimestamp, latestTimestamp, coverageStatus, completenessStatus, validationStatus, sourceFingerprint, ingestionVersion, normalizationVersion, schemaVersion]
     HistoricalDataIndexStatus:
       type: object
       properties:

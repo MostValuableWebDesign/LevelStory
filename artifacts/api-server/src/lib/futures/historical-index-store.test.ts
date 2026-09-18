@@ -7,14 +7,17 @@ import { getFuturesContractSpecification } from "./contracts.js";
 import { sessionCalendarForContract } from "./session-calendar.js";
 import type { HistoricalCsvImport } from "./historical-csv-import.js";
 
-function fixtureImport(): HistoricalCsvImport {
+function fixtureImport(
+  tradingDate = "2025-09-05",
+  contentFingerprint = "fixture-source",
+): HistoricalCsvImport {
   const specification = {
     ...getFuturesContractSpecification("MES"),
     fullContractSymbol: "MESU5",
     contractMonth: "2025-09",
   };
   const calendar = sessionCalendarForContract(specification);
-  const openTime = Date.parse("2025-09-05T13:30:00.000Z");
+  const openTime = Date.parse(`${tradingDate}T13:30:00.000Z`);
   const candle = {
     timestamp: openTime,
     openTime,
@@ -36,7 +39,7 @@ function fixtureImport(): HistoricalCsvImport {
   return {
     specification,
     calendar,
-    contentFingerprint: "fixture-source",
+    contentFingerprint,
     oneMinute: [candle],
     fiveMinute: [{ ...candle, closeTime: openTime + 300_000, intervalMinutes: 5 as const }],
     fifteenMinute: [],
@@ -71,14 +74,14 @@ function fixtureImport(): HistoricalCsvImport {
       inactiveContractDays: 0,
       missingRegularSessionDates: [],
       missingOvernightSessionDates: [],
-      completeRegularSessionDates: ["2025-09-05"],
+      completeRegularSessionDates: [tradingDate],
       maintenanceGapMinutes: 0,
       weekendHolidayGapMinutes: 0,
       earlyCloseDates: [],
       overnightCoverageObserved: false,
       regularSessionCandleCount: 1,
       overnightCandleCount: 0,
-      availableTradingDates: ["2025-09-05"],
+      availableTradingDates: [tradingDate],
       rejectionReasons: {},
       errors: [],
       aggregationCounts: { oneMinute: 1, fiveMinute: 1, fifteenMinute: 0, oneHour: 0 },
@@ -104,6 +107,7 @@ function catalogEntry(tradingDate: string, contractSymbol: string, sourceFingerp
     validationStatus: "validated",
     sourceFingerprint,
     ingestionVersion: "fixture-import-v1",
+    normalizationVersion: "normalized-candle-v1",
     schemaVersion: 4,
   };
 }
@@ -232,6 +236,64 @@ test("session catalog distinguishes incomplete coverage from a missing stored da
   const reopened = HistoricalIndexStore.create(path, { readOnly: true });
   assert.equal(reopened.getSessionCatalogEntries({ startDate: "2025-09-10", endDate: "2025-09-10" })[0]?.coverageStatus, "incomplete");
   assert.deepEqual(reopened.getSessionCatalogEntries({ startDate: "2025-09-11", endDate: "2025-09-11" }), []);
+  reopened.close();
+});
+
+test("reuses validated market data, retains prior-session context, and deduplicates concurrent loads", async () => {
+  const directory = await mkdtemp("/tmp/levelstory-market-data-cache-");
+  const path = join(directory, "history.sqlite");
+  const store = await HistoricalIndexStore.createAtomic(path);
+  const prior = fixtureImport("2025-09-04", "source-v1");
+  const current = fixtureImport("2025-09-05", "source-v1");
+  store.writeImport(prior, prior.contentFingerprint);
+  store.writeImport(current, current.contentFingerprint);
+  const catalogFor = (imported: HistoricalCsvImport): HistoricalSessionCatalogEntry => ({
+    ...catalogEntry(imported.summary.availableTradingDates[0]!, "MESU5", imported.contentFingerprint),
+    candleCounts: { oneMinute: 1, fiveMinute: 1, fifteenMinute: 0, oneHour: 0 },
+    availableTimeframes: [1, 5],
+    earliestTimestamp: imported.summary.earliestTimestamp,
+    latestTimestamp: imported.summary.latestTimestamp,
+  });
+  store.upsertSessionCatalog([catalogFor(prior), catalogFor(current)]);
+
+  const options = {
+    contractSymbol: "MESU5",
+    tradingDate: "2025-09-05",
+    timeframes: [1, 5] as const,
+    lookbackTradingDates: store.getPriorSessionDates("MESU5", "2025-09-05", 1),
+  };
+  const first = store.getSessionMarketData(options);
+  const second = store.getSessionMarketData(options);
+  assert.strictEqual(first, second);
+  assert.equal(first.coverage.complete, true);
+  assert.deepEqual(first.context.tradingDates, ["2025-09-04"]);
+  assert.equal(first.context.sessions["2025-09-04"]?.coverage.complete, true);
+  assert.equal(first.ticks.length, 0);
+  assert.equal(first.coverage.verifiedIntrabarCoverage, false);
+
+  const [concurrentA, concurrentB] = await Promise.all([
+    store.loadSessionMarketData(options),
+    store.loadSessionMarketData(options),
+  ]);
+  assert.strictEqual(concurrentA, concurrentB);
+  const strategyRevisionA = store.getSessionMarketData(options);
+  const strategyRevisionB = store.getSessionMarketData(options);
+  assert.strictEqual(strategyRevisionA, strategyRevisionB);
+  assert.equal(strategyRevisionA.cacheKey.includes("strategy"), false);
+  const beforeReplacement = store.getMarketDataCacheStats();
+
+  const replacement = fixtureImport("2025-09-05", "source-v2");
+  store.writeImport(replacement, replacement.contentFingerprint);
+  store.upsertSessionCatalog([catalogFor(replacement)]);
+  const afterReplacement = store.getSessionMarketData(options);
+  assert.notEqual(afterReplacement.cacheKey, first.cacheKey);
+  assert.equal(afterReplacement.sourceFingerprint, "source-v2");
+  assert.equal(store.getMarketDataCacheStats().entries >= beforeReplacement.entries, true);
+  await store.commitAtomic();
+  const reopened = HistoricalIndexStore.create(path, { readOnly: true });
+  const persisted = await reopened.loadSessionMarketData(options);
+  assert.equal(persisted.coverage.complete, true);
+  assert.equal(persisted.sourceFingerprint, "source-v2");
   reopened.close();
 });
 

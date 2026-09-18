@@ -30,6 +30,7 @@ export interface HistoricalSessionCatalogEntry {
   validationStatus: HistoricalSessionCatalogEntryValidationStatus;
   sourceFingerprint: string;
   ingestionVersion: string;
+  normalizationVersion: string;
   /** @minimum 1 */
   schemaVersion: number;
 }

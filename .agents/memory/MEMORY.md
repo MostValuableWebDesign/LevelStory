@@ -101,3 +101,4 @@
 - [Node SQLite constructor options](node-sqlite-options.md) — always pass an options object to DatabaseSync, including writable stores.
 - [Funnel stage naming](funnel-stage-naming.md) — shared qualification stages must use strategy-neutral names; individual rule mappings remain strategy-specific.
 - [Legacy session catalog backfill](legacy-session-catalog-backfill.md) — pre-catalog SQLite indexes need an explicit atomic backfill or reindex before catalog-only date selection can be authoritative.
+- [Raw market-data cache identity](raw-market-data-cache-identity.md) — raw replay reuse follows source, coverage, calendar, schema, and normalization identity; strategy revisions must not invalidate it.

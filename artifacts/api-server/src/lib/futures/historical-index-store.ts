@@ -2,12 +2,14 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdir, rename, unlink, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { HistoricalCsvImportSummary, HistoricalCsvImport } from "./historical-csv-import.js";
-import type { NormalizedCandle } from "./market-data-provider.js";
+import type { NormalizedCandle, NormalizedTrade } from "./market-data-provider.js";
 import { tradingDateForTimestamp, type FuturesSessionCalendar } from "./session-calendar.js";
 
 export const HISTORICAL_INDEX_SCHEMA_VERSION = 4 as const;
 export const HISTORICAL_INDEX_MANIFEST_VERSION = 2 as const;
 export const HISTORICAL_SESSION_CATALOG_VERSION = 1 as const;
+export const HISTORICAL_MARKET_DATA_NORMALIZATION_VERSION = "normalized-candle-v1" as const;
+const DEFAULT_MARKET_DATA_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 
 export type HistoricalSessionCatalogEntry = {
   tradingDate: string;
@@ -31,7 +33,43 @@ export type HistoricalSessionCatalogEntry = {
   validationStatus: "validated" | "failed";
   sourceFingerprint: string;
   ingestionVersion: string;
+  normalizationVersion: string;
   schemaVersion: number;
+};
+
+export type HistoricalMarketDataLoadOptions = {
+  contractSymbol: string;
+  tradingDate: string;
+  timeframes?: readonly Timeframe[];
+  lookbackTradingDates?: readonly string[];
+};
+
+export type HistoricalSessionMarketData = {
+  cacheKey: string;
+  contractSymbol: string;
+  tradingDate: string;
+  sourceFingerprint: string | null;
+  calendarIdentity: string | null;
+  schemaVersion: number | null;
+  normalizationVersion: string | null;
+  candles: Readonly<Record<Timeframe, readonly NormalizedCandle[]>>;
+  ticks: readonly NormalizedTrade[];
+  coverage: {
+    availableTimeframes: number[];
+    candleCounts: HistoricalSessionCatalogEntry["candleCounts"];
+    earliestTimestamp: string | null;
+    latestTimestamp: string | null;
+    coverageStatus: "missing" | "complete" | "incomplete";
+    completenessStatus: "complete" | "incomplete";
+    validationStatus: "missing" | "validated" | "failed";
+    tickCoverage: "not_indexed" | "available";
+    verifiedIntrabarCoverage: false;
+    complete: boolean;
+  };
+  context: {
+    tradingDates: readonly string[];
+    sessions: Readonly<Record<string, HistoricalSessionMarketData>>;
+  };
 };
 
 export type HistoricalIndexMetadata = {
@@ -119,9 +157,13 @@ export class HistoricalIndexStore {
   private constructor(
     private readonly database: DatabaseSync,
     readonly path: string,
+    private readonly marketDataCacheMaxBytes = DEFAULT_MARKET_DATA_CACHE_MAX_BYTES,
   ) {}
 
-  static create(path: string, options: { readOnly?: boolean } = {}): HistoricalIndexStore {
+  static create(path: string, options: {
+    readOnly?: boolean;
+    marketDataCacheMaxBytes?: number;
+  } = {}): HistoricalIndexStore {
     const database = new DatabaseSync(path, options.readOnly
       ? { readOnly: true, timeout: 30_000 }
       : { timeout: 30_000 });
@@ -135,7 +177,7 @@ export class HistoricalIndexStore {
         + "regeneration is required and the existing index was preserved.",
       );
     }
-    const store = new HistoricalIndexStore(database, path);
+    const store = new HistoricalIndexStore(database, path, options.marketDataCacheMaxBytes);
     if (!options.readOnly) store.initialize();
     return store;
   }
@@ -161,6 +203,13 @@ export class HistoricalIndexStore {
   }
 
   private temporaryPath: string | null = null;
+  private readonly marketDataCache = new Map<string, {
+    value: HistoricalSessionMarketData;
+    bytes: number;
+    sessionIdentities: readonly string[];
+  }>();
+  private marketDataCacheBytes = 0;
+  private readonly pendingMarketDataLoads = new Map<string, Promise<HistoricalSessionMarketData>>();
 
   get stagingPath(): string | null {
     return this.temporaryPath;
@@ -251,6 +300,7 @@ export class HistoricalIndexStore {
         validation_status TEXT NOT NULL CHECK (validation_status IN ('validated', 'failed')),
         source_fingerprint TEXT NOT NULL,
         ingestion_version TEXT NOT NULL,
+        normalization_version TEXT NOT NULL DEFAULT 'legacy-unknown',
         schema_version INTEGER NOT NULL,
         indexed_at TEXT NOT NULL,
         PRIMARY KEY (trading_date, contract_symbol)
@@ -289,6 +339,10 @@ export class HistoricalIndexStore {
     const manifestColumns = this.database.prepare("PRAGMA table_info(index_manifest_files)").all() as Array<{ name: string }>;
     if (!manifestColumns.some((column) => column.name === "detected_contracts_json")) {
       this.database.exec("ALTER TABLE index_manifest_files ADD COLUMN detected_contracts_json TEXT");
+    }
+    const catalogColumns = this.database.prepare("PRAGMA table_info(session_catalog)").all() as Array<{ name: string }>;
+    if (!catalogColumns.some((column) => column.name === "normalization_version")) {
+      this.database.exec("ALTER TABLE session_catalog ADD COLUMN normalization_version TEXT NOT NULL DEFAULT 'legacy-unknown'");
     }
     this.database.exec(`PRAGMA user_version = ${HISTORICAL_INDEX_SCHEMA_VERSION}`);
   }
@@ -573,6 +627,7 @@ export class HistoricalIndexStore {
 
   upsertSessionCatalog(entries: readonly HistoricalSessionCatalogEntry[], indexedAt = new Date().toISOString()): void {
     if (!entries.length) return;
+    for (const entry of entries) this.invalidateMarketDataCacheForSession(entry.contractSymbol, entry.tradingDate);
     this.database.exec("BEGIN IMMEDIATE");
     try {
       const statement = this.database.prepare(`
@@ -582,8 +637,8 @@ export class HistoricalIndexStore {
          five_minute_candle_count, fifteen_minute_candle_count, one_hour_candle_count,
          tick_coverage, earliest_timestamp, latest_timestamp, coverage_status,
          completeness_status, validation_status, source_fingerprint, ingestion_version,
-         schema_version, indexed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         normalization_version, schema_version, indexed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(trading_date, contract_symbol)
         DO UPDATE SET
           session_type = excluded.session_type,
@@ -603,6 +658,7 @@ export class HistoricalIndexStore {
           validation_status = excluded.validation_status,
           source_fingerprint = excluded.source_fingerprint,
           ingestion_version = excluded.ingestion_version,
+          normalization_version = excluded.normalization_version,
           schema_version = excluded.schema_version,
           indexed_at = excluded.indexed_at
       `);
@@ -627,6 +683,7 @@ export class HistoricalIndexStore {
           entry.validationStatus,
           entry.sourceFingerprint,
           entry.ingestionVersion,
+          entry.normalizationVersion,
           entry.schemaVersion,
           indexedAt,
         );
@@ -642,6 +699,7 @@ export class HistoricalIndexStore {
     const dates = [...new Set(filter.tradingDates ?? [])];
     const contracts = [...new Set(filter.contractSymbols ?? [])];
     if (!dates.length && !contracts.length) return 0;
+    this.invalidateMarketDataCache({ tradingDates: dates, contractSymbols: contracts });
     this.database.exec("BEGIN IMMEDIATE");
     try {
       const clauses: string[] = [];
@@ -693,7 +751,7 @@ export class HistoricalIndexStore {
              five_minute_candle_count, fifteen_minute_candle_count, one_hour_candle_count,
              tick_coverage, earliest_timestamp, latest_timestamp, coverage_status,
              completeness_status, validation_status, source_fingerprint, ingestion_version,
-             schema_version
+             normalization_version, schema_version
       FROM session_catalog
       ${where}
       ORDER BY trading_date, contract_symbol
@@ -717,6 +775,7 @@ export class HistoricalIndexStore {
       validation_status: "validated" | "failed";
       source_fingerprint: string;
       ingestion_version: string;
+      normalization_version: string;
       schema_version: number;
     }>;
     return rows.map((row) => ({
@@ -741,6 +800,7 @@ export class HistoricalIndexStore {
       validationStatus: row.validation_status,
       sourceFingerprint: row.source_fingerprint,
       ingestionVersion: row.ingestion_version,
+      normalizationVersion: row.normalization_version,
       schemaVersion: row.schema_version,
     }));
   }
@@ -775,6 +835,24 @@ export class HistoricalIndexStore {
     if (!catalogExists?.present) return this.getContractSymbolsForDate(tradingDate, 1);
     return this.getSessionCatalogEntries({ startDate: tradingDate, endDate: tradingDate })
       .map((entry) => entry.contractSymbol);
+  }
+
+  getPriorSessionDates(contractSymbol: string, beforeTradingDate: string, limit = 1): string[] {
+    const safeLimit = Math.max(0, Math.min(10, Math.floor(limit)));
+    if (!safeLimit) return [];
+    const catalogExists = this.database.prepare(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
+    ).get() as { present?: number } | undefined;
+    if (!catalogExists?.present) return [];
+    return (this.database.prepare(`
+      SELECT DISTINCT trading_date
+      FROM session_catalog
+      WHERE contract_symbol = ? AND trading_date < ?
+      ORDER BY trading_date DESC
+      LIMIT ?
+    `).all(contractSymbol, beforeTradingDate, safeLimit) as Array<{ trading_date: string }>)
+      .map((row) => row.trading_date)
+      .sort();
   }
 
   getPartitionCoverage(contractSymbol: string, tradingDate: string): {
@@ -833,9 +911,9 @@ export class HistoricalIndexStore {
   ): number {
     if (!candles.length) return 0;
     if (signal?.aborted) throw new Error("Historical index write was cancelled.");
+    const touchedDates = new Set<string>();
     this.database.exec("BEGIN IMMEDIATE");
     try {
-      const touchedDates = new Set<string>();
       const candleStatement = this.database.prepare(`
         INSERT OR REPLACE INTO candles
         (contract_symbol, trading_date, timeframe, open_time, close_time, open, high, low, close,
@@ -929,6 +1007,9 @@ export class HistoricalIndexStore {
         updatePartitionStatement.run(contractSymbol, tradingDate, timeframe, Number(row.count ?? 0));
       }
       this.database.exec("COMMIT");
+      for (const tradingDate of touchedDates) {
+        this.invalidateMarketDataCacheForSession(contractSymbol, tradingDate);
+      }
       return 1;
     } catch (error) {
       this.database.exec("ROLLBACK");
@@ -937,6 +1018,7 @@ export class HistoricalIndexStore {
   }
 
   writeImport(imported: HistoricalCsvImport, contentFingerprint: string): void {
+    const tradingDates = new Set(imported.summary.availableTradingDates);
     this.database.exec("BEGIN IMMEDIATE");
     try {
       this.writeSourceSummary(imported.summary, contentFingerprint);
@@ -945,6 +1027,9 @@ export class HistoricalIndexStore {
       this.writeCandles(imported.specification.fullContractSymbol, imported.fifteenMinute, 15, imported.calendar);
       this.writeCandles(imported.specification.fullContractSymbol, imported.oneHour, 60, imported.calendar);
       this.database.exec("COMMIT");
+      for (const tradingDate of tradingDates) {
+        this.invalidateMarketDataCacheForSession(imported.specification.fullContractSymbol, tradingDate);
+      }
     } catch (error) {
       this.database.exec("ROLLBACK");
       throw error;
@@ -1020,6 +1105,286 @@ export class HistoricalIndexStore {
       partition.push(candle);
     }
     flush();
+  }
+
+  private catalogEntryForSession(contractSymbol: string, tradingDate: string): HistoricalSessionCatalogEntry | null {
+    const catalogExists = this.database.prepare(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
+    ).get() as { present?: number } | undefined;
+    if (!catalogExists?.present) return null;
+    return this.getSessionCatalogEntries({
+      startDate: tradingDate,
+      endDate: tradingDate,
+      contractSymbol,
+      includeIncomplete: true,
+    }).find((entry) => entry.tradingDate === tradingDate && entry.contractSymbol === contractSymbol) ?? null;
+  }
+
+  private normalizeMarketDataTimeframes(timeframes: readonly Timeframe[] | undefined): Timeframe[] {
+    return [...new Set(timeframes ?? TIMEFRAMES)]
+      .filter((timeframe): timeframe is Timeframe => TIMEFRAMES.includes(timeframe))
+      .sort((left, right) => left - right);
+  }
+
+  private marketDataRequestKey(options: HistoricalMarketDataLoadOptions): {
+    key: string;
+    timeframes: Timeframe[];
+    tradingDates: string[];
+  } {
+    const timeframes = this.normalizeMarketDataTimeframes(options.timeframes);
+    const tradingDates = [...new Set([
+      options.tradingDate,
+      ...(options.lookbackTradingDates ?? []),
+    ])].sort();
+    const identity = tradingDates.map((tradingDate) => {
+      const entry = this.catalogEntryForSession(options.contractSymbol, tradingDate);
+      return {
+        tradingDate,
+        sourceFingerprint: entry?.sourceFingerprint ?? null,
+        contractSymbol: entry?.contractSymbol ?? options.contractSymbol,
+        coverage: entry
+          ? {
+              availableTimeframes: entry.availableTimeframes,
+              candleCounts: entry.candleCounts,
+              coverageStatus: entry.coverageStatus,
+              completenessStatus: entry.completenessStatus,
+              tickCoverage: entry.tickCoverage,
+            }
+          : null,
+        calendarIdentity: entry?.calendarIdentity ?? null,
+        timeZone: entry?.timeZone ?? null,
+        partitionIdentity: entry?.partitionIdentity ?? null,
+        normalizationVersion: entry?.normalizationVersion ?? "legacy-unknown",
+        schemaVersion: entry?.schemaVersion ?? HISTORICAL_INDEX_SCHEMA_VERSION,
+      };
+    });
+    return {
+      key: `market-data:v1:${JSON.stringify({
+        contractSymbol: options.contractSymbol,
+        timeframes,
+        sessions: identity,
+      })}`,
+      timeframes,
+      tradingDates,
+    };
+  }
+
+  private estimateMarketDataBytes(value: HistoricalSessionMarketData): number {
+    const candleCount = Object.values(value.candles).reduce((total, candles) => total + candles.length, 0);
+    return 1024 + candleCount * 192 + value.ticks.length * 96;
+  }
+
+  private touchMarketDataCache(key: string): HistoricalSessionMarketData | null {
+    const cached = this.marketDataCache.get(key);
+    if (!cached) return null;
+    this.marketDataCache.delete(key);
+    this.marketDataCache.set(key, cached);
+    return cached.value;
+  }
+
+  private cacheMarketData(
+    key: string,
+    value: HistoricalSessionMarketData,
+    sessionIdentities: readonly string[] = [`${value.contractSymbol}:${value.tradingDate}`],
+  ): HistoricalSessionMarketData {
+    const bytes = this.estimateMarketDataBytes(value);
+    const previous = this.marketDataCache.get(key);
+    if (previous) this.marketDataCacheBytes -= previous.bytes;
+    this.marketDataCache.delete(key);
+    this.marketDataCache.set(key, {
+      value,
+      bytes,
+      sessionIdentities,
+    });
+    this.marketDataCacheBytes += bytes;
+    while (this.marketDataCacheBytes > Math.max(0, this.marketDataCacheMaxBytes) && this.marketDataCache.size > 1) {
+      const oldestKey = this.marketDataCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      const oldest = this.marketDataCache.get(oldestKey);
+      this.marketDataCache.delete(oldestKey);
+      this.marketDataCacheBytes -= oldest?.bytes ?? 0;
+    }
+    return value;
+  }
+
+  private invalidateMarketDataCacheForSession(contractSymbol: string, tradingDate: string): void {
+    for (const [key, cached] of this.marketDataCache) {
+      if (!cached.sessionIdentities.includes(`${contractSymbol}:${tradingDate}`)) continue;
+      this.marketDataCache.delete(key);
+      this.marketDataCacheBytes -= cached.bytes;
+    }
+  }
+
+  private invalidateMarketDataCache(filter: {
+    tradingDates?: readonly string[];
+    contractSymbols?: readonly string[];
+  }): void {
+    const dates = new Set(filter.tradingDates ?? []);
+    const contracts = new Set(filter.contractSymbols ?? []);
+    for (const [key, cached] of this.marketDataCache) {
+      const matches = cached.sessionIdentities.some((identity) => {
+        const [contractSymbol, tradingDate] = identity.split(":");
+        return (!dates.size || dates.has(tradingDate)) && (!contracts.size || contracts.has(contractSymbol));
+      });
+      if (!matches) continue;
+      this.marketDataCache.delete(key);
+      this.marketDataCacheBytes -= cached.bytes;
+    }
+  }
+
+  private emptyMarketDataCandles(): Record<Timeframe, readonly NormalizedCandle[]> {
+    return { 1: [], 5: [], 15: [], 60: [] };
+  }
+
+  private readSessionMarketData(
+    contractSymbol: string,
+    tradingDate: string,
+    timeframes: readonly Timeframe[],
+    cacheKey: string,
+  ): HistoricalSessionMarketData {
+    const cached = this.touchMarketDataCache(cacheKey);
+    if (cached) return cached;
+    const entry = this.catalogEntryForSession(contractSymbol, tradingDate);
+    if (!entry) {
+      return this.cacheMarketData(cacheKey, {
+        cacheKey,
+        contractSymbol,
+        tradingDate,
+        sourceFingerprint: null,
+        calendarIdentity: null,
+        schemaVersion: null,
+        normalizationVersion: null,
+        candles: this.emptyMarketDataCandles(),
+        ticks: [],
+        coverage: {
+          availableTimeframes: [],
+          candleCounts: { oneMinute: 0, fiveMinute: 0, fifteenMinute: 0, oneHour: 0 },
+          earliestTimestamp: null,
+          latestTimestamp: null,
+          coverageStatus: "missing",
+          completenessStatus: "incomplete",
+          validationStatus: "missing",
+          tickCoverage: "not_indexed",
+          verifiedIntrabarCoverage: false,
+          complete: false,
+        },
+        context: { tradingDates: [], sessions: {} },
+      });
+    }
+    const candles = this.emptyMarketDataCandles();
+    for (const timeframe of timeframes) {
+      candles[timeframe] = this.getCandles(contractSymbol, tradingDate, timeframe);
+    }
+    const actualCounts = {
+      oneMinute: candles[1].length,
+      fiveMinute: candles[5].length,
+      fifteenMinute: candles[15].length,
+      oneHour: candles[60].length,
+    };
+    const countMatches = timeframes.every((timeframe) => {
+      const countKey = timeframe === 1 ? "oneMinute"
+        : timeframe === 5 ? "fiveMinute"
+          : timeframe === 15 ? "fifteenMinute" : "oneHour";
+      return actualCounts[countKey] === entry.candleCounts[countKey];
+    });
+    const complete = entry.validationStatus === "validated"
+      && entry.coverageStatus === "complete"
+      && entry.completenessStatus === "complete"
+      && countMatches
+      && timeframes.every((timeframe) => candles[timeframe].every((candle) => candle.isComplete));
+    return this.cacheMarketData(cacheKey, {
+      cacheKey,
+      contractSymbol,
+      tradingDate,
+      sourceFingerprint: entry.sourceFingerprint,
+      calendarIdentity: entry.calendarIdentity,
+      schemaVersion: entry.schemaVersion,
+      normalizationVersion: entry.normalizationVersion,
+      candles,
+      ticks: [],
+      coverage: {
+        availableTimeframes: entry.availableTimeframes,
+        candleCounts: actualCounts,
+        earliestTimestamp: entry.earliestTimestamp,
+        latestTimestamp: entry.latestTimestamp,
+        coverageStatus: complete ? entry.coverageStatus : "incomplete",
+        completenessStatus: entry.completenessStatus,
+        validationStatus: entry.validationStatus,
+        tickCoverage: entry.tickCoverage,
+        verifiedIntrabarCoverage: false,
+        complete,
+      },
+      context: { tradingDates: [], sessions: {} },
+    });
+  }
+
+  getSessionMarketData(options: HistoricalMarketDataLoadOptions): HistoricalSessionMarketData {
+    const request = this.marketDataRequestKey(options);
+    const cached = this.touchMarketDataCache(request.key);
+    if (cached) return cached;
+    const sessions: Record<string, HistoricalSessionMarketData> = {};
+    for (const tradingDate of request.tradingDates) {
+      const entry = this.catalogEntryForSession(options.contractSymbol, tradingDate);
+      const sessionKey = `market-session:v1:${JSON.stringify({
+        contractSymbol: options.contractSymbol,
+        tradingDate,
+        timeframes: request.timeframes,
+        sourceFingerprint: entry?.sourceFingerprint ?? null,
+        coverage: entry
+          ? {
+              availableTimeframes: entry.availableTimeframes,
+              candleCounts: entry.candleCounts,
+              coverageStatus: entry.coverageStatus,
+              completenessStatus: entry.completenessStatus,
+              tickCoverage: entry.tickCoverage,
+            }
+          : null,
+        calendarIdentity: entry?.calendarIdentity ?? null,
+        timeZone: entry?.timeZone ?? null,
+        partitionIdentity: entry?.partitionIdentity ?? null,
+        normalizationVersion: entry?.normalizationVersion ?? "legacy-unknown",
+        schemaVersion: entry?.schemaVersion ?? HISTORICAL_INDEX_SCHEMA_VERSION,
+      })}`;
+      sessions[tradingDate] = this.readSessionMarketData(
+        options.contractSymbol,
+        tradingDate,
+        request.timeframes,
+        sessionKey,
+      );
+    }
+    const primary = sessions[options.tradingDate]
+      ?? this.readSessionMarketData(options.contractSymbol, options.tradingDate, request.timeframes, `${request.key}:primary`);
+    if (request.tradingDates.length === 1) return primary;
+    return this.cacheMarketData(request.key, {
+      ...primary,
+      cacheKey: request.key,
+      context: {
+        tradingDates: request.tradingDates.filter((date) => date !== options.tradingDate),
+        sessions,
+      },
+    }, request.tradingDates.map((date) => `${options.contractSymbol}:${date}`));
+  }
+
+  async loadSessionMarketData(options: HistoricalMarketDataLoadOptions): Promise<HistoricalSessionMarketData> {
+    const request = this.marketDataRequestKey(options);
+    const pending = this.pendingMarketDataLoads.get(request.key);
+    if (pending) return pending;
+    const load = Promise.resolve().then(() => this.getSessionMarketData(options));
+    this.pendingMarketDataLoads.set(request.key, load);
+    try {
+      return await load;
+    } finally {
+      if (this.pendingMarketDataLoads.get(request.key) === load) this.pendingMarketDataLoads.delete(request.key);
+    }
+  }
+
+  getMarketDataCacheStats(): { entries: number; bytes: number; maxBytes: number; pendingLoads: number } {
+    return {
+      entries: this.marketDataCache.size,
+      bytes: this.marketDataCacheBytes,
+      maxBytes: this.marketDataCacheMaxBytes,
+      pendingLoads: this.pendingMarketDataLoads.size,
+    };
   }
 
   getCandles(contractSymbol: string, tradingDate: string, timeframe: Timeframe): NormalizedCandle[] {

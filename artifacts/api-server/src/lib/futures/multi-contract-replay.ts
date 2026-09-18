@@ -32,6 +32,7 @@ import {
   type HistoricalIndexCheckpoint,
   type HistoricalIndexManifestFile,
   HISTORICAL_INDEX_SCHEMA_VERSION,
+  HISTORICAL_MARKET_DATA_NORMALIZATION_VERSION,
   type HistoricalSessionCatalogEntry,
 } from "./historical-index-store.js";
 import { historicalDataPath } from "./historical-storage-paths.js";
@@ -876,15 +877,23 @@ export function multiContractImportToReplayDataset(
       }
       fiveMinuteByContractDate.set(item.contractSymbol, fiveMinuteByDate);
     }
-    const selected = imported.storage
-      ? imported.storage.getCandles(item.contractSymbol, item.tradingDate, 1)
-      : oneMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
+    const catalogedMarketData = imported.storage
+      ? imported.storage.getSessionMarketData({
+          contractSymbol: item.contractSymbol,
+          tradingDate: item.tradingDate,
+          timeframes: [1, 5],
+          lookbackTradingDates: imported.storage.getPriorSessionDates(item.contractSymbol, item.tradingDate, 1),
+        })
+      : null;
+    const selected = catalogedMarketData?.candles[1]
+      ?? oneMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate)
+      ?? [];
     if (!selected.length) {
       throw new Error(`Scheduled contract ${item.contractSymbol} has no eligible one-minute candles for ${item.tradingDate}.`);
     }
     if (selected.length) {
-      const regularFiveMinute = imported.storage
-        ? imported.storage.getCandles(item.contractSymbol, item.tradingDate, 5)
+      const regularFiveMinute = catalogedMarketData
+        ? catalogedMarketData.candles[5]
           .filter((candle) => candle.isComplete)
           .map(toReplayCandle)
         : fiveMinuteByContractDate.get(item.contractSymbol)?.get(item.tradingDate) ?? [];
@@ -1309,6 +1318,7 @@ function buildSessionCatalog(
         validationStatus: "validated",
         sourceFingerprint: imported.contentFingerprint,
         ingestionVersion: MULTI_CONTRACT_IMPORTER_VERSION,
+        normalizationVersion: HISTORICAL_MARKET_DATA_NORMALIZATION_VERSION,
         schemaVersion: HISTORICAL_INDEX_SCHEMA_VERSION,
       });
     }
