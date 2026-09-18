@@ -67,7 +67,13 @@ import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { FIXED_FORMULA_VERSION, formulaConfigurationHash } from "./formula-hash.js";
 import { createHash } from "node:crypto";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
-import { SHADOW_CONTRACTS_PER_TRADE, consolidationThresholds, type ConsolidationThresholds, type StrategyConfig } from "./strategy/config.js";
+import {
+  MIN_PHASE6_CONSOLIDATION_CANDLES,
+  SHADOW_CONTRACTS_PER_TRADE,
+  consolidationThresholds,
+  type ConsolidationThresholds,
+  type StrategyConfig,
+} from "./strategy/config.js";
 import {
   activeAccountPositionFromTrade,
   accountEntryBlockFor,
@@ -2913,6 +2919,8 @@ export function deserializeDirectSetupEvidence(
     || sourceCandleOpenTimes.length === 0
     || sourceCandleOpenTimes.some((time) => parseSerializedTimestamp(time) === null)) {
     issues.push("INVALID_DIRECT_EVIDENCE_sourceCandleOpenTimes");
+  } else if (sourceCandleOpenTimes.length < MIN_PHASE6_CONSOLIDATION_CANDLES) {
+    issues.push(`INVALID_DIRECT_EVIDENCE_sourceCandleOpenTimes_BELOW_MINIMUM_${MIN_PHASE6_CONSOLIDATION_CANDLES}`);
   }
   if (issues.length > 0) return { evidence: null, issues };
   return {
@@ -3020,7 +3028,23 @@ function auditForEvaluation(
       failed: snapshot.breakout.failed,
     },
     config: activeShadowStrategySnapshot().config,
-    consolidationEvaluation: consolidationEdgeEvaluation,
+    consolidationEvaluation: directSetupEvidence && evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      ? {
+        setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+        decision: evaluation.decision,
+        consolidation: evaluation.consolidation
+          ? { detected: evaluation.consolidation.detected, endTime: evaluation.consolidation.endTime }
+          : null,
+        authoritativeFrozenConsolidation: {
+          startTime: directSetupEvidence.consolidationStartTime,
+          endTime: directSetupEvidence.consolidationEndTime,
+          frozenHigh: directSetupEvidence.frozenHigh,
+          frozenLow: directSetupEvidence.frozenLow,
+          sourceCandleOpenTimes: [...directSetupEvidence.sourceCandleOpenTimes],
+          crossingCandleOpenTime: directSetupEvidence.crossingCandleOpenTime,
+        },
+      }
+      : consolidationEdgeEvaluation,
     qualifyingPullback: snapshot.pullback.events.some((event) =>
       event.qualifies === true
       && ["touch", "proximity", "consolidation", "break and reclaim", "hold"].includes(event.type)

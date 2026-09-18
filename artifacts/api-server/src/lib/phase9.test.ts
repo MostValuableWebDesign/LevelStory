@@ -954,7 +954,12 @@ test("serialized direct causal-trend evidence rejects missing and malformed time
     consolidationEndTime: "2026-08-25T14:00:00.000Z",
     frozenHigh: 101,
     frozenLow: 99,
-    sourceCandleOpenTimes: ["2026-08-25T13:50:00.000Z"],
+    sourceCandleOpenTimes: [
+      "2026-08-25T13:40:00.000Z",
+      "2026-08-25T13:45:00.000Z",
+      "2026-08-25T13:50:00.000Z",
+      "2026-08-25T13:55:00.000Z",
+    ],
     causalTrendDirection: "long",
     causalTrendSource: "BREAKOUT_DIRECTION",
     causalTrendTimestamp: "2026-08-25T13:45:00.000Z",
@@ -962,6 +967,12 @@ test("serialized direct causal-trend evidence rejects missing and malformed time
   const accepted = deserializeDirectSetupEvidence(valid, "long");
   assert.deepEqual(accepted.issues, []);
   assert.equal(accepted.evidence?.causalTrendTimestamp, Date.parse(valid.causalTrendTimestamp));
+  const tooShort = deserializeDirectSetupEvidence({
+    ...valid,
+    sourceCandleOpenTimes: valid.sourceCandleOpenTimes.slice(1),
+  }, "long");
+  assert.equal(tooShort.evidence, null);
+  assert.ok(tooShort.issues.includes("INVALID_DIRECT_EVIDENCE_sourceCandleOpenTimes_BELOW_MINIMUM_4"));
 
   for (const malformedTimestamp of [undefined, "not-a-time", "NaN"]) {
     const malformed = { ...valid, causalTrendTimestamp: malformedTimestamp };

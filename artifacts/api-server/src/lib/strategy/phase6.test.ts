@@ -694,17 +694,46 @@ test("tight consolidation can qualify outside the old 45–60 minute window", ()
 });
 
 test("bounded consolidation qualifies both below 45 and above 60 minutes without NTZ duration substitution", () => {
-  const short = withCausalBaseline(Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
+  const tooShort = withCausalBaseline(Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
+  const short = withCausalBaseline(Array.from({ length: 4 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
   const long = withCausalBaseline(Array.from({ length: 13 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
+  assert.equal(detectExtendedNtzConsolidation(tooShort, ntz()).detected, false);
   assert.equal(detectExtendedNtzConsolidation(short, ntz()).detected, true);
-  assert.equal(detectExtendedNtzConsolidation(short, ntz()).durationMinutes, 15);
+  assert.equal(detectExtendedNtzConsolidation(short, ntz()).durationMinutes, 20);
   assert.equal(detectExtendedNtzConsolidation(long, ntz()).detected, true);
   assert.equal(detectExtendedNtzConsolidation(long, ntz()).durationMinutes, 65);
   assert.equal(detectExtendedNtzConsolidation(short.slice(0, 2), ntz()).detected, false);
 });
 
+test("consolidation requires four completed candles before the crossing candle", () => {
+  const three = withCausalBaseline(Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)));
+  const breakout = candle(900_000, 9.96, 12.1, 9.94, 12, 300);
+  assert.equal(
+    detectExtendedNtzConsolidation([...three, breakout], ntz(), 1.25, breakout.closeTime).detected,
+    false,
+  );
+  assert.equal(
+    detectExtendedNtzConsolidation([...three, { ...breakout, isComplete: false }], ntz()).detected,
+    false,
+  );
+  const nonconsecutive = withCausalBaseline([
+    candle(0, 9.95, 9.99, 9.91, 9.96),
+    candle(300_000, 9.95, 9.99, 9.91, 9.96),
+    candle(900_000, 9.95, 9.99, 9.91, 9.96),
+    candle(1_200_000, 9.95, 9.99, 9.91, 9.96),
+  ]);
+  assert.equal(detectExtendedNtzConsolidation(nonconsecutive, ntz()).detected, false);
+  const unsupportedInterval = withCausalBaseline([
+    candle(0, 9.95, 9.99, 9.91, 9.96),
+    { ...candle(300_000, 9.95, 9.99, 9.91, 9.96), closeTime: 550_000 },
+    candle(600_000, 9.95, 9.99, 9.91, 9.96),
+    candle(900_000, 9.95, 9.99, 9.91, 9.96),
+  ]);
+  assert.equal(detectExtendedNtzConsolidation(unsupportedInterval, ntz()).detected, false);
+});
+
 test("adaptive consolidation rejects a range that is too wide for causal volatility", () => {
-  const candles = withCausalBaseline(Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 10, 11, 9, 10)));
+  const candles = withCausalBaseline(Array.from({ length: 4 }, (_, index) => candle(index * 300_000, 10, 11, 9, 10)));
   const result = detectExtendedNtzConsolidation(candles, ntz());
   assert.equal(result.detected, false);
   assert.ok((result.compressionRatio ?? 0) > config.phase6ConsolidationVolatilityMultiplier);
@@ -715,6 +744,7 @@ test("adaptive consolidation requires meaningful shared candle-range overlap", (
     candle(0, 100, 101, 99, 100),
     candle(300_000, 100, 101.5, 99.5, 100.5),
     candle(600_000, 100, 102, 100, 101),
+    candle(900_000, 100, 102.5, 100.5, 101.5),
   ]);
   const result = detectExtendedNtzConsolidation(candles, ntz());
   assert.equal(result.detected, false);
@@ -723,7 +753,7 @@ test("adaptive consolidation requires meaningful shared candle-range overlap", (
 
 test("adaptive consolidation fails closed without enough preceding completed candles", () => {
   const result = detectExtendedNtzConsolidation(
-    Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
+    Array.from({ length: 4 }, (_, index) => candle(index * 300_000, 9.95, 9.99, 9.91, 9.96)),
     ntz(),
   );
   assert.equal(result.detected, false);
@@ -740,7 +770,7 @@ test("adaptive consolidation rejects excessive directional progression", () => {
 });
 
 test("legacy consolidation range cap is diagnostic while volatility compression governs qualification", () => {
-  const consolidation = withCausalBaseline(Array.from({ length: 3 }, (_, index) => candle(index * 300_000, 9.5, 10.5, 9, 9.5)));
+  const consolidation = withCausalBaseline(Array.from({ length: 4 }, (_, index) => candle(index * 300_000, 9.5, 10.5, 9, 9.5)));
   const breakout = candle(3_600_000, 10, 10.8, 9.9, 10.7, 250);
   const evaluate = (volatilityMultiplier: number, maxRangeTicks: number) => evaluateExtendedNtzConsolidationBreakout(baseContext({
      candles: [...consolidation, breakout],
@@ -811,14 +841,15 @@ test("Long effective threshold is max(P high + 4 ticks, zone high + 1 tick)", ()
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-   const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
+   const p = candle(base + 1_200_000, 100, 100.25, 99.75, 100.1);
+    const e = candle(base + 1_500_000, 100.1, 102.25, 100, 102.25);
   const result = evaluateConsolidationEntryGuard({
-     candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 102.25, 104, 102, 103)],
+     candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_800_000, 102.25, 104, 102, 103)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
     patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
@@ -853,14 +884,15 @@ test("Wick outside with close inside is rejected", () => {
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 100.25);
+   const p = candle(base + 1_200_000, 100, 100.25, 99.75, 100.1);
+   const e = candle(base + 1_500_000, 100.1, 102.25, 100, 100.25);
   const result = evaluateConsolidationEntryGuard({
-     candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_500_000, 100.25, 106, 100, 105)],
+     candles: [...baselineCandles, ...zoneCandles, p, e, candle(base + 1_800_000, 100.25, 106, 100, 105)],
     levels: { ntz: { high: 99, low: 98, complete: true } },
     patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     direction: "long",
@@ -886,13 +918,14 @@ test("consolidation guard preserves the frozen boundary for breakout-pullback P 
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const breakout = candle(base + 900_000, 100, 102, 99.9, 101.75);
-  const p = candle(base + 1_200_000, 101.5, 101.75, 100.75, 101.6);
-  const e = candle(base + 1_500_000, 101.6, 103.75, 101.5, 103.75);
+   const breakout = candle(base + 1_200_000, 100, 102, 99.9, 101.75);
+   const p = candle(base + 1_500_000, 101.5, 101.75, 100.75, 101.6);
+   const e = candle(base + 1_800_000, 101.6, 103.75, 101.5, 103.75);
   const result = evaluateConsolidationEntryGuard({
      candles: [...baselineCandles, ...zoneCandles, breakout, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
@@ -924,12 +957,13 @@ test("Short effective threshold is min(P low − 4 ticks, zone low − 1 tick); 
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const p = candle(base + 900_000, 100, 100.25, 99.75, 99.9);
-  const e = candle(base + 1_200_000, 100.1, 100, 97.75, 97.75);
+   const p = candle(base + 1_200_000, 100, 100.25, 99.75, 99.9);
+   const e = candle(base + 1_500_000, 100.1, 100, 97.75, 97.75);
   const result = evaluateConsolidationEntryGuard({
     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 102, low: 101, complete: true } },
@@ -959,12 +993,13 @@ test("Close outside with threshold not reached is rejected", () => {
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-   const e = candle(base + 1_200_000, 100.1, 101, 100, 101);
+   const p = candle(base + 1_200_000, 100, 100.25, 99.75, 100.1);
+    const e = candle(base + 1_500_000, 100.1, 101, 100, 101);
   const result = evaluateConsolidationEntryGuard({
     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
@@ -989,14 +1024,15 @@ test("Fill exactly on the boundary is rejected", () => {
     candle(base, 100, 100.5, 99.5, 100),
     candle(base + 300_000, 100, 100.5, 99.5, 100.1),
     candle(base + 600_000, 100.1, 100.5, 99.5, 100),
+    candle(base + 900_000, 100, 100.5, 99.5, 100.1),
   ];
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const p = candle(base + 900_000, 100, 100.25, 99.75, 100.1);
-  const e = candle(base + 1_200_000, 100.1, 102.25, 100, 102.25);
+   const p = candle(base + 1_200_000, 100, 100.25, 99.75, 100.1);
+   const e = candle(base + 1_500_000, 100.1, 102.25, 100, 102.25);
   const result = evaluateConsolidationEntryGuard({
-    candles: [...baselineCandles, ...zoneCandles, p, e],
+     candles: [...baselineCandles, ...zoneCandles, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
     patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 101.25 },
     entryFillPrice: 100.5,
@@ -1019,11 +1055,17 @@ test("ORB pullback applies the consolidation guard to its causal P to E window",
   const baselineCandles = Array.from({ length: 12 }, (_, index) =>
     candle(base - (12 - index) * 300_000, 100, 100.5, 99.5, 100),
   );
-  const consolidationSeed = candle(base, 100, 100.5, 99.9, 100.1);
-  const p = candle(base + 300_000, 100, 100.5, 99.9, 100.1);
-  const e = candle(base + 600_000, 100.1, 100.4, 99.9, 100.25);
+   const consolidationSeed = candle(base, 100, 100.5, 99.9, 100.1);
+   const consolidationCandles = [
+     consolidationSeed,
+     candle(base + 300_000, 100, 100.5, 99.9, 100.1),
+     candle(base + 600_000, 100, 100.5, 99.9, 100.1),
+     candle(base + 900_000, 100, 100.5, 99.9, 100.1),
+   ];
+   const p = candle(base + 1_200_000, 100, 100.5, 99.9, 100.1);
+   const e = candle(base + 1_500_000, 100.1, 100.4, 99.9, 100.25);
   const result = evaluateConsolidationEntryGuard({
-    candles: [...baselineCandles, consolidationSeed, p, e],
+     candles: [...baselineCandles, ...consolidationCandles, p, e],
     levels: { ntz: { high: 99, low: 98, complete: true } },
     patience: { patienceCandle: p, triggerCandle: e, entryBufferTicks: 4, entryBufferPrice: 100.25 },
     direction: "long",

@@ -3,7 +3,7 @@ import type { MajorLevel } from "./major-levels.js";
 import type { DynamiteLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
 import type { StrategyConfig } from "./config.js";
-import { DEFAULT_STRATEGY_CONFIG } from "./config.js";
+import { DEFAULT_STRATEGY_CONFIG, MIN_PHASE6_CONSOLIDATION_CANDLES } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
 import { hasConfirmedDirectionalTrend } from "./rules.js";
@@ -189,6 +189,14 @@ type ConsolidationEvaluationInput = {
   consolidation?: {
     detected: boolean;
     endTime: number | string | null;
+  } | null;
+  authoritativeFrozenConsolidation?: {
+    startTime: number;
+    endTime: number;
+    frozenHigh: number;
+    frozenLow: number;
+    sourceCandleOpenTimes: number[];
+    crossingCandleOpenTime: number;
   } | null;
 };
 
@@ -753,8 +761,14 @@ export function detectExtendedNtzConsolidation(
 ): ExtendedConsolidation {
   const completed = completedCandles(candles)
     .filter(isCompletedFiveMinuteCandle)
-    .filter((candle) => breakoutTime === null || candle.closeTime <= breakoutTime);
-  const minimumCount = Math.max(DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles, Math.floor(minimumCandles));
+    // breakoutTime is the first instant at which the threshold may be crossed.
+    // The crossing/entry candle must never become part of the frozen range.
+    .filter((candle) => breakoutTime === null || candle.closeTime < breakoutTime);
+  const minimumCount = Math.max(
+    MIN_PHASE6_CONSOLIDATION_CANDLES,
+    DEFAULT_STRATEGY_CONFIG.phase6ConsolidationMinCandles,
+    Math.floor(minimumCandles),
+  );
   if (completed.length < minimumCount) return emptyConsolidation(`At least ${minimumCount} contiguous completed candles are required.`);
   const candidates: ExtendedConsolidation[] = [];
   for (let count = minimumCount; count <= completed.length; count += 1) {
@@ -856,7 +870,12 @@ export function evaluateConsolidationEntryGuard(input: {
     : typeof evaluatedConsolidation.endTime === "number"
       ? evaluatedConsolidation.endTime
       : Date.parse(evaluatedConsolidation.endTime);
-  const breakoutCandle = directConsolidation && evaluatedConsolidation?.detected
+  const authoritativeFrozenConsolidation = directConsolidation
+    ? input.consolidationEvaluation?.authoritativeFrozenConsolidation ?? null
+    : null;
+  const breakoutCandle = directConsolidation && authoritativeFrozenConsolidation
+    ? completed.find((candle) => candle.openTime === authoritativeFrozenConsolidation.crossingCandleOpenTime)
+    : directConsolidation && evaluatedConsolidation?.detected
     && evaluatedEndTime !== null
     && Number.isFinite(evaluatedEndTime)
     && typeof input.direction === "string"
@@ -901,7 +920,29 @@ export function evaluateConsolidationEntryGuard(input: {
     : completed.filter((candle) => patienceCandle
       ? candle.closeTime <= patienceCandle.openTime
       : candle.closeTime <= (completed.at(-1)?.closeTime ?? Number.NEGATIVE_INFINITY));
-  const frozen = detectExtendedNtzConsolidation(
+  const frozen = authoritativeFrozenConsolidation
+    ? {
+      detected: true,
+      candleCount: authoritativeFrozenConsolidation.sourceCandleOpenTimes.length,
+      durationMinutes: Math.round((authoritativeFrozenConsolidation.endTime - authoritativeFrozenConsolidation.startTime) / 60_000),
+      insideOrNearCount: 0,
+      range: authoritativeFrozenConsolidation.frozenHigh - authoritativeFrozenConsolidation.frozenLow,
+      expansionRatio: null,
+      causalVolatilityBaseline: null,
+      compressionRatio: null,
+      overlapRatio: null,
+      highRejectionCount: 0,
+      lowRejectionCount: 0,
+      maxDirectionalSequence: 0,
+      diagnosticRangeCapExceeded: false,
+      startTime: authoritativeFrozenConsolidation.startTime,
+      endTime: authoritativeFrozenConsolidation.endTime,
+      frozenHigh: authoritativeFrozenConsolidation.frozenHigh,
+      frozenLow: authoritativeFrozenConsolidation.frozenLow,
+      qualificationReason: `Authoritative direct consolidation: ${authoritativeFrozenConsolidation.sourceCandleOpenTimes.length} frozen source candles.`,
+      detail: "The direct strategy evaluation supplied the frozen consolidation identity.",
+    }
+    : detectExtendedNtzConsolidation(
       detectionCandles,
       input.levels.ntz,
       input.config.phase6ConsolidationExpansionRatio,
@@ -920,15 +961,17 @@ export function evaluateConsolidationEntryGuard(input: {
     || typeof frozen.frozenLow !== "number"
   ) return null;
 
-  const sourceCandleOpenTimes = completed
-    .filter((candle) =>
-      frozen.startTime !== null
-      && frozen.endTime !== null
-      && candle.openTime >= frozen.startTime
-      && candle.closeTime <= frozen.endTime
-      && candle.closeTime <= (frozen.endTime ?? Number.POSITIVE_INFINITY),
-    )
-    .map((candle) => candle.openTime);
+  const sourceCandleOpenTimes = authoritativeFrozenConsolidation
+    ? [...authoritativeFrozenConsolidation.sourceCandleOpenTimes]
+    : completed
+      .filter((candle) =>
+        frozen.startTime !== null
+        && frozen.endTime !== null
+        && candle.openTime >= frozen.startTime
+        && candle.closeTime <= frozen.endTime
+        && candle.closeTime <= (frozen.endTime ?? Number.POSITIVE_INFINITY),
+      )
+      .map((candle) => candle.openTime);
   const zoneHigh = frozen.frozenHigh;
   const zoneLow = frozen.frozenLow;
   const direction = input.direction;

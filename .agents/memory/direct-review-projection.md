@@ -8,3 +8,9 @@ Direct visual-review snapshots must carry direct setup provenance from the histo
 **Why:** The replay occurrence can have the correct frozen consolidation range and structural stop while the legacy modeled trade still contains a patience-derived entry or stop. If the projection exposes the legacy trade unchanged, the chart shows the wrong level and lacks the source timestamps needed to preserve a range that ended before entry.
 
 **How to apply:** When adding or changing a direct strategy, keep the frozen high/low, source candle timestamps, authoritative threshold, actual outside-zone fill, and structural stop together through `buildMachineSnapshot`, `machineEvidence`, `tradeEvents`, and chart annotation inputs.
+
+At candidate projection time, pass validated direct frozen-zone provenance into the consolidation guard instead of reconstructing it from a later visible candle window. The guard must retain the direct source timestamps and crossing identity.
+
+**Why:** A later replay cursor can preserve the direct audit's frozen range while a second guard reconstruction lacks the exact crossing boundary and returns no zone, causing a valid direct occurrence to be rejected as missing frozen geometry.
+
+**How to apply:** If a direct evaluation carries validated frozen consolidation evidence, use that evidence for guard identity and geometry; only reconstruct for paths without authoritative direct provenance.

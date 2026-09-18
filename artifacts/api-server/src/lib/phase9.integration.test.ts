@@ -104,7 +104,7 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
     && item.openTime >= regularWindow.openTime
     && item.openTime < regularWindow.closeTime,
   );
-  const signalIndex = kind === "reversal" ? 37 : 40;
+  const signalIndex = kind === "reversal" ? 37 : 29;
   const base = regular[25]!.close;
   const orbHigh = Math.max(...regular.slice(0, 3).map((item) => item.high));
   const orbLow = Math.min(...regular.slice(0, 3).map((item) => item.low));
@@ -395,6 +395,24 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
       assert.ok(candidate?.strategyStopPrice !== null && Number.isFinite(candidate?.strategyStopPrice));
       assert.ok(candidate?.targetDisposition);
       if (kind === "consolidation") {
+          const frozenHigh = qualifiedAudit?.directConsolidationZoneHigh;
+          const frozenLow = qualifiedAudit?.directConsolidationZoneLow;
+          assert.equal(typeof frozenHigh, "number");
+          assert.equal(typeof frozenLow, "number");
+          const expectedEntry = direction === "long"
+            ? frozenHigh! + 8 * specification.tickSize
+            : frozenLow! - 8 * specification.tickSize;
+          const expectedStop = direction === "long"
+            ? frozenLow! - 8 * specification.tickSize
+            : frozenHigh! + 8 * specification.tickSize;
+          assert.equal(candidate?.confirmationPrice, expectedEntry);
+          assert.equal(candidate?.strategyStopPrice, expectedStop);
+          assert.equal(
+            direction === "long"
+              ? (candidate?.entryHigh ?? Number.NEGATIVE_INFINITY) > frozenHigh!
+              : (candidate?.entryLow ?? Number.POSITIVE_INFINITY) < frozenLow!,
+            true,
+          );
         const causalTrendSource = qualifiedAudit?.causalTrendSource;
         assert.equal(qualifiedAudit?.causalTrendDirection, direction);
         assert.ok(causalTrendSource === "ORB_TREND" || causalTrendSource === "BREAKOUT_DIRECTION");
@@ -409,6 +427,8 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
         assert.equal(candidate?.causalIdentity.causalTrendSource, causalTrendSource);
         assert.equal(candidate?.causalIdentity.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
         assert.equal(candidate?.managementContext?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+        assert.equal(qualifiedAudit?.directConsolidationSourceCandleTimestamps?.length, 4);
+        assert.equal(occurrence?.directConsolidationSourceCandleTimestamps?.length, 4);
         const execution = report.candidateExecutionEvidence?.find((trade) => trade.candidateId === candidate?.candidateId);
         assert.equal(execution?.causalIdentity?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
       }

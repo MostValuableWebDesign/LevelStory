@@ -98,7 +98,8 @@ export type StrategyConfig = {
   orbTrendWickOnlyBehavior: "NO_STATE_CHANGE";
 };
 
-export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v2";
+export const CONSOLIDATION_THRESHOLD_VERSION = "phase6-consolidation-v3";
+export const MIN_PHASE6_CONSOLIDATION_CANDLES = 4;
 export const DEFAULT_NO_LEVEL_BREAKEVEN_ACTIVATION_BARS = 6;
 export const SHADOW_CONTRACTS_PER_TRADE = DEFAULT_FIXED_CONTRACTS;
 export const PATIENCE_ENTRY_BUFFER_TICKS = 4;
@@ -203,7 +204,7 @@ export const DEFAULT_STRATEGY_CONFIG: Readonly<StrategyConfig> = {
   phase4FailureOpposingVolumeRatio: 1.5,
   phase6ConsolidationThresholdVersion: CONSOLIDATION_THRESHOLD_VERSION,
   phase6ConsolidationExpansionRatio: 1.25,
-  phase6ConsolidationMinCandles: 3,
+  phase6ConsolidationMinCandles: MIN_PHASE6_CONSOLIDATION_CANDLES,
   phase6ConsolidationMaxRangeTicks: 24, // diagnostic reference only; never an eligibility cap
   phase6ConsolidationVolatilityLookback: 12,
   phase6ConsolidationVolatilityMultiplier: 1.5,
@@ -395,8 +396,9 @@ export function validateStrategyConfig(config: StrategyConfig): StrategyConfig {
   if (!Number.isInteger(config.phase4AtrPeriod) || !Number.isInteger(config.phase4PullbackMaxCandles)) {
     throw new Error("Invalid strategy configuration: Phase 4 ATR period and pullback candle limit must be integers.");
   }
-  if (!Number.isInteger(config.phase6ConsolidationMinCandles) || config.phase6ConsolidationMinCandles < 3) {
-    throw new Error("Invalid strategy configuration: phase6ConsolidationMinCandles must be an integer of at least three.");
+  if (!Number.isInteger(config.phase6ConsolidationMinCandles)
+    || config.phase6ConsolidationMinCandles < MIN_PHASE6_CONSOLIDATION_CANDLES) {
+    throw new Error(`Invalid strategy configuration: phase6ConsolidationMinCandles must be an integer of at least ${MIN_PHASE6_CONSOLIDATION_CANDLES}.`);
   }
   if (!Number.isInteger(config.phase6ConsolidationMaxRangeTicks)) {
     throw new Error("Invalid strategy configuration: phase6ConsolidationMaxRangeTicks must be an integer.");

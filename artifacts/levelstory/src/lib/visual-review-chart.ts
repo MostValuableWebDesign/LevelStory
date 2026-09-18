@@ -356,7 +356,7 @@ export function findConsolidationZones(
   candles: readonly VisualValidationCandle[],
   thresholds: ConsolidationThresholds,
 ): ConsolidationZone[] {
-  const minimumCandles = Math.max(3, Math.floor(thresholds.minCandles));
+  const minimumCandles = Math.floor(thresholds.minCandles);
   const volatilityLookback = Math.max(1, Math.floor(thresholds.volatilityLookback));
   const maxExpansionRatio = thresholds.maxExpansionRatio;
   const volatilityMultiplier = thresholds.volatilityMultiplier;
@@ -364,7 +364,8 @@ export function findConsolidationZones(
   const minRejectionCount = Math.max(1, Math.floor(thresholds.minRejectionCount));
   const maxDirectionalSequence = Math.max(1, Math.floor(thresholds.maxDirectionalSequence));
   if (
-    !Number.isFinite(minimumCandles)
+    !Number.isInteger(minimumCandles)
+    || minimumCandles < 1
     || !Number.isFinite(volatilityLookback)
     || !Number.isFinite(maxExpansionRatio)
     || maxExpansionRatio <= 0

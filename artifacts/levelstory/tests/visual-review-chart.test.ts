@@ -194,14 +194,14 @@ test("consolidation scanning finds every maximal bounded range in a snapshot", (
     close: 100,
   }));
   const separator = makeCandle(5, { open: 100, high: 108, low: 100, close: 107 });
-  const second = Array.from({ length: 3 }, (_, offset) => makeCandle(offset + 6, {
+  const second = Array.from({ length: 4 }, (_, offset) => makeCandle(offset + 6, {
     open: 110,
     high: 111,
     low: 109,
     close: 110,
   }));
   const zones = findConsolidationZones([...baseline, ...first, separator, ...second], {
-    minCandles: 3,
+    minCandles: 4,
     maxRangeTicks: 24,
     maxExpansionRatio: 1.25,
     volatilityLookback: 12,
@@ -214,7 +214,7 @@ test("consolidation scanning finds every maximal bounded range in a snapshot", (
   assert.equal(zones[0]!.sourceCandleOpenTimes.length, 5);
   assert.equal(zones[0]!.high, 101);
   assert.equal(zones[0]!.low, 99);
-  assert.equal(zones[1]!.sourceCandleOpenTimes.length, 3);
+  assert.equal(zones[1]!.sourceCandleOpenTimes.length, 4);
 });
 
 test("authoritative consolidation remains visible when entry occurs after the zone", () => {
