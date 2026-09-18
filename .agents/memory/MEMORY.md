@@ -14,6 +14,7 @@
 - [Content digest cache identity](content-digest-cache-identity.md) — historical source cache identity must hash streamed bytes, not path, size, or modification time.
 - [Visual cache fingerprint contract](visual-cache-fingerprint-contract.md) — composite historical cache identities are opaque strings, not fixed-length hexadecimal digests.
 - [Walk-forward evidence](walk-forward-evidence.md) — chronological holdouts and independent cost cases must remain descriptive; never select a best sensitivity result.
+- [Zero-holdout walk-forward](zero-holdout-walk-forward.md) — a zero-day holdout is valid visual-review input and must produce no folds, not a non-advancing fold loop.
 - [Bundled worker paths](bundled-worker-paths.md) — worker URLs resolve from the emitted bundle location, not the source module location; verify the dist tree after bundling.
 - [Persisted summary schema changes](persisted-summary-schema-changes.md) — bump the historical index cache version and validate persisted summaries when adding response metadata.
 - [Rollover acceptance windows](rollover-acceptance-windows.md) — choose the replay window around an explicit rollover boundary; latest-N date selection can otherwise hide contract isolation bugs.

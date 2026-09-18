@@ -206,6 +206,7 @@ function classifyEvaluationEdge(
 }
 
 function foldStarts(dateCount: number, inSampleDays: number, outOfSampleDays: number): number[] {
+  if (dateCount <= 0 || inSampleDays <= 0 || outOfSampleDays <= 0) return [];
   const foldLength = inSampleDays + outOfSampleDays;
   const starts: number[] = [];
   for (let start = 0; start + foldLength <= dateCount; start += outOfSampleDays) starts.push(start);

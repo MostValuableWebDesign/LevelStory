@@ -130,6 +130,20 @@ test("small samples stay neutral even when observed expectancy is negative", () 
   }, 3), "insufficient_evidence");
 });
 
+test("zero holdout days do not create a non-advancing fold loop", () => {
+  const evaluation = evaluateWalkForward({
+    reports: dates.map((date, index) => reportForTrades([trade(date, index, 5)])),
+    partitions: partitions(),
+    selectedDates: dates,
+    formulaHash: "c".repeat(64),
+    formulaVersion: "test",
+  }, 5, 0);
+
+  assert.equal(evaluation.foldCount, 0);
+  assert.deepEqual(evaluation.folds, []);
+  assert.equal(evaluation.metrics.tradeCount, dates.length);
+});
+
 test("formula hash is stable for the locked formula and independent of cost settings", () => {
   assert.equal(formulaConfigurationHash({ symbol: "MES" }), formulaConfigurationHash({ symbol: "MES" }));
   assert.notEqual(formulaConfigurationHash({ symbol: "MES" }), formulaConfigurationHash({ symbol: "MNQ" }));
