@@ -4211,8 +4211,10 @@ export type QualificationFunnelRejectionCountsItem = {
 };
 
 export interface QualificationFunnel {
+  version: string;
   sessionCount: number;
   candidateCount: number;
+  occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: QualificationFunnelRejectionCountsItem[];
   comparisons: QualificationFunnelComparison[];

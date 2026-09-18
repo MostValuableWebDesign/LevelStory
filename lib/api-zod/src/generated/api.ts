@@ -3245,8 +3245,10 @@ export const StartBatchBacktestResponse = zod.object({
 }))
 }),
   "funnel": zod.object({
+  "version": zod.string(),
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
+  "occurrenceCount": zod.number(),
   "stages": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
@@ -4889,8 +4891,10 @@ export const GetBatchBacktestStatusResponse = zod.object({
 }))
 }),
   "funnel": zod.object({
+  "version": zod.string(),
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
+  "occurrenceCount": zod.number(),
   "stages": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),
@@ -6533,8 +6537,10 @@ export const CancelBatchBacktestResponse = zod.object({
 }))
 }),
   "funnel": zod.object({
+  "version": zod.string(),
   "sessionCount": zod.number(),
   "candidateCount": zod.number(),
+  "occurrenceCount": zod.number(),
   "stages": zod.array(zod.object({
   "stage": zod.enum(['session_loaded', 'ntz_orb_completed', 'strong_breakout_candidate', 'strong_continuation_confirmed', 'pullback_or_consolidation', 'critical_level_interaction', 'valid_trend_aligned_patience_candle', 'immediate_next_candle_confirmation', 'risk_approved', 'modeled_entry', 'final_exit']),
   "count": zod.number(),

@@ -1579,6 +1579,8 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v3-stage-safe-details";
+
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
 export type QualificationFunnelStageCount = {
@@ -1640,6 +1642,7 @@ export type QualificationFunnelComparison = {
 };
 
 export type QualificationFunnel = {
+  version: string;
   sessionCount: number;
   candidateCount: number;
   occurrenceCount: number;
@@ -3240,33 +3243,230 @@ function passedRule(record: BacktestAuditRecord, pattern: RegExp): boolean {
   return record.ruleEvidence.some((evidence) => evidence.startsWith("PASS ") && pattern.test(evidence));
 }
 
+type FunnelRuleEvidence = {
+  passed: boolean;
+  key: string;
+  detail: string;
+};
+
+function funnelRuleEvidence(record: BacktestAuditRecord): FunnelRuleEvidence[] {
+  return record.ruleEvidence.flatMap((evidence) => {
+    const match = /^(PASS|FAIL)\s+([^:]+?)(?::\s*(.*))?$/.exec(evidence);
+    if (!match) return [];
+    return [{
+      passed: match[1] === "PASS",
+      key: match[2]!.trim(),
+      detail: match[3]?.trim() ?? "",
+    }];
+  });
+}
+
+function ruleResult(
+  record: BacktestAuditRecord,
+  keys: readonly string[],
+): boolean | null {
+  const wanted = new Set(keys.map((key) => key.toLowerCase()));
+  const evidence = funnelRuleEvidence(record).filter((item) => wanted.has(item.key.toLowerCase()));
+  if (evidence.length === 0) return null;
+  return evidence.at(-1)!.passed;
+}
+
+function anyRulePassed(record: BacktestAuditRecord, keys: readonly string[]): boolean {
+  return ruleResult(record, keys) === true;
+}
+
+function allRulesPassed(record: BacktestAuditRecord, keys: readonly string[]): boolean {
+  return keys.every((key) => ruleResult(record, [key]) === true);
+}
+
+function hasCompletedPatienceEvidence(record: BacktestAuditRecord): boolean {
+  return record.patienceCandle !== null
+    || [
+      "PATIENCE_CANDLE_VALID",
+      "TRIGGER_CANDLE_ACTIVE",
+      "BREAK_DETECTED_WAITING_FOR_BUFFER",
+      "ENTRY_BUFFER_REACHED",
+      "ENTRY_TRIGGERED",
+    ].includes(record.patienceState);
+}
+
+function canonicalFunnelStrategy(record: BacktestAuditRecord): string {
+  return canonicalStrategyId(record.setupType) ?? record.setupType;
+}
+
+function stageRuleKeys(
+  record: BacktestAuditRecord,
+  stage: QualificationFunnelStage,
+): readonly string[] {
+  const strategy = canonicalFunnelStrategy(record);
+  switch (stage) {
+    case "strong_breakout_candidate":
+      if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+        return ["causalTrend", "strongBreakout"];
+      }
+      if (strategy === "ORB_PULLBACK_CONTINUATION") {
+        return ["ntzComplete", "closeOutsideNtz", "strongBreakout"];
+      }
+      if (strategy === "EARLY_ORB_MOMENTUM_CONTINUATION") {
+        return ["ntzComplete", "strongBreakout", "closeOutsideNtz"];
+      }
+      return ["causalTrend", "strongBreakout", "closeOutsideNtz", "breakout"];
+    case "strong_continuation_confirmed":
+      if (strategy === "EQUIVALENT_CANDLE_REVERSAL") {
+        return ["equivalentContext", "directionalConfirmation"];
+      }
+      if (strategy === "PEAK_RETRACEMENT_REVERSAL") {
+        return ["reversalDirection", "counterTrendDirection"];
+      }
+      return ["continuation", "trendAlignment", "directionalConfirmation"];
+    case "pullback_or_consolidation":
+      if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+        return ["extendedConsolidation", "rangeStable", "postBreakoutContext"];
+      }
+      return ["pullback", "consolidation", "retest", "noPullbackRequired"];
+    case "critical_level_interaction":
+      return ["criticalLevel", "levelContext", "majorLevel"];
+    case "valid_trend_aligned_patience_candle":
+      return ["validPatienceCandle", "validPatienceNearLevel", "patienceCandleOutsideOrb"];
+    case "immediate_next_candle_confirmation":
+      return ["immediateTrigger", "entryOutsideFinalizedNtz"];
+    case "risk_approved":
+      return ["riskApproved", "risk", "stop", "target", "contract", "dailyLoss"];
+    default:
+      return [];
+  }
+}
+
+function stageFailureDetail(
+  record: BacktestAuditRecord,
+  stage: QualificationFunnelStage,
+): string | null {
+  const evidence = funnelRuleEvidence(record);
+  const keys = stageRuleKeys(record, stage);
+  const normalizedKeys = new Set(keys.map((key) => key.toLowerCase()));
+  const failures = evidence.filter((item) => !item.passed && normalizedKeys.has(item.key.toLowerCase()));
+  if (failures.length > 0) {
+    return failures
+      .map((item) => item.detail ? `${item.key}: ${item.detail}` : item.key)
+      .join("; ");
+  }
+  const strategy = canonicalFunnelStrategy(record);
+  if (stage === "strong_breakout_candidate") {
+    const breakoutDetail = record.breakoutEvidence
+      && !/(?:patience|two[-\s]?candle|equivalent opposing|pullback|immediate trigger)/i.test(record.breakoutEvidence)
+      ? record.breakoutEvidence
+      : null;
+    if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+      return breakoutDetail || "Required causal trend or breakout boundary evidence was not established.";
+    }
+    if (strategy === "ORB_PULLBACK_CONTINUATION" || strategy === "EARLY_ORB_MOMENTUM_CONTINUATION") {
+      return breakoutDetail || "Required breakout boundary evidence was not established.";
+    }
+    return "Required breakout evidence was missing or noncausal.";
+  }
+  if (stage === "pullback_or_consolidation") {
+    return record.pullbackEvidence || "Required pullback or consolidation context was not established.";
+  }
+  if (stage === "critical_level_interaction") {
+    return record.criticalLevelEvidence || "Required level interaction was not established.";
+  }
+  if (stage === "valid_trend_aligned_patience_candle") {
+    return record.patienceState || "No required patience candle was established.";
+  }
+  if (stage === "immediate_next_candle_confirmation") {
+    return record.triggerCandle ? null : "The immediate next candle did not confirm the entry.";
+  }
+  return record.rejectionReason ?? record.rejectionSummary;
+}
+
 function stageEvidence(
   record: BacktestAuditRecord,
   trade: BacktestTrade | undefined,
 ): boolean[] {
   const ruleText = record.ruleEvidence.join(" ");
   const marketText = `${record.breakoutEvidence} ${record.trendEvidence} ${record.pullbackEvidence}`;
+  const strategy = canonicalFunnelStrategy(record);
   const orbCompleted = passedRule(record, /(?:ntz|orb)/i)
     || !/(?:NOT_COMPLETED|INCOMPLETE|WAITING)/i.test(record.orbState);
-  const strongBreakout = record.setupType === "ORB_PULLBACK_CONTINUATION"
-    ? passedRule(record, /closeOutsideNtz/)
-    : passedRule(record, /(?:breakout|orb|impulse|strong)/i)
-      || /(?:strong|confirmed|breakout|impulse)/i.test(record.breakoutEvidence);
-  const continuation = record.setupType === "ORB_PULLBACK_CONTINUATION"
-    ? orbCompleted && record.orbState !== "SETUP_EXPIRED" && !/BREAKOUT_FAILED|ORB_REENTRY_INVALIDATED/i.test(record.breakoutEvidence)
-    : passedRule(record, /(?:continuation|trend|alignment|follow)/i)
-      || /(?:continuation|aligned|follow-through|follow through)/i.test(marketText);
-  const pullback = passedRule(record, /(?:pullback|consolidation|retest)/i)
-    || /(?:pullback|consolidation|retest)/i.test(record.pullbackEvidence);
-  const criticalLevel = record.setupType === "ORB_PULLBACK_CONTINUATION"
-    ? passedRule(record, /levelContext/)
-    : passedRule(record, /(?:critical|level|ntz|orb)/i)
-    || (record.criticalLevelEvidence !== "No critical level evidence." && record.criticalLevelEvidence.length > 0);
-  const patience = record.patienceCandle !== null
-    || /valid|confirmed|ready|aligned/i.test(record.patienceState);
-  const trigger = record.triggerCandle !== null
-    || record.modeledFillObservationTime !== null
-    || /trigger|confirmed/i.test(record.patienceState);
+  const directConsolidation = strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  const equivalentReversal = strategy === "EQUIVALENT_CANDLE_REVERSAL";
+  const peakReversal = strategy === "PEAK_RETRACEMENT_REVERSAL";
+  const earlyOrb = strategy === "EARLY_ORB_MOMENTUM_CONTINUATION";
+  const orbPullback = strategy === "ORB_PULLBACK_CONTINUATION";
+  const strongBreakout = directConsolidation
+    ? allRulesPassed(record, ["causalTrend", "strongBreakout"])
+      || (ruleResult(record, ["causalTrend", "strongBreakout"]) === null
+        && passedRule(record, /(?:breakout|impulse|strong)/i)
+        && !/conflict|invalid|missing/i.test(record.trendEvidence))
+    : orbPullback
+      ? anyRulePassed(record, ["closeOutsideNtz", "strongBreakout"])
+        || (ruleResult(record, ["closeOutsideNtz", "strongBreakout"]) === null
+          && /(?:close.*outside|breakout.*confirmed|qualified.*breakout)/i.test(record.breakoutEvidence))
+      : earlyOrb
+        ? anyRulePassed(record, ["strongBreakout", "closeOutsideNtz"])
+          || (ruleResult(record, ["strongBreakout", "closeOutsideNtz"]) === null
+            && /(?:close.*outside|breakout.*confirmed|qualified.*breakout|boundary.*crossed)/i.test(record.breakoutEvidence))
+        : equivalentReversal || peakReversal
+          ? true
+          : passedRule(record, /(?:breakout|orb|impulse|strong)/i)
+            || /(?:strong|confirmed|breakout|impulse)/i.test(record.breakoutEvidence);
+  const continuation = directConsolidation
+    ? strongBreakout
+    : equivalentReversal
+      ? anyRulePassed(record, ["equivalentContext", "directionalConfirmation"])
+        || (ruleResult(record, ["equivalentContext", "directionalConfirmation"]) === null
+          && /equivalent opposing|reversal direction/i.test(marketText))
+      : peakReversal
+        ? anyRulePassed(record, ["reversalDirection", "counterTrendDirection"])
+          || (ruleResult(record, ["reversalDirection", "counterTrendDirection"]) === null
+            && /reversal|counter.?trend/i.test(marketText))
+        : orbPullback
+          ? orbCompleted && record.orbState !== "SETUP_EXPIRED" && !/BREAKOUT_FAILED|ORB_REENTRY_INVALIDATED/i.test(record.breakoutEvidence)
+            && (anyRulePassed(record, ["continuation", "trendAlignment", "followThrough"])
+              || ruleResult(record, ["continuation", "trendAlignment", "followThrough"]) === null)
+          : strongBreakout
+            || passedRule(record, /(?:continuation|trend|alignment|follow)/i)
+            || /(?:continuation|aligned|follow-through|follow through)/i.test(marketText);
+  const pullback = directConsolidation
+    ? allRulesPassed(record, ["extendedConsolidation", "rangeStable"])
+      || (ruleResult(record, ["extendedConsolidation", "rangeStable"]) === null
+        && /consolidation|stable/i.test(record.pullbackEvidence))
+    : earlyOrb
+      ? anyRulePassed(record, ["noPullbackRequired"])
+        || (ruleResult(record, ["noPullbackRequired"]) === null && !/pullback required/i.test(record.pullbackEvidence))
+      : equivalentReversal || peakReversal
+        ? true
+        : passedRule(record, /(?:pullback|consolidation|retest)/i)
+          || /(?:pullback|consolidation|retest)/i.test(record.pullbackEvidence);
+  const criticalLevel = directConsolidation || equivalentReversal || peakReversal || earlyOrb
+    ? true
+    : orbPullback
+      ? anyRulePassed(record, ["levelContext"])
+        || (ruleResult(record, ["levelContext"]) === null
+          && passedRule(record, /(?:critical|level|ntz|orb)/i))
+      : passedRule(record, /(?:critical|level|ntz|orb)/i)
+        || (record.criticalLevelEvidence !== "No critical level evidence." && record.criticalLevelEvidence.length > 0);
+  const patience = directConsolidation || equivalentReversal
+    ? true
+    : peakReversal
+      ? anyRulePassed(record, ["validPatienceCandle"])
+        || (ruleResult(record, ["validPatienceCandle"]) === null
+          && hasCompletedPatienceEvidence(record))
+      : earlyOrb
+        ? anyRulePassed(record, ["patienceCandleOutsideOrb", "validPatienceCandle"])
+          || (ruleResult(record, ["patienceCandleOutsideOrb", "validPatienceCandle"]) === null
+            && hasCompletedPatienceEvidence(record))
+        : record.patienceCandle !== null
+          || hasCompletedPatienceEvidence(record);
+  const trigger = directConsolidation
+    ? strongBreakout
+    : equivalentReversal
+      ? anyRulePassed(record, ["immediateTrigger"])
+        || (ruleResult(record, ["immediateTrigger"]) === null && record.triggerCandle !== null)
+      : record.triggerCandle !== null
+        || record.modeledFillObservationTime !== null
+        || anyRulePassed(record, ["immediateTrigger"])
+        || /trigger|confirmed/i.test(record.patienceState);
   const risk = trade !== undefined
     || (record.rejectionReason !== "RISK_REJECTED"
       && (record.decision === "SETUP QUALIFIED" || passedRule(record, /risk|stop|target|contract|daily/i)));
@@ -6155,7 +6355,9 @@ export function buildQualificationFunnel(
         volumeRegime,
         reachedStage,
         primaryRejectionStage,
-        rejectionDetail: primaryRejectionStage ? record.rejectionSummary ?? record.rejectionReason : null,
+           rejectionDetail: primaryRejectionStage
+             ? stageFailureDetail(record, primaryRejectionStage)
+             : null,
         evidence: {
           evaluatedCandleOpenTime: record.evaluatedCandleOpenTime,
           orbLevels: record.orbState,
@@ -6206,6 +6408,7 @@ export function buildQualificationFunnel(
     .map((stage) => ({ stage, count: candidates.filter((candidate) => candidate.primaryRejectionStage === stage).length }))
     .filter((item) => item.count > 0);
   return {
+    version: QUALIFICATION_FUNNEL_VERSION,
     sessionCount: sessionKeys.size,
     candidateCount: candidates.length,
     occurrenceCount: reports.reduce((total, report) => total + (report.occurrences?.length ?? 0), 0),

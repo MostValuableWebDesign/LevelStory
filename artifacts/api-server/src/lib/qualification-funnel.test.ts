@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildQualificationFunnel,
+  QUALIFICATION_FUNNEL_VERSION,
   type BacktestAuditRecord,
   type BacktestReport,
   type HistoricalOccurrence,
@@ -160,4 +161,143 @@ test("qualification funnel reconciles its ledger occurrence count", () => {
   const funnel = buildQualificationFunnel([report([auditRecord], ["2026-08-24"], "MESU5", [occurrence])]);
   assert.equal(funnel.candidateCount, 1);
   assert.equal(funnel.occurrenceCount, 1);
+});
+
+test("strong breakout candidate passes without patience evidence", () => {
+  const record = audit({
+    id: "direct-breakout-no-patience",
+    setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    decision: "SETUP QUALIFIED",
+    rejectionReason: null,
+    rejectionCategory: "QUALIFIED",
+    rejectionSummary: null,
+    ruleEvidence: [
+      "PASS causalTrend: Causal bullish trend is established.",
+      "PASS strongBreakout: The frozen-range eight-tick threshold was crossed.",
+      "PASS extendedConsolidation: Four completed consolidation candles are present.",
+      "PASS rangeStable: Consolidation quality passed.",
+      "PASS postBreakoutContext: Direct consolidation context is present.",
+      "FAIL validPatienceNearLevel: No patience candle is required for this contract.",
+      "PASS immediateTrigger: The completed breakout is the authorized trigger.",
+      "PASS riskApproved: Risk is approved.",
+    ],
+    patienceState: "PATIENCE_CANDLE_EXPIRED",
+    patienceCandle: null,
+    triggerCandle: null,
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(funnel.version, QUALIFICATION_FUNNEL_VERSION);
+  assert.equal(candidate?.reachedStage, "risk_approved");
+  assert.notEqual(candidate?.primaryRejectionStage, "strong_breakout_candidate");
+  assert.doesNotMatch(candidate?.rejectionDetail ?? "", /patience/i);
+});
+
+test("missing patience is attributed after a valid ORB breakout", () => {
+  const record = audit({
+    id: "orb-missing-patience",
+    setupType: "ORB_PULLBACK_CONTINUATION",
+    decision: "SETUP FORMING",
+    rejectionReason: "PATIENT",
+    rejectionCategory: "WAITING",
+    rejectionSummary: "patienceCandleOutsideOrb: Waiting for patience.",
+    orbState: "QUALIFIED_BREAKOUT",
+    breakoutEvidence: "Qualified breakout confirmed.",
+    pullbackEvidence: "PASS pullback: Retest completed.",
+    criticalLevelEvidence: "PASS levelContext: Level interaction completed.",
+    ruleEvidence: [
+      "PASS ntzComplete: ORB finalized.",
+      "PASS closeOutsideNtz: Breakout closed outside the ORB.",
+      "PASS pullback: Retest completed.",
+      "PASS levelContext: Critical level interaction completed.",
+      "FAIL validPatienceCandle: No valid patience candle is available.",
+      "FAIL immediateTrigger: No immediate trigger is available.",
+    ],
+    patienceState: "WAITING_FOR_VALID_CONTEXT",
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(candidate?.reachedStage, "critical_level_interaction");
+  assert.equal(candidate?.primaryRejectionStage, "valid_trend_aligned_patience_candle");
+  assert.match(candidate?.rejectionDetail ?? "", /validPatienceCandle/);
+  assert.doesNotMatch(candidate?.rejectionDetail ?? "", /strong breakout candidate/i);
+});
+
+test("missing immediate trigger is attributed after patience passes", () => {
+  const record = audit({
+    id: "orb-missing-trigger",
+    setupType: "ORB_PULLBACK_CONTINUATION",
+    decision: "SETUP FORMING",
+    rejectionReason: "PATIENT",
+    rejectionCategory: "WAITING",
+    rejectionSummary: "immediateTrigger: No immediate trigger.",
+    orbState: "QUALIFIED_BREAKOUT",
+    breakoutEvidence: "Qualified breakout confirmed.",
+    pullbackEvidence: "PASS pullback: Retest completed.",
+    criticalLevelEvidence: "PASS levelContext: Level interaction completed.",
+    ruleEvidence: [
+      "PASS ntzComplete: ORB finalized.",
+      "PASS closeOutsideNtz: Breakout closed outside the ORB.",
+      "PASS pullback: Retest completed.",
+      "PASS levelContext: Critical level interaction completed.",
+      "PASS validPatienceCandle: Patience candle confirmed.",
+      "FAIL immediateTrigger: The following candle did not confirm.",
+    ],
+    patienceState: "PATIENCE_CANDLE_VALID",
+    patienceCandle: { open: 100, close: 101 },
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(candidate?.reachedStage, "valid_trend_aligned_patience_candle");
+  assert.equal(candidate?.primaryRejectionStage, "immediate_next_candle_confirmation");
+  assert.match(candidate?.rejectionDetail ?? "", /immediateTrigger/);
+});
+
+test("equivalent-candle reversal failure is not a strong-breakout rejection", () => {
+  const record = audit({
+    id: "missing-equivalent-pattern",
+    setupType: "EQUIVALENT_CANDLE_REVERSAL",
+    decision: "NO TRADE",
+    rejectionReason: "NO_PATTERN",
+    rejectionCategory: "FAILURE",
+    rejectionSummary: "equivalentContext: No equivalent opposing-candle structure.",
+    breakoutEvidence: "No breakout strategy applies.",
+    ruleEvidence: [
+      "FAIL equivalentContext: No equivalent opposing-candle structure.",
+      "FAIL directionalConfirmation: Completed opposing-candle evidence is missing.",
+      "PASS validPatienceCandle: No separate patience candle required.",
+      "FAIL immediateTrigger: No eligible pattern trigger.",
+    ],
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(candidate?.reachedStage, "strong_breakout_candidate");
+  assert.equal(candidate?.primaryRejectionStage, "strong_continuation_confirmed");
+  assert.match(candidate?.rejectionDetail ?? "", /equivalentContext/);
+  assert.doesNotMatch(candidate?.rejectionDetail ?? "", /patience/i);
+});
+
+test("failed breakout remains a strong-breakout rejection even when patience also fails", () => {
+  const record = audit({
+    id: "failed-breakout",
+    setupType: "ORB_PULLBACK_CONTINUATION",
+    decision: "SETUP FORMING",
+    rejectionReason: "PATIENT",
+    rejectionCategory: "WAITING",
+    rejectionSummary: "patienceCandleOutsideOrb: Waiting for patience.",
+    orbState: "QUALIFIED_BREAKOUT",
+    breakoutEvidence: "ORB_PROBE_WAIT: required breakout boundary was not crossed.",
+    ruleEvidence: [
+      "PASS ntzComplete: ORB finalized.",
+      "FAIL closeOutsideNtz: Required breakout boundary was not crossed.",
+      "FAIL validPatienceCandle: No valid patience candle is available.",
+      "FAIL immediateTrigger: No immediate trigger is available.",
+    ],
+    patienceState: "WAITING_FOR_VALID_CONTEXT",
+  });
+  const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
+  const candidate = funnel.candidates[0];
+  assert.equal(candidate?.primaryRejectionStage, "strong_breakout_candidate");
+  assert.match(candidate?.rejectionDetail ?? "", /boundary was not crossed/i);
+  assert.doesNotMatch(candidate?.rejectionDetail ?? "", /patience candle/i);
 });

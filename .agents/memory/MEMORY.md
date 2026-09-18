@@ -98,3 +98,4 @@
 - [Direct crossing identity](direct-crossing-identity.md) — direct consolidation entries must carry frozen-zone and crossing identity separately from the replay evaluation cursor.
 - [Direct review projection](direct-review-projection.md) — visual snapshots must copy frozen direct-zone fields into the audit and reconcile the trade audit before chart rendering.
 - [Serialized causal evidence](serialized-causal-evidence.md) — direct trend evidence must retain its source and availability timestamp through replay, and malformed evidence must fail closed.
+- [Node SQLite constructor options](node-sqlite-options.md) — always pass an options object to DatabaseSync, including writable stores.

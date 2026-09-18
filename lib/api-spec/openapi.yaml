@@ -4245,8 +4245,10 @@ components:
     QualificationFunnel:
       type: object
       properties:
+        version: { type: string }
         sessionCount: { type: number }
         candidateCount: { type: number }
+        occurrenceCount: { type: number }
         stages:
           type: array
           items:
@@ -4267,7 +4269,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QualificationCandidate"
-      required: [sessionCount, candidateCount, stages, rejectionCounts, comparisons, candidates]
+      required: [version, sessionCount, candidateCount, occurrenceCount, stages, rejectionCounts, comparisons, candidates]
     BatchBacktestReport:
       allOf:
         - $ref: "#/components/schemas/BacktestReport"

@@ -11,8 +11,10 @@ import type { QualificationFunnelRejectionCountsItem } from './qualificationFunn
 import type { QualificationFunnelStageCount } from './qualificationFunnelStageCount';
 
 export interface QualificationFunnel {
+  version: string;
   sessionCount: number;
   candidateCount: number;
+  occurrenceCount: number;
   stages: QualificationFunnelStageCount[];
   rejectionCounts: QualificationFunnelRejectionCountsItem[];
   comparisons: QualificationFunnelComparison[];

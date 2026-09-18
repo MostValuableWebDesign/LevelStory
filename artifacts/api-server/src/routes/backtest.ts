@@ -41,7 +41,7 @@ import {
   type BacktestWorkerInput,
   type BacktestWorkerOptions,
 } from "../lib/backtest-worker-client.js";
-import type { BacktestReport } from "../lib/phase9.js";
+import { QUALIFICATION_FUNNEL_VERSION, type BacktestReport } from "../lib/phase9.js";
 import { buildReplayDataset, type BacktestRequest } from "../lib/phase9.js";
 import {
   runBatchBacktest,
@@ -440,7 +440,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
         const cacheKey = buildBacktestCacheKey({
-            cacheVersion: "qualification-batch-v6-fixed-eight-tick-target-runner-audit",
+            cacheVersion: `qualification-batch-${QUALIFICATION_FUNNEL_VERSION}`,
           formulaHash: formulaConfigurationHash(request, activeShadowStrategySnapshot().config),
           request,
           risk,
