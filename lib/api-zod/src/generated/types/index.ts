@@ -92,6 +92,8 @@ export * from './batchBacktestReport';
 export * from './batchBacktestReportBatch';
 export * from './batchBacktestReportBatchContractPartitionsItem';
 export * from './batchBacktestReportBatchContractPartitionsItemPeriod';
+export * from './batchBacktestReportBatchDuplicateOccurrenceConflictsItem';
+export * from './batchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification';
 export * from './batchBacktestRequest';
 export * from './batchBacktestStatus';
 export * from './batchBacktestStatusStatus';

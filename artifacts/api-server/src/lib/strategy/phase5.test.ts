@@ -704,6 +704,12 @@ test("a newer causal eligibility event explicitly supersedes an older active arm
   const result = patienceCandleEngine(candles, "long", { eligibilityEvents: events });
   assert.equal(result.occurrences?.[0]?.eligibilityArmId, "older-arm");
   assert.equal(result.occurrences?.[0]?.eligibilityArmState, "superseded");
+  const transitions = patienceArmLifecycleTransitions(result.occurrences?.[0]!);
+  assert.deepEqual(transitions.map((transition) => transition.to), [
+    "PATIENCE_ARMED",
+    "SUPERSEDED_BY_NEW_BREAKOUT",
+  ]);
+  assert.ok((transitions[1]?.time ?? 0) >= (transitions[0]?.time ?? 0));
 });
 
 test("an occurrence never reads an entry candle beyond the visible evaluation cursor", () => {

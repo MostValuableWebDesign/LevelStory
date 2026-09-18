@@ -61,7 +61,9 @@ import {
   storeBacktestReport,
 } from "../lib/backtest-store.js";
 import {
+  BATCH_AGGREGATION_CACHE_KEY_VERSION,
   buildVersionedAnalysisCacheKey,
+  LIFECYCLE_RECONCILIATION_VERSION,
   STRATEGY_RESULT_CACHE_KEY_VERSION,
   VersionedAnalysisCache,
 } from "../lib/analysis-cache.js";
@@ -85,9 +87,9 @@ import {
   type Phase3PilotReport,
 } from "../lib/phase3-edge-pilot.js";
 
-const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v11-orb-trend-epochs-account-single-active-trade";
-const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v16-orb-trend-epochs-account-single-active-trade-fill-time";
-const EXECUTION_MANAGEMENT_VERSION = "execution-management-v14-account-single-active-trade-fill-time";
+const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v12-integrity-reconciled-lifecycle";
+const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v17-integrity-filtered-occurrences";
+const EXECUTION_MANAGEMENT_VERSION = "execution-management-v15-integrity-cache-boundary";
 const ACCOUNT_STATE_VERSION = "account-position-state-v3-strict-exit-boundary";
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
@@ -470,6 +472,8 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           : [];
         cacheKey = buildVersionedAnalysisCacheKey("strategy-result", {
           cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-batch`,
+          aggregationVersion: BATCH_AGGREGATION_CACHE_KEY_VERSION,
+          lifecycleVersion: LIFECYCLE_RECONCILIATION_VERSION,
           qualificationFunnelVersion: QUALIFICATION_FUNNEL_VERSION,
           strategyEngineVersion: STRATEGY_ENGINE_VERSION,
           candidateProjectionVersion: CANDIDATE_PROJECTION_VERSION,

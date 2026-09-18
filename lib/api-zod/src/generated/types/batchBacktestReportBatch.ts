@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BatchBacktestReportBatchContractPartitionsItem } from './batchBacktestReportBatchContractPartitionsItem';
+import type { BatchBacktestReportBatchDuplicateOccurrenceConflictsItem } from './batchBacktestReportBatchDuplicateOccurrenceConflictsItem';
 
 export type BatchBacktestReportBatch = {
   totalPartitions: number;
   completedPartitions: number;
   selectedDates: string[];
   contractPartitions: BatchBacktestReportBatchContractPartitionsItem[];
+  duplicateOccurrenceConflicts: BatchBacktestReportBatchDuplicateOccurrenceConflictsItem[];
 };

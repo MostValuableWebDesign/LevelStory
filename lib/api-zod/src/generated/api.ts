@@ -3242,6 +3242,12 @@ export const StartBatchBacktestResponse = zod.object({
   "tradingDate": zod.string(),
   "contractSymbol": zod.string(),
   "period": zod.enum(['in_sample', 'out_of_sample'])
+})),
+  "duplicateOccurrenceConflicts": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "differingFields": zod.array(zod.string()),
+  "classification": zod.enum(['compatible_enrichment', 'contradiction']),
+  "sourcePartitions": zod.array(zod.string())
 }))
 }),
   "funnel": zod.object({
@@ -4902,6 +4908,12 @@ export const GetBatchBacktestStatusResponse = zod.object({
   "tradingDate": zod.string(),
   "contractSymbol": zod.string(),
   "period": zod.enum(['in_sample', 'out_of_sample'])
+})),
+  "duplicateOccurrenceConflicts": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "differingFields": zod.array(zod.string()),
+  "classification": zod.enum(['compatible_enrichment', 'contradiction']),
+  "sourcePartitions": zod.array(zod.string())
 }))
 }),
   "funnel": zod.object({
@@ -6562,6 +6574,12 @@ export const CancelBatchBacktestResponse = zod.object({
   "tradingDate": zod.string(),
   "contractSymbol": zod.string(),
   "period": zod.enum(['in_sample', 'out_of_sample'])
+})),
+  "duplicateOccurrenceConflicts": zod.array(zod.object({
+  "occurrenceId": zod.string(),
+  "differingFields": zod.array(zod.string()),
+  "classification": zod.enum(['compatible_enrichment', 'contradiction']),
+  "sourcePartitions": zod.array(zod.string())
 }))
 }),
   "funnel": zod.object({

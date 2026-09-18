@@ -4397,7 +4397,17 @@ components:
                       contractSymbol: { type: string }
                       period: { type: string, enum: [in_sample, out_of_sample] }
                     required: [tradingDate, contractSymbol, period]
-              required: [totalPartitions, completedPartitions, selectedDates, contractPartitions]
+                duplicateOccurrenceConflicts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      occurrenceId: { type: string }
+                      differingFields: { type: array, items: { type: string } }
+                      classification: { type: string, enum: [compatible_enrichment, contradiction] }
+                      sourcePartitions: { type: array, items: { type: string } }
+                    required: [occurrenceId, differingFields, classification, sourcePartitions]
+              required: [totalPartitions, completedPartitions, selectedDates, contractPartitions, duplicateOccurrenceConflicts]
             funnel:
               $ref: "#/components/schemas/QualificationFunnel"
             walkForward:

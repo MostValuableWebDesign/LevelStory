@@ -138,6 +138,21 @@ test("formula/configuration identity changes prevent persisted reuse", async () 
   }
 });
 
+test("persisted results with an older schema version are not reusable", async () => {
+  const store = new PersistentSessionAnalysisStore();
+  const identity = descriptor(randomUUID());
+  await deleteResult(identity.cacheKey);
+  try {
+    await store.getOrCompute(identity, async () => result());
+    await db.update(sessionAnalysisResultsTable)
+      .set({ resultSchemaVersion: "session-analysis-result-legacy" })
+      .where(eq(sessionAnalysisResultsTable.cacheKey, identity.cacheKey));
+    assert.equal(await store.get(identity.cacheKey, identity), null);
+  } finally {
+    await deleteResult(identity.cacheKey);
+  }
+});
+
 test("corrupt and interrupted persistent artifacts never become complete hits", async () => {
   const store = new PersistentSessionAnalysisStore();
   const identity = descriptor();

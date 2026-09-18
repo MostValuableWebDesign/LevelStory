@@ -4371,11 +4371,27 @@ export type BatchBacktestReportBatchContractPartitionsItem = {
   period: BatchBacktestReportBatchContractPartitionsItemPeriod;
 };
 
+export type BatchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification = typeof BatchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification[keyof typeof BatchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification];
+
+
+export const BatchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification = {
+  compatible_enrichment: 'compatible_enrichment',
+  contradiction: 'contradiction',
+} as const;
+
+export type BatchBacktestReportBatchDuplicateOccurrenceConflictsItem = {
+  occurrenceId: string;
+  differingFields: string[];
+  classification: BatchBacktestReportBatchDuplicateOccurrenceConflictsItemClassification;
+  sourcePartitions: string[];
+};
+
 export type BatchBacktestReportBatch = {
   totalPartitions: number;
   completedPartitions: number;
   selectedDates: string[];
   contractPartitions: BatchBacktestReportBatchContractPartitionsItem[];
+  duplicateOccurrenceConflicts: BatchBacktestReportBatchDuplicateOccurrenceConflictsItem[];
 };
 
 export type BatchAccountReplayEquityCurveItemStatus = typeof BatchAccountReplayEquityCurveItemStatus[keyof typeof BatchAccountReplayEquityCurveItemStatus];

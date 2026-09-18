@@ -276,6 +276,8 @@ export function reducePullbackArmLifecycles(
   for (const [armId, rawItems] of byArm) {
     const items = [...rawItems].sort((left, right) =>
       left.transition.time - right.transition.time
+      || Number(isTerminalPullbackArmState(left.transition.to))
+        - Number(isTerminalPullbackArmState(right.transition.to))
       || left.order - right.order,
     );
     const seen = new Set<string>();

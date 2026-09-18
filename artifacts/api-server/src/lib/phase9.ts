@@ -1579,7 +1579,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v5-strategy-specific-orb-details";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v6-filtered-canonical-evidence";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -2440,6 +2440,21 @@ export function reduceHistoricalPullbackLifecycles(
   historicalOccurrences: readonly HistoricalOccurrence[] = [],
 ): HistoricalPullbackLifecycle {
   const observations: PullbackArmLifecycleObservation[] = [];
+  const supersededArmTerminalTime = new Map<string, number>();
+  for (const occurrence of patience) {
+    if (
+      occurrence.eligibilityArmState !== "superseded"
+      || !occurrence.eligibilityArmId
+      || !Number.isFinite(occurrence.eligibilityArmTransitionTime)
+    ) continue;
+    const current = supersededArmTerminalTime.get(occurrence.eligibilityArmId);
+    if (current === undefined || occurrence.eligibilityArmTransitionTime! < current) {
+      supersededArmTerminalTime.set(
+        occurrence.eligibilityArmId,
+        occurrence.eligibilityArmTransitionTime!,
+      );
+    }
+  }
   const historicalByArmAndPhysicalIdentity = new Map<string, HistoricalOccurrence>();
   for (const occurrence of historicalOccurrences) {
     if (occurrence.kind !== "patience" || !occurrence.eligibilityArmId) continue;
@@ -2484,15 +2499,29 @@ export function reduceHistoricalPullbackLifecycles(
       : undefined;
     observations.push({
       armId,
-      transitions: patienceArmLifecycleTransitions(occurrence).map((transition) =>
-        transition.to === "CONSUMED" && consumingSignalIdentity
-          ? {
-            ...transition,
-            consumingSignalIdentity,
-            consumingSignalOccurrenceId: historicalOccurrence!.occurrenceId,
-          }
-          : transition,
-      ),
+      transitions: patienceArmLifecycleTransitions(occurrence)
+        // A replay cursor can retain an earlier superseded NTZ arm while
+        // evaluating later candles. Those snapshots are stale provenance, not
+        // a new arm reopening. Keep their terminal transition, but do not feed
+        // the post-boundary PATIENCE_ARMED observation back into the reducer.
+        .filter((transition) => {
+          const terminalTime = supersededArmTerminalTime.get(armId);
+          return !(
+            occurrence.eligibilityArmState === "superseded"
+            && terminalTime !== undefined
+            && transition.to === "PATIENCE_ARMED"
+            && transition.time > terminalTime
+          );
+        })
+        .map((transition) =>
+          transition.to === "CONSUMED" && consumingSignalIdentity
+            ? {
+              ...transition,
+              consumingSignalIdentity,
+              consumingSignalOccurrenceId: historicalOccurrence!.occurrenceId,
+            }
+            : transition,
+        ),
       source: `patience:${occurrence.occurrenceId}`,
     });
   }
@@ -3651,7 +3680,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
   }
   if (value.kind === "patience") {
     return occurrenceId([
-      "historical-patience-occurrence-v4-complete-p-e-identity",
+      "historical-patience-occurrence-v5-epoch-and-direction-source-identity",
       value.sourceFingerprint,
       value.formulaHash,
       value.formulaVersion,
@@ -3659,6 +3688,8 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
       value.tradingDate,
       value.direction,
       value.eligibilityArmId,
+      value.orbTrendEpochId,
+      value.directionSource,
       value.patienceTimestamp,
       value.patienceCandle?.closeTime,
       value.eOpenTimestamp,

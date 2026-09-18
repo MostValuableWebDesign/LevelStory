@@ -6,6 +6,8 @@ import {
   calculateBacktestMetrics,
   historicalReplayDiagnostics,
   applyHistoricalAccountPositionGate,
+  QUALIFICATION_FUNNEL_VERSION,
+  type BacktestAuditRecord,
   type BacktestGapReport,
   type BacktestReport,
   type BacktestRequest,
@@ -17,6 +19,8 @@ import {
 import { FIXED_FORMULA_VERSION } from "./formula-hash.js";
 import {
   buildVersionedAnalysisCacheKey,
+  BATCH_AGGREGATION_CACHE_KEY_VERSION,
+  LIFECYCLE_RECONCILIATION_VERSION,
   STRATEGY_RESULT_CACHE_KEY_VERSION,
   VersionedAnalysisCache,
 } from "./analysis-cache.js";
@@ -50,6 +54,7 @@ export type BatchBacktestReport = BacktestReport & {
     completedPartitions: number;
     selectedDates: string[];
     contractPartitions: Array<{ tradingDate: string; contractSymbol: string; period: "in_sample" | "out_of_sample" }>;
+    duplicateOccurrenceConflicts: BatchOccurrenceConflict[];
   };
   funnel: QualificationFunnel;
   walkForward: WalkForwardReport;
@@ -204,117 +209,257 @@ function jsonSafe(value: unknown): unknown {
   return value;
 }
 
-const MERGEABLE_OCCURRENCE_ENRICHMENT_FIELDS = new Set([
-  "auditId",
-  "auditIds",
-  "atrTicks",
-  "causalEvidence",
-  "causalEvidenceByAudit",
-  "evaluationCursor",
-  "identityInvariantViolations",
-  "management",
-  "orbTrendEpochId",
-  "reasonCode",
-  "secondaryStrategyMatches",
-  "targetLevelInputs",
-  "matchedEdges",
-  "supportingConfluences",
-  "eligibilityArmTransitionTime",
-]);
-
-type BatchOccurrenceConflict = {
+export type BatchOccurrenceConflict = {
   occurrenceId: string;
   differingFields: string[];
   classification: "compatible_enrichment" | "contradiction";
+  sourcePartitions: string[];
 };
 
-function topLevelDifferingFields(
-  left: HistoricalOccurrence,
-  right: HistoricalOccurrence,
+type OccurrenceWithSource = {
+  occurrence: HistoricalOccurrence;
+  sourcePartition: string;
+};
+
+const SAFE_UNION_ARRAY_FIELDS = new Set([
+  "identityInvariantViolations",
+  "secondaryStrategyMatches",
+  "matchedEdges",
+  "supportingConfluences",
+]);
+const SAFE_UNION_ARRAY_FIELD_NAMES = [
+  "identityInvariantViolations",
+  "secondaryStrategyMatches",
+  "matchedEdges",
+  "supportingConfluences",
+] as const;
+
+function isMissingOccurrenceValue(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+function deepDifferencePaths(left: unknown, right: unknown, path: string): string[] {
+  if (stableSerialize(left) === stableSerialize(right)) return [];
+  if (isMissingOccurrenceValue(left) || isMissingOccurrenceValue(right)) return [path];
+  if (Array.isArray(left) || Array.isArray(right)) return [path];
+  if (left && typeof left === "object" && right && typeof right === "object") {
+    const keys = new Set([
+      ...Object.keys(left as Record<string, unknown>),
+      ...Object.keys(right as Record<string, unknown>),
+    ]);
+    return [...keys]
+      .sort()
+      .flatMap((key) => deepDifferencePaths(
+        (left as Record<string, unknown>)[key],
+        (right as Record<string, unknown>)[key],
+        `${path}.${key}`,
+      ));
+  }
+  return [path];
+}
+
+function compareCausalEvidenceArrays(
+  left: unknown,
+  right: unknown,
+  path: string,
 ): string[] {
-  const keys = new Set([
-    ...Object.keys(left),
-    ...Object.keys(right),
-  ]);
-  return [...keys]
-    .filter((key) => stableSerialize(left[key as keyof HistoricalOccurrence]) !== stableSerialize(right[key as keyof HistoricalOccurrence]))
-    .sort();
+  if (isMissingOccurrenceValue(left) || isMissingOccurrenceValue(right)) return [];
+  if (!Array.isArray(left) || !Array.isArray(right)) return [path];
+  const leftByAudit = new Map<string, unknown>();
+  const rightByAudit = new Map<string, unknown>();
+  for (const evidence of left) {
+    if (!evidence || typeof evidence !== "object") return [path];
+    const sourceAuditId = (evidence as Record<string, unknown>).sourceAuditId;
+    if (typeof sourceAuditId !== "string") return [path];
+    leftByAudit.set(sourceAuditId, evidence);
+  }
+  for (const evidence of right) {
+    if (!evidence || typeof evidence !== "object") return [path];
+    const sourceAuditId = (evidence as Record<string, unknown>).sourceAuditId;
+    if (typeof sourceAuditId !== "string") return [path];
+    rightByAudit.set(sourceAuditId, evidence);
+  }
+  const paths: string[] = [];
+  for (const sourceAuditId of new Set([...leftByAudit.keys(), ...rightByAudit.keys()])) {
+    const leftEvidence = leftByAudit.get(sourceAuditId);
+    const rightEvidence = rightByAudit.get(sourceAuditId);
+    if (leftEvidence === undefined || rightEvidence === undefined) continue;
+    paths.push(...deepDifferencePaths(leftEvidence, rightEvidence, `${path}[${sourceAuditId}]`));
+  }
+  return paths;
+}
+
+function occurrenceFieldDifferencePaths(
+  field: string,
+  left: unknown,
+  right: unknown,
+): string[] {
+  if (stableSerialize(left) === stableSerialize(right)) return [];
+  if (field === "auditId" || field === "auditIds") return [];
+  if (field === "evaluationCursor") {
+    const leftTime = typeof left === "string" ? Date.parse(left) : Number.NaN;
+    const rightTime = typeof right === "string" ? Date.parse(right) : Number.NaN;
+    return (isMissingOccurrenceValue(left) || isMissingOccurrenceValue(right))
+      || (Number.isFinite(leftTime) && Number.isFinite(rightTime))
+      ? []
+      : [`${field}`];
+  }
+  if (SAFE_UNION_ARRAY_FIELDS.has(field)) return [];
+  if (field === "causalEvidence") {
+    return isMissingOccurrenceValue(left) || isMissingOccurrenceValue(right)
+      ? []
+      : deepDifferencePaths(left, right, field);
+  }
+  if (field === "causalEvidenceByAudit") return compareCausalEvidenceArrays(left, right, field);
+  return deepDifferencePaths(left, right, field);
 }
 
 function mergeOccurrenceEnrichment(
-  occurrences: readonly HistoricalOccurrence[],
+  occurrences: readonly OccurrenceWithSource[],
 ): HistoricalOccurrence {
-  const ordered = [...occurrences].sort((left, right) => stableSerialize(left).localeCompare(stableSerialize(right)));
-  const merged = structuredClone(ordered[0]!);
-  const auditIds = ordered.map((occurrence) => occurrence.auditId).sort();
-  if (auditIds.length > 0) merged.auditId = auditIds[0]!;
+  const completeness = (occurrence: HistoricalOccurrence): number =>
+    Object.values(occurrence).reduce<number>((score, value) => score + (isMissingOccurrenceValue(value) ? 0 : 1), 0);
+  const ordered = [...occurrences].sort((left, right) =>
+    completeness(right.occurrence) - completeness(left.occurrence)
+    || left.sourcePartition.localeCompare(right.sourcePartition)
+    || stableSerialize(left.occurrence).localeCompare(stableSerialize(right.occurrence)));
+  const merged = structuredClone(ordered[0]!.occurrence);
+  const auditIds = ordered.flatMap(({ occurrence }) => [
+    occurrence.auditId,
+    ...(occurrence.auditIds ?? []),
+  ]).filter((value): value is string => typeof value === "string" && value.length > 0).sort();
+  if (auditIds.length > 0) {
+    merged.auditId = ordered[0]!.occurrence.auditId ?? auditIds[0]!;
+    merged.auditIds = [...new Set(auditIds)];
+  }
   const evaluationCursors = ordered
-    .map((occurrence) => Date.parse(occurrence.evaluationCursor ?? ""))
+    .map(({ occurrence }) => Date.parse(occurrence.evaluationCursor ?? ""))
     .filter(Number.isFinite);
   if (evaluationCursors.length > 0) {
     merged.evaluationCursor = new Date(Math.max(...evaluationCursors)).toISOString();
   }
-  for (const field of ["identityInvariantViolations", "secondaryStrategyMatches", "matchedEdges", "supportingConfluences"] as const) {
-    const values = ordered.flatMap((occurrence) => {
+  for (const field of SAFE_UNION_ARRAY_FIELD_NAMES) {
+    const values = ordered.flatMap(({ occurrence }) => {
       const value = occurrence[field];
       return Array.isArray(value) ? value : [];
     });
     if (values.length > 0) {
-      (merged[field] as unknown as string[]) = [...new Set(values)].sort();
+      merged[field] = [...new Set(values)].sort();
     }
+  }
+  if (merged.causalEvidence === undefined || merged.causalEvidence === null) {
+    const evidence = ordered.find(({ occurrence }) => occurrence.causalEvidence)?.occurrence.causalEvidence;
+    if (evidence) merged.causalEvidence = structuredClone(evidence);
+  }
+  const causalEvidence = ordered.flatMap(({ occurrence }) => occurrence.causalEvidenceByAudit ?? []);
+  if (causalEvidence.length > 0) {
+    const byAudit = new Map(causalEvidence.map((evidence) => [evidence.sourceAuditId, evidence]));
+    merged.causalEvidenceByAudit = [...byAudit.values()]
+      .sort((left, right) => left.sourceAuditId.localeCompare(right.sourceAuditId))
+      .map((evidence) => structuredClone(evidence));
   }
   return merged;
 }
 
 function mergeBatchOccurrences(
   reports: readonly BacktestReport[],
+  partitions: readonly BatchPartition[],
 ): {
   occurrences: HistoricalOccurrence[];
   conflicts: string[];
   conflictedOccurrenceIds: Set<string>;
   conflictDetails: BatchOccurrenceConflict[];
+  conflictedAuditIds: Set<string>;
+  conflictedPhysicalIdentities: Set<string>;
 } {
   const byId = new Map<string, HistoricalOccurrence>();
-  const grouped = new Map<string, HistoricalOccurrence[]>();
-  for (const occurrence of reports
-    .flatMap((report) => report.occurrences)
-    .sort((left, right) => stableSerialize(left).localeCompare(stableSerialize(right)))) {
-    const items = grouped.get(occurrence.occurrenceId) ?? [];
-    items.push(occurrence);
-    grouped.set(occurrence.occurrenceId, items);
+  const grouped = new Map<string, OccurrenceWithSource[]>();
+  reports.forEach((report, reportIndex) => {
+    const partition = partitions[reportIndex];
+    const sourcePartition = partition
+      ? `${partition.tradingDate}/${partition.contractSymbol}/${partition.period}`
+      : `report-${reportIndex}`;
+    for (const occurrence of report.occurrences) {
+      const items = grouped.get(occurrence.occurrenceId) ?? [];
+      items.push({ occurrence, sourcePartition });
+      grouped.set(occurrence.occurrenceId, items);
+    }
+  });
+  for (const items of grouped.values()) {
+    items.sort((left, right) =>
+      left.sourcePartition.localeCompare(right.sourcePartition)
+      || stableSerialize(left.occurrence).localeCompare(stableSerialize(right.occurrence)));
   }
   const conflicts: string[] = [];
   const conflictDetails: BatchOccurrenceConflict[] = [];
   const conflictedOccurrenceIds = new Set<string>();
-  for (const [occurrenceId, occurrences] of grouped) {
-    const differingFields = [...new Set(
-      occurrences.slice(1).flatMap((occurrence) => topLevelDifferingFields(occurrences[0]!, occurrence)),
-    )].sort();
-    const classification = differingFields.every((field) => MERGEABLE_OCCURRENCE_ENRICHMENT_FIELDS.has(field))
+  const conflictedAuditIds = new Set<string>();
+  const conflictedPhysicalIdentities = new Set<string>();
+  for (const [occurrenceId, items] of grouped) {
+    const occurrences = items.map(({ occurrence }) => occurrence);
+    const allFields = [...new Set(occurrences.flatMap((occurrence) => Object.keys(occurrence)))].sort();
+    const allDifferingFields = new Set<string>();
+    const differingFields = new Set<string>();
+    for (let leftIndex = 0; leftIndex < occurrences.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < occurrences.length; rightIndex += 1) {
+        const left = occurrences[leftIndex]!;
+        const right = occurrences[rightIndex]!;
+        for (const field of allFields) {
+          const leftValue = left[field as keyof HistoricalOccurrence];
+          const rightValue = right[field as keyof HistoricalOccurrence];
+          if (stableSerialize(leftValue) === stableSerialize(rightValue)) continue;
+          allDifferingFields.add(field);
+          for (const path of occurrenceFieldDifferencePaths(field, leftValue, rightValue)) {
+            differingFields.add(path);
+          }
+        }
+      }
+    }
+    const allDifferingFieldList = [...allDifferingFields].sort();
+    const differingFieldList = [...differingFields].sort();
+    const classification = differingFieldList.length === 0
       ? "compatible_enrichment"
       : "contradiction";
-    if (differingFields.length > 0) {
-      conflictDetails.push({ occurrenceId, differingFields, classification });
+    const sourcePartitions = [...new Set(items.map((item) => item.sourcePartition))].sort();
+    if (allDifferingFieldList.length > 0) {
+      conflictDetails.push({
+        occurrenceId,
+        differingFields: classification === "compatible_enrichment" ? allDifferingFieldList : differingFieldList,
+        classification,
+        sourcePartitions,
+      });
     }
     if (classification === "contradiction") {
       conflictedOccurrenceIds.add(occurrenceId);
-      conflicts.push(`BATCH_DUPLICATE_OCCURRENCE_REJECTED:${occurrenceId}`);
       conflicts.push(
-        `BATCH_DUPLICATE_OCCURRENCE_REJECTED_FIELDS:${occurrenceId}:${classification}:${differingFields.join(",")}`,
+        `BATCH_DUPLICATE_OCCURRENCE_REJECTED:${occurrenceId}`,
+        `BATCH_DUPLICATE_OCCURRENCE_REJECTED_FIELDS:${occurrenceId}:${sourcePartitions.join("|")}:${differingFieldList.join(",")}`,
       );
+      for (const item of items) {
+        if (item.occurrence.auditId) conflictedAuditIds.add(item.occurrence.auditId);
+        const identity = [
+          item.occurrence.contractSymbol,
+          item.occurrence.tradingDate,
+          item.occurrence.pOpenTimestamp,
+          item.occurrence.eOpenTimestamp,
+        ].join("|");
+        conflictedPhysicalIdentities.add(identity);
+      }
     }
     byId.set(
       occurrenceId,
-      differingFields.length > 0 && classification === "compatible_enrichment"
-        ? mergeOccurrenceEnrichment(occurrences)
-        : occurrences[0]!,
+      allDifferingFieldList.length > 0 && classification === "compatible_enrichment"
+        ? mergeOccurrenceEnrichment(items)
+        : items[0]!.occurrence,
     );
   }
   return {
-    occurrences: [...byId.values()],
+    occurrences: [...byId.values()].sort((left, right) => left.occurrenceId.localeCompare(right.occurrenceId)),
     conflicts: [...new Set(conflicts)].sort(),
     conflictedOccurrenceIds,
-    conflictDetails,
+    conflictDetails: conflictDetails.sort((left, right) => left.occurrenceId.localeCompare(right.occurrenceId)),
+    conflictedAuditIds,
+    conflictedPhysicalIdentities,
   };
 }
 
@@ -499,6 +644,9 @@ function buildSessionResultCacheDescriptor(
   const executionSettings = { request: sessionIndependentRequest, risk: normalizedRisk };
   const dependencyIdentity = {
     cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-session`,
+    aggregationVersion: BATCH_AGGREGATION_CACHE_KEY_VERSION,
+    lifecycleVersion: LIFECYCLE_RECONCILIATION_VERSION,
+    qualificationFunnelVersion: QUALIFICATION_FUNNEL_VERSION,
     session: {
       tradingDate: partition.tradingDate,
       contractSymbol: partition.contractSymbol,
@@ -607,18 +755,34 @@ export function aggregateBatchReports(
 ): BatchBacktestReport {
   const first = reports[0];
   if (!first) throw new Error("The batch produced no completed replay partitions.");
-  const audit = reports.flatMap((report) => report.audit);
-  const mergedOccurrences = mergeBatchOccurrences(reports);
+  const mergedOccurrences = mergeBatchOccurrences(reports, partitions);
   const conflictedOccurrenceIds = mergedOccurrences.conflictedOccurrenceIds;
   const belongsToConflictedOccurrence = (occurrenceId: string | undefined): boolean =>
     occurrenceId !== undefined && conflictedOccurrenceIds.has(occurrenceId);
+  const belongsToConflictedAudit = (record: BacktestAuditRecord): boolean => {
+    if (mergedOccurrences.conflictedAuditIds.has(record.id)) return true;
+    const physicalIdentity = [
+      record.contractSymbol,
+      record.tradingDate,
+      record.patienceCandleOpenTime,
+      record.triggerCandleOpenTime,
+    ].join("|");
+    return mergedOccurrences.conflictedPhysicalIdentities.has(physicalIdentity);
+  };
+  const filteredReports = reports.map((report) => ({
+    ...report,
+    audit: report.audit.filter((record) => !belongsToConflictedAudit(record)),
+    occurrences: report.occurrences.filter((occurrence) => !belongsToConflictedOccurrence(occurrence.occurrenceId)),
+    trades: report.trades.filter((trade) => !belongsToConflictedOccurrence(trade.signalOccurrenceId)),
+  }));
+  const audit = filteredReports.flatMap((report) => report.audit);
   const candidateExecutionEvidence = reports
     .flatMap((report) => report.candidateExecutionEvidence ?? [])
     .filter((trade) => !belongsToConflictedOccurrence(trade.signalOccurrenceId));
-  const partitionTrades = reports
+  const partitionTrades = filteredReports
     .flatMap((report) => report.trades)
     .filter((trade) => !belongsToConflictedOccurrence(trade.signalOccurrenceId));
-  const partitionCandidates = reports
+  const partitionCandidates = filteredReports
     .flatMap((report) => report.tradeCandidates)
     .filter((candidate) => !belongsToConflictedOccurrence(candidate.signalOccurrenceId));
   const schedule = partitions.find((partition) => partition.dataset.contractSchedule)?.dataset.contractSchedule;
@@ -630,29 +794,35 @@ export function aggregateBatchReports(
     : null;
   const trades = globalAccountGate?.authoritativeTrades ?? partitionTrades;
   const tradeCandidates = globalAccountGate?.candidates ?? partitionCandidates;
-  const rejectedCandidateSignals = reports
+  const rejectedCandidateSignals = filteredReports
     .flatMap((report) => report.rejectedCandidateSignals)
     .filter((rejection) => !belongsToConflictedOccurrence(rejection.signalOccurrenceId));
-  const orphanModeledTrades = reports
+  const orphanModeledTrades = filteredReports
     .flatMap((report) => report.orphanModeledTrades)
     .filter((trade) => !belongsToConflictedOccurrence(trade.matchingSignalOccurrenceId));
-  const occurrences = mergedOccurrences.occurrences;
+  const occurrences = mergedOccurrences.occurrences.filter((occurrence) =>
+    !conflictedOccurrenceIds.has(occurrence.occurrenceId));
+  const enteredCandidateIds = new Set(trades.map((trade) => trade.candidateId));
+  const blockedCandidateCount = tradeCandidates.filter(
+    (candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION",
+  ).length;
   const executionSummary = {
-    detectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.detectedCandidateCount ?? 0), 0),
-    eligibleCandidateCount: reports.reduce((sum, report) => sum + report.executionSummary.eligibleCandidateCount, 0),
-    rejectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.rejectedCandidateCount ?? 0), 0),
-    accountEntryBlockedCandidateCount: tradeCandidates.filter(
-      (candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION",
-    ).length,
+    detectedCandidateCount: tradeCandidates.length + rejectedCandidateSignals.length,
+    eligibleCandidateCount: tradeCandidates.length,
+    rejectedCandidateCount: rejectedCandidateSignals.length,
+    accountEntryBlockedCandidateCount: blockedCandidateCount,
     accountPositionStateVersion: reports[0]?.executionSummary.accountPositionStateVersion ?? "unknown",
     enteredTradeCount: trades.length,
     finalizedTradeCount: trades.filter((trade) => trade.outcome !== "open").length,
     openTradeCount: trades.filter((trade) => trade.outcome === "open").length,
-    ambiguousEntryCount: reports.reduce((sum, report) => sum + report.executionSummary.ambiguousEntryCount, 0),
+    ambiguousEntryCount: tradeCandidates.filter((candidate) => candidate.executionStatus === "ENTRY_AMBIGUOUS").length,
     unresolvedAmbiguousTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null).length,
     conservativelyResolvedTradeCount: trades.filter((trade) => trade.ambiguityLabel !== null && trade.outcome !== "open").length,
     unscoredTradeCount: trades.filter((trade) => trade.outcome === "open" || trade.ambiguityLabel !== null).length,
-    nonEnteredCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.nonEnteredCandidateCount ?? 0), 0),
+    nonEnteredCandidateCount: tradeCandidates.filter((candidate) =>
+      !enteredCandidateIds.has(candidate.candidateId)
+      && candidate.accountEntryStatus !== "BLOCKED_ACTIVE_POSITION",
+    ).length,
   };
   const diagnostics = historicalReplayDiagnostics(
     audit,
@@ -663,7 +833,7 @@ export function aggregateBatchReports(
     orphanModeledTrades,
   );
   diagnostics.candidateInvariantViolations.push(...mergedOccurrences.conflicts);
-  const funnel = buildQualificationFunnel(reports);
+  const funnel = buildQualificationFunnel(filteredReports);
   const rejectionCount = funnel.candidates.filter((candidate) => candidate.primaryRejectionStage !== null).length;
   const inSampleTrades = trades.filter((trade) => trade.period === "in_sample");
   const outOfSampleTrades = trades.filter((trade) => trade.period === "out_of_sample");
@@ -732,6 +902,7 @@ export function aggregateBatchReports(
       completedPartitions: reports.length,
       selectedDates: selected,
       contractPartitions: partitions.map(({ tradingDate, contractSymbol, period }) => ({ tradingDate, contractSymbol, period })),
+      duplicateOccurrenceConflicts: mergedOccurrences.conflictDetails,
     },
     funnel,
     walkForward,

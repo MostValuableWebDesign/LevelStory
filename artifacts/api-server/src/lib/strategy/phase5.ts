@@ -164,14 +164,6 @@ export function patienceArmLifecycleTransitions(
       ? "SUPERSEDED_BY_NEW_BREAKOUT"
       : null;
   const transitionTime = occurrence.eligibilityArmTransitionTime ?? occurrence.evaluationCursor;
-  if (terminalArmState) {
-    return [{
-      from: "LEVEL_INTERACTION_FOUND",
-      to: terminalArmState,
-      time: transitionTime,
-      reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
-    }];
-  }
   const transitions: PullbackArmTransition[] = [{
     from: "LEVEL_INTERACTION_FOUND",
     to: "PATIENCE_ARMED",
@@ -204,8 +196,16 @@ export function patienceArmLifecycleTransitions(
     });
   } else if (occurrence.eligibilityArmState === "superseded") {
     transitions.push({
-      from: "PATIENCE_ARMED",
+      from: transitions.at(-1)?.to ?? "PATIENCE_ARMED",
       to: "SUPERSEDED_BY_NEW_BREAKOUT",
+      time: transitionTime,
+      reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
+    });
+  }
+  if (terminalArmState && !transitions.some((transition) => transition.to === terminalArmState)) {
+    transitions.push({
+      from: transitions.at(-1)?.to ?? "PATIENCE_ARMED",
+      to: terminalArmState,
       time: transitionTime,
       reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
     });
@@ -1306,7 +1306,68 @@ function buildPatienceOccurrences(
       eligibilityProvenance: provenance,
     };
   });
-  return occurrences.map((occurrence): PatienceOccurrence => {
+  const supersedingArmById = new Map<string, {
+    time: number;
+    armId: string;
+    event: PatienceEligibilityEvent;
+  }>();
+  for (const occurrence of occurrences) {
+    if (occurrence.eligibilityArmState !== "active" || !occurrence.eligibilityArmId) continue;
+    const supersedingCandidate = candidates.find((candidate) =>
+      candidate.armId !== occurrence.eligibilityArmId
+      && candidate.event !== undefined
+      && candidate.event.time > occurrence.eligibilityTime,
+    );
+    if (!supersedingCandidate?.event) continue;
+    const replacementArmId = supersedingCandidate.armId ?? eligibilityArmId(supersedingCandidate.event);
+    const existing = supersedingArmById.get(occurrence.eligibilityArmId);
+    if (!existing || supersedingCandidate.event.time < existing.time) {
+      supersedingArmById.set(occurrence.eligibilityArmId, {
+        time: supersedingCandidate.event.time,
+        armId: replacementArmId,
+        event: supersedingCandidate.event,
+      });
+    }
+  }
+
+  const rehomeAfterSupersession = (source: PatienceOccurrence): PatienceOccurrence => {
+    let occurrence = source;
+    const visited = new Set<string>();
+    for (let hop = 0; hop < 8; hop += 1) {
+      const armId = occurrence.eligibilityArmId;
+      if (!armId || visited.has(armId)) break;
+      visited.add(armId);
+      const replacement = supersedingArmById.get(armId);
+      if (
+        !replacement
+        || occurrence.patienceCandle.closeTime <= replacement.time
+      ) break;
+      const event = replacement.event;
+      occurrence = {
+        ...occurrence,
+        eligibilityArmId: replacement.armId,
+        eligibilityEventId: event.eventId ?? null,
+        eligibilityReason: event.reason,
+        eligibilityTime: event.time,
+        eligibilityProvenance: {
+          eventId: event.eventId ?? null,
+          reason: event.reason,
+          time: event.time,
+          detail: event.detail ?? null,
+          levelKind: event.levelKind,
+          levelSourceTimestamp: event.levelSourceTimestamp,
+          lCandleOpenTime: event.lCandleOpenTime ?? null,
+        },
+        eligibilityArmState: "active",
+        eligibilityArmStateReason: "A later causal eligibility event opened a new arm after the prior arm was superseded.",
+        eligibilityArmTransitionTime: undefined,
+      };
+    }
+    return occurrence;
+  };
+
+  return occurrences.map((source): PatienceOccurrence => {
+    const occurrence = rehomeAfterSupersession(source);
     const reversal = orbTrend?.transitions.find((transition) =>
       transition.direction !== occurrence.direction
       && transition.effectiveFromTimestamp >= occurrence.patienceCandle.closeTime

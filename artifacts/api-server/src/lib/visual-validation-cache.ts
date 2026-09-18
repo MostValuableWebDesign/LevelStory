@@ -9,9 +9,9 @@ import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-exec
 import { ACCOUNT_POSITION_STATE_VERSION } from "./account-position-gate.js";
 
 export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v17-orb-trend-epochs-account-single-active-trade-fill-time";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v11-orb-trend-epochs-account-single-active-trade";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v16-orb-trend-epochs-account-single-active-trade-fill-time";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v14-account-single-active-trade-fill-time";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v12-integrity-reconciled-lifecycle";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v17-integrity-filtered-occurrences";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v15-integrity-cache-boundary";
 export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v13-orb-trend-epochs-account-single-active-trade";
 export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v8-orb-trend-epochs-account-single-active-trade-fill-time";
 

@@ -9,7 +9,7 @@ import type {
   SessionResultCacheDescriptor,
 } from "./batch-backtest.js";
 
-export const SESSION_ANALYSIS_RESULT_SCHEMA_VERSION = "session-analysis-result-v1";
+export const SESSION_ANALYSIS_RESULT_SCHEMA_VERSION = "session-analysis-result-v2-integrity-reconciliation";
 export const SESSION_ANALYSIS_RESULT_RETENTION_MS = 180 * 24 * 60 * 60_000;
 export const SESSION_ANALYSIS_RESULT_MAX_ROWS = 10_000;
 

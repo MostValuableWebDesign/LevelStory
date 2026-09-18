@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 
 export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v1";
-export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v2-persistent-session-provenance";
+export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v6-stale-superseded-snapshot-filter";
+export const BATCH_AGGREGATION_CACHE_KEY_VERSION = "batch-aggregation-v2-filtered-canonical-evidence";
+export const LIFECYCLE_RECONCILIATION_VERSION = "pullback-lifecycle-v2-preserved-transition-history";
 
 export type AnalysisCacheStatus = "complete" | "incomplete" | "failed";
 export type AnalysisCacheResolution = "memory_hit" | "pending_reuse" | "computed";

@@ -256,7 +256,7 @@ test("batch aggregation preserves execution and occurrence data from every parti
     {} as BatchBacktestReport["walkForward"],
   );
 
-  assert.equal(result.executionSummary.detectedCandidateCount, 4);
+  assert.equal(result.executionSummary.detectedCandidateCount, 2);
   assert.equal(result.executionSummary.eligibleCandidateCount, 2);
   assert.equal(result.executionSummary.nonEnteredCandidateCount, 2);
   assert.deepEqual(result.occurrences.map((item) => item.occurrenceId), ["occ-1", "occ-2"]);
@@ -363,11 +363,12 @@ test("batch aggregation retains populated partition evidence and detects conflic
     result.assumptions.find((assumption) => assumption.startsWith("Historical replay uses exactly ")),
     "Historical replay uses exactly 2 selected available trading dates; excluded dates are reported separately.",
   );
-  assert.equal(result.occurrences.length, 3);
+  assert.equal(result.occurrences.length, 2);
   assert.equal(
     result.diagnostics?.candidateInvariantViolations.includes("BATCH_DUPLICATE_OCCURRENCE_REJECTED:occ-shared"),
     true,
   );
+  assert.equal(result.batch.duplicateOccurrenceConflicts[0]?.classification, "contradiction");
 });
 
 test("contradictory duplicate occurrences fail closed before account arbitration", () => {
@@ -401,7 +402,99 @@ test("contradictory duplicate occurrences fail closed before account arbitration
   assert.equal(result.tradeCandidates.length, 0);
   assert.equal(result.candidateExecutionEvidence?.length, 0);
   assert.equal(result.trades.length, 0);
+  assert.equal(result.occurrences.length, 0);
   assert.ok(result.diagnostics?.candidateInvariantViolations.includes("BATCH_DUPLICATE_OCCURRENCE_REJECTED:occ-shared"));
+});
+
+test("compatible duplicate occurrence enrichment is canonical, order-independent, and complete", () => {
+  const firstOccurrence = {
+    ...occurrence("occ-enrichment"),
+    auditId: "audit-a",
+    evaluationCursor: "2026-08-10T14:05:00.000Z",
+    identityInvariantViolations: ["first-diagnostic"],
+    matchedEdges: ["EDGE_A"],
+  } as HistoricalOccurrence;
+  const secondOccurrence = {
+    ...occurrence("occ-enrichment"),
+    auditId: "audit-b",
+    evaluationCursor: "2026-08-10T14:10:00.000Z",
+    identityInvariantViolations: ["second-diagnostic"],
+    matchedEdges: ["EDGE_B"],
+  } as HistoricalOccurrence;
+  const first = report({ occurrences: [firstOccurrence] });
+  const second = report({ occurrences: [secondOccurrence] });
+  const partitions = [
+    { tradingDate: "2022-08-10", contractSymbol: "MESU2", period: "in_sample" as const, dataset: {} as never },
+    { tradingDate: "2022-08-11", contractSymbol: "MESU2", period: "out_of_sample" as const, dataset: {} as never },
+  ];
+  const forward = aggregateBatchReports(
+    [first, second],
+    partitions,
+    ["2022-08-10", "2022-08-11"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+  const reverse = aggregateBatchReports(
+    [second, first],
+    [...partitions].reverse(),
+    ["2022-08-10", "2022-08-11"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+  assert.deepEqual(forward.occurrences, reverse.occurrences);
+  assert.deepEqual(forward.occurrences[0]?.auditIds, ["audit-a", "audit-b"]);
+  assert.equal(forward.occurrences[0]?.evaluationCursor, "2026-08-10T14:10:00.000Z");
+  assert.deepEqual(forward.occurrences[0]?.identityInvariantViolations, ["first-diagnostic", "second-diagnostic"]);
+  assert.deepEqual(forward.occurrences[0]?.matchedEdges, ["EDGE_A", "EDGE_B"]);
+  assert.equal(forward.batch.duplicateOccurrenceConflicts[0]?.classification, "compatible_enrichment");
+});
+
+test("operative duplicate evidence rejects with exact nested paths and a third copy cannot restore it", () => {
+  const base = occurrence("occ-operative");
+  const first = report({
+    occurrences: [{
+      ...base,
+      management: {
+        strategyStopPrice: 99,
+        catastropheStopPrice: null,
+        targetPrice: 105,
+        contracts: 1,
+        runnerActivationPrice: null,
+        runnerExitRule: null,
+        sessionCloseTime: null,
+        sourceAuditId: "audit-a",
+        missingEvidenceReasons: [],
+      },
+    } as HistoricalOccurrence],
+  });
+  const second = report({
+    occurrences: [{
+      ...base,
+      management: {
+        strategyStopPrice: 98,
+        catastropheStopPrice: null,
+        targetPrice: 105,
+        contracts: 1,
+        runnerActivationPrice: null,
+        runnerExitRule: null,
+        sessionCloseTime: null,
+        sourceAuditId: "audit-b",
+        missingEvidenceReasons: [],
+      },
+    } as HistoricalOccurrence],
+  });
+  const third = report({ occurrences: [base] });
+  const result = aggregateBatchReports(
+    [first, second, third],
+    [
+      { tradingDate: "2022-08-10", contractSymbol: "MESU2", period: "in_sample", dataset: {} as never },
+      { tradingDate: "2022-08-11", contractSymbol: "MESU2", period: "out_of_sample", dataset: {} as never },
+      { tradingDate: "2022-08-12", contractSymbol: "MESU2", period: "out_of_sample", dataset: {} as never },
+    ],
+    ["2022-08-10", "2022-08-11", "2022-08-12"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+  assert.equal(result.occurrences.length, 0);
+  assert.equal(result.batch.duplicateOccurrenceConflicts[0]?.classification, "contradiction");
+  assert.ok(result.batch.duplicateOccurrenceConflicts[0]?.differingFields.includes("management.strategyStopPrice"));
 });
 
 function executableCandidate(
