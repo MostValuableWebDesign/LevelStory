@@ -1,0 +1,55 @@
+Perform final verification of LevelStory’s catalog, persistent caching, and current-version charts.
+
+First resolve the previously failing HTTP route tests. Do not label them flaky without demonstrating the cause.
+
+Verify:
+- Batch completion persists one complete report and exposes funnel drill-down.
+- Cancellation and timeout never expose partial reports as completed.
+- Test servers stay alive until requests and cleanup finish.
+- Equivalent concurrent requests behave correctly.
+
+Run the focused suites before historical measurement.
+
+Then use a bounded two- or three-session range from the now-populated catalog. Confirm those sessions have usable coverage before starting.
+
+Measure:
+1. Initial selection.
+2. Identical repeated selection.
+3. An overlapping date selection.
+4. Identical selection after an actual server/process restart.
+
+Record for each:
+- Elapsed time.
+- Catalog queries.
+- Historical discovery/reindex operations.
+- Raw-data loads and cache hits.
+- Sessions recomputed versus reused.
+- Strategy partition executions.
+- Chart-detail generations.
+- Combined replay/arbitration work.
+
+Also compare cached and fresh chronological results for identical inputs:
+- Occurrences and candidates.
+- Account-position blocks.
+- Executed trades.
+- P/L and equity.
+- Funnel totals.
+- Chart provenance and markups.
+
+Strategy changes must reuse compatible market data while refreshing affected derived results, including previously empty sessions.
+
+Source corrections must invalidate affected sessions and dependent lookbacks. Do not modify real source data merely for a benchmark; use an isolated fixture for replacement tests.
+
+Run relevant typechecks/builds and git diff --check. Report failures without hiding or reclassifying them.
+
+Final report:
+- What persists across restart.
+- What is reused on repeated and overlapping selections.
+- What recomputes after rule/source changes.
+- Measured initial, repeated, overlapping, and restart timings.
+- Proof repeated selections avoid historical rediscovery.
+- Proof charts and combined P/L remain correct.
+- Tests passed, failed, or not run.
+- Remaining limitations.
+
+Do not claim completion if real-data selection still fails before replay, or if restart reuse is demonstrated only within one process.
