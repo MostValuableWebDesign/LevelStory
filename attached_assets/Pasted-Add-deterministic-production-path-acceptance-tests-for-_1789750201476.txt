@@ -1,0 +1,40 @@
+Add deterministic production-path acceptance tests for strategy changes and Visual Review.
+
+Cache-key tests alone are insufficient. Prove that changed rules alter qualification and chart availability correctly while reusing unchanged market data.
+
+Use controlled test configurations; do not change production trading rules to make fixtures pass.
+
+Required scenarios:
+
+1. Empty session becomes qualified:
+- Evaluate a fixed source dataset under configuration A.
+- Assert a completed result with no qualifying setup.
+- Evaluate the same data under configuration B, whose changed rule legitimately admits a known setup.
+- Assert the new occurrence/candidate and reviewable chart appear.
+- Assert raw data was reused and derived analysis recomputed.
+
+2. Qualified setup disappears:
+- Evaluate a valid setup under configuration A.
+- Change a governed rule in configuration B so it fails.
+- Assert the prior qualifying chart is absent from the current qualified-trade view.
+- It may remain in historical-version or rejected-setup views with accurate labels.
+- Assert no stale trade, markup, or P/L survives in current results.
+
+3. Chart evidence:
+- Verify candles, frozen zone, trend evidence, entry, actual fill, stop, target, and outcome belong to compatible source/result versions.
+- Verify prior human reviews are not silently attached to incompatible new results.
+
+4. UI request ordering:
+- An older asynchronous result arriving after a newer selection or strategy version cannot replace the current view.
+- Preserve the selected dates during recomputation.
+- Distinguish updating, current, failed, and completed zero-trade states.
+
+5. Restart:
+- Reopen a persisted current result after restart.
+- Verify identical chart evidence and no unnecessary strategy recomputation.
+
+Use actual detector, projection, execution, API, and chart-data paths where applicable. Do not mock the qualification outcome.
+
+Report the before/after setup counts, chart IDs/provenance, raw-data loads, and strategy-execution counts.
+
+Stop after Part 3.
