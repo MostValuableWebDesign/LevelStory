@@ -32,6 +32,7 @@ import {
   useStartVisualValidationGenerationJob,
   useExportVisualValidationDiscrepancies,
   useGetVisualValidationSet,
+  useGetVisualValidationSnapshot,
   useGetShadowAccountReplay,
   useGetHistoricalDataIndexStatus,
   useRecordVisualValidationReview,
@@ -118,9 +119,6 @@ import {
   type CandleInspection,
 } from "@/lib/visual-review-chart";
 
-const TRADE_CATEGORY_VALUES = new Set<VisualValidationCategory>([
-  "qualified_trade",
-]);
 const CHART_LEVEL_ORDER = [
   "vwap",
   "ema-200",
@@ -580,6 +578,8 @@ export default function VisualReview() {
   const [reviewDraftSnapshotId, setReviewDraftSnapshotId] = useState("");
   const [lockedEntryCandle, setLockedEntryCandle] = useState<SessionCandle | null>(null);
   const [teachingDraft, setTeachingDraft] = useState<NonNullable<VisualValidationReviewRequest["teaching"]> | null>(null);
+  const generationRequestTokenRef = useRef(0);
+  const acceptedGenerationJobRef = useRef("");
   const [generationMessage, setGenerationMessage] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
@@ -713,6 +713,7 @@ export default function VisualReview() {
 
   useEffect(() => {
     if (!generationJob) return;
+    if (generationJobId && acceptedGenerationJobRef.current && generationJobId !== acceptedGenerationJobRef.current) return;
     if ((generationJob.status === "completed" || generationJob.status === "partial") && generationJob.result) {
       setLocalSet(generationJob.result);
       setReviewSetId(generationJob.result.reviewSetId);
@@ -749,7 +750,7 @@ export default function VisualReview() {
     [data, selectedStrategyKey],
   );
   const availableCategories = useMemo(() => coverage
-    .filter((item) => item.available && queueModel.items.some(({ snapshot }) => snapshot.category === item.category) && TRADE_CATEGORY_VALUES.has(item.category))
+    .filter((item) => item.available && queueModel.items.some(({ snapshot }) => snapshot.category === item.category))
     .map((item) => item.category), [coverage, queueModel.items]);
   const categorySnapshots = useMemo(
     () => queueModel.items
@@ -758,9 +759,21 @@ export default function VisualReview() {
     [queueModel.items, selectedCategory],
   );
   const reviewQueue = queueModel.items.map(({ snapshot }) => snapshot);
-  const activeSnapshot = reviewQueue.find((snapshot) => snapshot.snapshotId === selectedSnapshotId)
+  const selectedSnapshot = reviewQueue.find((snapshot) => snapshot.snapshotId === selectedSnapshotId)
     ?? categorySnapshots[0]
     ?? reviewQueue[0];
+  const snapshotDetailQuery = useGetVisualValidationSnapshot(
+    data?.reviewSetId ?? "",
+    selectedSnapshot?.snapshotId ?? "",
+    {
+      query: {
+        enabled: Boolean(data?.reviewSetId && selectedSnapshot?.snapshotId),
+        staleTime: 5 * 60_000,
+        queryKey: ["visual-validation-snapshot", data?.reviewSetId ?? "none", selectedSnapshot?.snapshotId ?? "none"],
+      },
+    },
+  );
+  const activeSnapshot = snapshotDetailQuery.data ?? selectedSnapshot;
 
   useEffect(() => {
     if (data && !reviewSetId && typeof window !== "undefined") {
@@ -914,18 +927,23 @@ export default function VisualReview() {
     setActiveVisualReviewTab("generate");
     setReviewSetRequested(true);
     setFreshGenerationRequested(regenerateFresh);
+    const requestToken = ++generationRequestTokenRef.current;
     setGenerationJobId("");
     if (typeof window !== "undefined") window.sessionStorage.removeItem("levelstory.visualReviewGenerationJobId");
       setReviewMessage("");
     setReport(null);
-    setLocalSet(null);
     startGeneration.mutate({ data: { ...generationRequest, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
+        if (requestToken !== generationRequestTokenRef.current) return;
+        acceptedGenerationJobRef.current = job.jobId;
         setGenerationJobId(job.jobId);
         if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
         if (job.status === "failed") setGenerationMessage(job.error ?? "The deterministic set could not be generated.");
       },
-      onError: (error) => setGenerationMessage(apiErrorMessage(error) ?? "The generation job could not be started."),
+      onError: (error) => {
+        if (requestToken !== generationRequestTokenRef.current) return;
+        setGenerationMessage(apiErrorMessage(error) ?? "The generation job could not be started.");
+      },
     });
   };
 
@@ -1749,6 +1767,14 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
                : `${storedSessions} stored session${storedSessions === 1 ? "" : "s"} available on or before ${request.endDate}.`}
          </span>
        </Field>
+       <Field label={<span className="inline-flex items-center gap-1.5">Review mode <InfoTip label="Review mode" text="Trade-only keeps the queue focused on executable candidates. Diagnostics also keeps rejected and confirmed non-trade occurrences reviewable." /></span>}>
+         <select className="field mono" value={request.reviewMode ?? "trades_only"} onChange={(event) => update("reviewMode", event.target.value)}>
+           <option value="trades_only">Trade candidates only</option>
+           <option value="confirmed_signals">Confirmed signals</option>
+           <option value="trades_and_diagnostics">Trades and diagnostics</option>
+         </select>
+         <span className="mt-1 block text-[10px] leading-4 text-muted-foreground">Diagnostics can include rejected setups without turning them into executable trades.</span>
+       </Field>
        <fieldset className="space-y-3 border border-border bg-card p-4" data-testid="visual-review-strategy-settings">
          <legend className="px-1 text-[10px] font-bold uppercase tracking-[.1em] text-muted-foreground">Visual Review strategy settings</legend>
          <p className="text-[11px] leading-4 text-muted-foreground">Choose which strategies can create candidates in this deterministic review set. Disabled strategies stay out of candidate selection and read-only account replay.</p>
@@ -1840,19 +1866,19 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
     const unreviewableCount = buildReviewQueue(data, selectedStrategyKey).unreviewableCandidates.length;
     const totalCandidateCount = selectedCount + unreviewableCount;
    return <Panel className="visual-review-candidate-panel">
-      <PanelTitle eyebrow="Coverage / Trade Candidates" title="Select a trade candidate" right={<span className="flex items-center gap-2 text-right text-[10px] text-muted-foreground"><ListFilter size={18} className="text-primary" aria-hidden="true" /><span className="mono" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span></span>} />
+       <PanelTitle eyebrow={data.request.reviewMode === "trades_and_diagnostics" ? "Coverage / Review Occurrences" : "Coverage / Trade Candidates"} title={data.request.reviewMode === "trades_and_diagnostics" ? "Select a review occurrence" : "Select a trade candidate"} right={<span className="flex items-center gap-2 text-right text-[10px] text-muted-foreground"><ListFilter size={18} className="text-primary" aria-hidden="true" /><span className="mono" data-testid="review-period">Review period · {data.reviewPeriod.startDate} – {data.reviewPeriod.endDate}</span></span>} />
       <button type="button" className="visual-review-mobile-navigator-trigger" aria-expanded={mobileNavigatorOpen} aria-controls="visual-review-candidate-controls" onClick={() => setMobileNavigatorOpen((current) => !current)} data-testid="button-toggle-trade-navigator">
-        <span><span className="eyebrow block text-muted-foreground">Trade selector</span><span className="mt-1 block text-xs font-semibold">{selectedSnapshot ? `${selectedSnapshot.tradingDate} · ${formatReviewTime((selectedSnapshot.machineEvidence.trade as CandidateTradeView | null)?.entryTime ?? "")}` : "Choose a candidate"}</span></span>
+         <span><span className="eyebrow block text-muted-foreground">Review selector</span><span className="mt-1 block text-xs font-semibold">{selectedSnapshot ? `${selectedSnapshot.tradingDate} · ${formatReviewTime((selectedSnapshot.machineEvidence.trade as CandidateTradeView | null)?.entryTime ?? selectedSnapshot.categoryAnchor.openTime)}` : "Choose an occurrence"}</span></span>
         <ChevronDown size={16} className={`transition-transform ${mobileNavigatorOpen ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
       <div id="visual-review-candidate-controls" className={`visual-review-candidate-controls ${mobileNavigatorOpen ? "is-open" : ""}`}>
         <div className="border-t border-border bg-muted/20 p-3" data-testid="trade-strategy-filters">
-           <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span className="inline-flex items-center gap-1.5"><ListFilter size={18} className="text-primary" aria-hidden="true" />Strategy filter</span><span className="mono normal-case tracking-normal">{totalCandidateCount} total · {selectedCount} reviewable · {unreviewableCount} without snapshots</span></label>
+            <label className="eyebrow flex items-center justify-between gap-2 text-muted-foreground" htmlFor="trade-strategy-filter"><span className="inline-flex items-center gap-1.5"><ListFilter size={18} className="text-primary" aria-hidden="true" />Strategy filter</span><span className="mono normal-case tracking-normal">{totalCandidateCount} total · {selectedCount} reviewable · {unreviewableCount} without snapshots</span></label>
           <select id="trade-strategy-filter" className="field mt-2 w-full text-[11px]" value={selectedStrategyKey ?? ""} onChange={(event) => onSelectStrategy(event.target.value ? event.target.value as StrategyId : null)} aria-describedby="trade-strategy-filter-help">
             <option value="">All strategies · {allReviewableItems.length}</option>
             {STRATEGY_TABS.map((strategy) => <option key={strategy.id} value={strategy.id} disabled={edgeCount(strategy.id) === 0}>{strategy.label} · {edgeCount(strategy.id)}</option>)}
           </select>
-           <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">Counts are unique candidates. A candidate matching multiple strategies is counted once; missing snapshots remain visible as diagnostics.</p>
+             <p id="trade-strategy-filter-help" className="mt-2 text-[10px] leading-4 text-muted-foreground">{data.request.reviewMode === "trades_and_diagnostics" ? "Diagnostics are reviewable evidence only and never enter account replay." : "Counts are unique candidates. A candidate matching multiple strategies is counted once; missing snapshots remain visible as diagnostics."}</p>
            {unreviewableCount > 0 && <details className="unreviewable-candidate-warning mt-2" role="status" data-testid="unreviewable-candidate-warning">
              <summary>{unreviewableCount} candidate{unreviewableCount === 1 ? "" : "s"} retained without a reviewable snapshot</summary>
              <p>These candidates remain in the immutable review set for auditability, but cannot be selected because no qualified chart snapshot is available.</p>
@@ -1862,7 +1888,7 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
           {[...groupedCandidates.entries()].map(([tradingDate, dateCandidates]) => <section key={tradingDate} aria-labelledby={`trade-date-${tradingDate}`}>
             <h3 id={`trade-date-${tradingDate}`} className="trade-date-heading">{formatReviewDate(tradingDate)}<span>{dateCandidates.length} trade{dateCandidates.length === 1 ? "" : "s"}</span></h3>
             <div className="divide-y divide-border">
-              {dateCandidates.map(({ candidate, snapshot }) => {
+               {dateCandidates.map(({ candidate, snapshot }) => {
                 const trade = snapshot.machineEvidence.trade as CandidateTradeView | null;
                 const direction = candidate.direction === "short" ? "Short" : "Long";
                 const blocked = candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION";
@@ -1874,7 +1900,7 @@ function CoverageRail({ data, loading, queueItems, selectedStrategyKey, selected
                       <span className="mono truncate text-[13px] font-bold">{formatReviewTime(trade?.entryTime ?? candidate.entryCandleOpenTime)}</span>
                       <span className="shrink-0 text-[12px] font-bold">{direction}</span>
                     </span>
-                    <span className="mt-1 block break-words text-[13px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}</span>
+                     <span className="mt-1 block break-words text-[13px] font-semibold">{candidate.contractSymbol} · {edgeDisplayLabel(candidate.primaryEdge)}{snapshot.category !== "qualified_trade" ? ` · ${snapshot.categoryLabel}` : ""}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                 <span className={trade?.netPnl == null ? "" : trade.netPnl < 0 ? "status-negative" : "status-positive"}>{formatSignedMoney(trade?.netPnl)}</span>
                       <span>Grade {candidate.setupGrade}</span>
@@ -2044,10 +2070,13 @@ function SelectedTradeSummary({ snapshot }: { snapshot: VisualValidationSnapshot
 }
 
 function SnapshotProvenance({ snapshot }: { snapshot: VisualValidationSnapshot }) {
+  const compatibility = snapshot.reviewCompatibility;
   return <div className="grid gap-px border border-border bg-border text-[10px]" data-testid="occurrence-provenance">
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Occurrence identity</div><div className="mono mt-1 break-all text-foreground">{snapshot.occurrenceId ?? `audit:${snapshot.machineEvidence.audit && typeof snapshot.machineEvidence.audit === "object" && "id" in snapshot.machineEvidence.audit ? String(snapshot.machineEvidence.audit.id) : "unavailable"}`}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Source fingerprint</div><div className="mono mt-1 break-all text-foreground">{snapshot.sourceFingerprint ?? "derived from visible source candles"}</div></div>
     <div className="bg-card px-4 py-3"><div className="eyebrow text-muted-foreground">Formula hash</div><div className="mono mt-1 break-all text-foreground">{snapshot.formulaHash}</div></div>
+    {compatibility?.status === "blocked" && <div className="bg-[hsl(var(--negative)/.08)] px-4 py-3 text-destructive" role="status" data-testid="review-compatibility-blocked"><div className="eyebrow">Review inheritance</div><div className="mt-1 font-semibold">Blocked: this occurrence exists in an earlier result, but its source or analysis provenance changed. The earlier human review remains attached to that immutable result.</div></div>}
+    {compatibility?.status === "compatible" && <div className="bg-[hsl(var(--positive)/.08)] px-4 py-3 text-[hsl(var(--positive))]" data-testid="review-compatibility-compatible"><div className="eyebrow">Review inheritance</div><div className="mt-1 font-semibold">Compatible occurrence in an earlier result. No review was copied automatically.</div></div>}
     <details className="bg-card px-4 py-3 sm:col-span-3">
       <summary className="cursor-pointer font-semibold text-muted-foreground">Original UTC timestamps</summary>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">

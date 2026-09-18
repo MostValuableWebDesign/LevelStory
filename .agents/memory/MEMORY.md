@@ -104,3 +104,4 @@
 - [Raw market-data cache identity](raw-market-data-cache-identity.md) — raw replay reuse follows source, coverage, calendar, schema, and normalization identity; strategy revisions must not invalidate it.
 - [Batch route fixture timing](batch-route-fixture-timing.md) — synchronous in-process replay fixtures can block HTTP polling and cause ECONNRESET; validate batch routes with non-blocking workers or an explicit serial harness.
 - [Cataloged session range orchestration](part4-session-range-orchestration.md) — reuse session evidence by session identity, then rerun chronological account arbitration for the selected range.
+- [Visual Review provenance compatibility](visual-review-provenance-compatibility.md) — causal occurrence identity alone cannot transfer human review across changed source, strategy, or chart provenance.

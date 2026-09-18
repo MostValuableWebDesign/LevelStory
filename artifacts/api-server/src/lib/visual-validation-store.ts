@@ -10,6 +10,7 @@ import type {
   VisualValidationTeachingInput,
   VisualValidationFreshness,
   VisualValidationFreshnessReason,
+  VisualValidationReviewCompatibility,
 } from "./visual-validation.js";
 import {
   buildProposedRuleAnalysis,
@@ -90,6 +91,58 @@ function reviewerHistory(stored: StoredVisualValidationSet, reviewerId: string |
   const created: VisualValidationReview[] = [];
   stored.reviewHistoryByReviewer.set(reviewerId, created);
   return created;
+}
+
+function snapshotOccurrenceKey(snapshot: VisualValidationSnapshot): string | null {
+  if (snapshot.occurrenceId) return snapshot.occurrenceId;
+  const anchor = snapshot.categoryAnchor;
+  if (!anchor.openTime || !anchor.closeTime) return null;
+  return [
+    snapshot.contractSymbol,
+    snapshot.tradingDate,
+    snapshot.category,
+    anchor.openTime,
+    anchor.closeTime,
+    anchor.direction ?? "none",
+  ].join("|");
+}
+
+function compatibleProvenance(left: VisualValidationSet, right: VisualValidationSet): boolean {
+  return left.sourceFingerprint === right.sourceFingerprint
+    && left.cacheKey === right.cacheKey
+    && left.strategyVersion === right.strategyVersion
+    && left.formulaHash === right.formulaHash
+    && left.snapshotProjectionVersion === right.snapshotProjectionVersion
+    && left.chartProjectionVersion === right.chartProjectionVersion;
+}
+
+function reviewCompatibilityFor(
+  snapshot: VisualValidationSnapshot,
+  previous: StoredVisualValidationSet | undefined,
+  currentSet: Omit<VisualValidationSet, "reviewSetId" | "createdAt">,
+): VisualValidationReviewCompatibility {
+  if (!previous) return { status: "new", reason: "no_prior_occurrence" };
+  const key = snapshotOccurrenceKey(snapshot);
+  if (!key) return { status: "new", reason: "no_prior_occurrence" };
+  const priorSnapshot = previous.set.snapshots.find((candidate) => snapshotOccurrenceKey(candidate) === key);
+  if (!priorSnapshot) return { status: "new", reason: "no_prior_occurrence" };
+  const priorSet = previous.set;
+  return compatibleProvenance(
+    { ...currentSet, reviewSetId: "current", createdAt: "" },
+    priorSet,
+  )
+    ? {
+        status: "compatible",
+        reason: "same_occurrence_same_provenance",
+        priorReviewSetId: priorSet.reviewSetId,
+        priorSnapshotId: priorSnapshot.snapshotId,
+      }
+    : {
+        status: "blocked",
+        reason: "provenance_changed",
+        priorReviewSetId: priorSet.reviewSetId,
+        priorSnapshotId: priorSnapshot.snapshotId,
+      };
 }
 
 export function restoreVisualValidationReviews(reviewSetId: string, reviewerId: string, reviews: VisualValidationReview[]): void {
@@ -260,10 +313,11 @@ export function storeVisualValidationSet(
   prune();
   const { publishAsLatest = true, ...metadataOptions } = options;
   const freshness = freshnessFor({ ...set, ...metadataOptions });
+  const previous = latestSetId ? sets.get(latestSetId) : undefined;
+  const setWithMetadata = { ...set, ...metadataOptions };
   const stored: StoredVisualValidationSet = {
     set: {
-      ...set,
-      ...metadataOptions,
+      ...setWithMetadata,
       reviewSetId: randomUUID(),
       createdAt: new Date().toISOString(),
       currentBuildId: APPLICATION_BUILD_ID,
@@ -274,6 +328,10 @@ export function storeVisualValidationSet(
     reviewHistoryByReviewer: new Map(),
     lastAccessedAt: Date.now(),
   };
+  stored.set.snapshots = stored.set.snapshots.map((snapshot) => ({
+    ...snapshot,
+    reviewCompatibility: reviewCompatibilityFor(snapshot, previous, setWithMetadata),
+  }));
   sets.set(stored.set.reviewSetId, stored);
   if (publishAsLatest) latestSetId = stored.set.reviewSetId;
   return getVisualValidationSet(stored.set.reviewSetId)!;

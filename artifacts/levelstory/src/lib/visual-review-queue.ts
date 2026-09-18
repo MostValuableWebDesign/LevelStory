@@ -32,6 +32,34 @@ function matchesStrategy(candidate: VisualValidationTradeCandidate, strategy: St
   return candidate.primaryEdge === edge || candidate.matchedEdges.includes(edge);
 }
 
+function diagnosticCandidate(snapshot: VisualValidationSnapshot): VisualValidationTradeCandidate {
+  const direction = snapshot.categoryAnchor.direction ?? "long";
+  const trade = snapshot.machineEvidence.trade as { outcome?: VisualValidationTradeCandidate["outcome"] } | null;
+  const primaryEdge = canonicalEdgeForStrategy(snapshot.strategyKey) as VisualValidationTradeCandidate["primaryEdge"];
+  return {
+    candidateId: `diagnostic|${snapshot.snapshotId}`,
+    snapshotId: snapshot.snapshotId,
+    signalOccurrenceId: snapshot.occurrenceId ?? snapshot.snapshotId,
+    contractSymbol: snapshot.contractSymbol,
+    tradingDate: snapshot.tradingDate,
+    entryCandleOpenTime: snapshot.categoryAnchor.openTime,
+    entryCandleCloseTime: snapshot.categoryAnchor.closeTime,
+    direction,
+    entryTriggerPrice: snapshot.categoryAnchor.price,
+    primaryEdge,
+    matchedEdges: [primaryEdge],
+    supportingConfluences: [],
+    setupGrade: "A",
+    period: snapshot.period,
+    outcome: trade?.outcome ?? "open",
+    causalEvidence: snapshot.categoryAnchor.relatedCandles.map((candle) => ({
+      kind: candle.role === "evaluation" ? "level" : candle.role === "patience" ? "patience" : "entry",
+      timestamp: candle.closeTime,
+      detail: `${candle.role} candle`,
+    })),
+  };
+}
+
 function compareQueueItems(left: ReviewQueueItem, right: ReviewQueueItem): number {
   return left.candidate.tradingDate.localeCompare(right.candidate.tradingDate)
     || left.candidate.entryCandleCloseTime.localeCompare(right.candidate.entryCandleCloseTime)
@@ -78,6 +106,15 @@ export function buildReviewQueue(
     })
     .filter((item): item is ReviewQueueItem => Boolean(item))
     .sort(compareQueueItems);
+  if (data.request.reviewMode === "trades_and_diagnostics") {
+    const existingSnapshotIds = new Set(items.map((item) => item.snapshot.snapshotId));
+    const diagnostics = data.snapshots
+      .filter((snapshot) => snapshot.category !== "qualified_trade" && !existingSnapshotIds.has(snapshot.snapshotId))
+      .filter((snapshot) => !selectedStrategyKey || snapshot.strategyKey === selectedStrategyKey)
+      .map((snapshot) => ({ candidate: diagnosticCandidate(snapshot), snapshot }))
+      .sort((left, right) => compareQueueItems(left, right));
+    items.push(...diagnostics);
+  }
   const reviewableCandidateIds = new Set(items.map((item) => item.candidate.candidateId));
 
   return {

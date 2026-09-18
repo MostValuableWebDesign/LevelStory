@@ -202,6 +202,13 @@ export type VisualValidationCategoryAnchor = {
   occurrenceId?: string;
 };
 
+export type VisualValidationReviewCompatibility = {
+  status: "new" | "compatible" | "blocked";
+  reason: "no_prior_occurrence" | "same_occurrence_same_provenance" | "provenance_changed";
+  priorReviewSetId?: string;
+  priorSnapshotId?: string;
+};
+
 export type VisualValidationCoverage = {
   session: "primary" | "full_regular";
   expectedCandleCount: number;
@@ -251,6 +258,7 @@ export type VisualValidationSnapshot = {
   futureCandleAccess: false;
   categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
+  reviewCompatibility?: VisualValidationReviewCompatibility;
   machineEvidence: {
     quotesAvailable: boolean;
     sourceSchema: "quote_bbo" | "historical_ohlcv";

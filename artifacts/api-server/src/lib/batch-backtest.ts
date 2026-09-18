@@ -105,6 +105,7 @@ export type BatchRunnerOptions = {
   onProgress?: (progress: BatchBacktestProgress) => void;
   runPartition?: (input: BacktestWorkerInput, options: { timeoutMs: number; signal: AbortSignal }) => Promise<BacktestReport>;
   sessionCache?: CatalogedSessionCacheContext;
+  includeSensitivity?: boolean;
 };
 
 function uniqueSorted(values: readonly string[]): string[] {
@@ -605,38 +606,42 @@ export async function runBatchBacktest(
     ohlcvSlippageTicks: baseSlippage + 2,
     ohlcvCommissionPerContract: Number((baseCommission * 1.25).toFixed(2)),
   };
-  const higherReports = await runPartitionSet(partitions, higherCostRequest, input.risk, options, false);
-  const adverseReports = await runPartitionSet(partitions, adverseSlippageRequest, input.risk, options, false);
-  const higherEvaluation = evaluateWalkForward({
-    reports: higherReports,
-    partitions,
-    selectedDates: dates,
-    formulaHash: first.formulaHash,
-    formulaVersion: FIXED_FORMULA_VERSION,
-  }, input.request.inSampleDays, input.request.outOfSampleDays);
-  const adverseEvaluation = evaluateWalkForward({
-    reports: adverseReports,
-    partitions,
-    selectedDates: dates,
-    formulaHash: first.formulaHash,
-    formulaVersion: FIXED_FORMULA_VERSION,
-  }, input.request.inSampleDays, input.request.outOfSampleDays);
-  normalEvaluation.sensitivity = [
-    buildSensitivityCase(normalEvaluation, "normal", "Normal costs", [
-      "The requested commission and slippage assumptions are unchanged.",
-      "This is the descriptive baseline; it is not selected over the stress cases.",
-    ]),
-    buildSensitivityCase(higherEvaluation, "higher_cost", "Higher cost", [
-      `Commission is increased to ${higherCostRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
-      `Adverse slippage is increased to ${higherCostRequest.ohlcvSlippageTicks} ticks per side.`,
-      "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
-    ]),
-    buildSensitivityCase(adverseEvaluation, "adverse_slippage", "Adverse slippage", [
-      `Commission is increased to ${adverseSlippageRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
-      `Adverse slippage is increased to ${adverseSlippageRequest.ohlcvSlippageTicks} ticks per side.`,
-      "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
-    ]),
-  ];
+  if (options.includeSensitivity !== false) {
+    const higherReports = await runPartitionSet(partitions, higherCostRequest, input.risk, options, false);
+    const adverseReports = await runPartitionSet(partitions, adverseSlippageRequest, input.risk, options, false);
+    const higherEvaluation = evaluateWalkForward({
+      reports: higherReports,
+      partitions,
+      selectedDates: dates,
+      formulaHash: first.formulaHash,
+      formulaVersion: FIXED_FORMULA_VERSION,
+    }, input.request.inSampleDays, input.request.outOfSampleDays);
+    const adverseEvaluation = evaluateWalkForward({
+      reports: adverseReports,
+      partitions,
+      selectedDates: dates,
+      formulaHash: first.formulaHash,
+      formulaVersion: FIXED_FORMULA_VERSION,
+    }, input.request.inSampleDays, input.request.outOfSampleDays);
+    normalEvaluation.sensitivity = [
+      buildSensitivityCase(normalEvaluation, "normal", "Normal costs", [
+        "The requested commission and slippage assumptions are unchanged.",
+        "This is the descriptive baseline; it is not selected over the stress cases.",
+      ]),
+      buildSensitivityCase(higherEvaluation, "higher_cost", "Higher cost", [
+        `Commission is increased to ${higherCostRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
+        `Adverse slippage is increased to ${higherCostRequest.ohlcvSlippageTicks} ticks per side.`,
+        "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
+      ]),
+      buildSensitivityCase(adverseEvaluation, "adverse_slippage", "Adverse slippage", [
+        `Commission is increased to ${adverseSlippageRequest.ohlcvCommissionPerContract?.toFixed(2)} per contract.`,
+        `Adverse slippage is increased to ${adverseSlippageRequest.ohlcvSlippageTicks} ticks per side.`,
+        "The same dates, contracts, formula, and untouched holdout windows are replayed independently.",
+      ]),
+    ];
+  } else {
+    normalEvaluation.sensitivity = [];
+  }
   const result = aggregateBatchReports(reports, partitions, dates, normalEvaluation);
   options.onProgress?.({
     status: "completed",

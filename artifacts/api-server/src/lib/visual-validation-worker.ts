@@ -4,6 +4,7 @@ import {
   buildHistoricalVisualValidationSetFromReport,
   type VisualValidationRequest,
 } from "./visual-validation.js";
+import { runBatchBacktest } from "./batch-backtest.js";
 import {
   getReadyHistoricalMultiContractIndex,
   multiContractImportToReplayDataset,
@@ -63,25 +64,51 @@ try {
     message: `Loading ${totalSessions} trading session${totalSessions === 1 ? "" : "s"}`,
   });
   parentPort.postMessage({ type: "partial", set: buildHistoricalVisualValidationPartialSet(request, dataset, []) });
-  const report = runCausalBacktest({
-    symbol: request.symbol,
-    endDate: request.endDate,
-    inSampleDays: request.inSampleDays,
-    outOfSampleDays: request.outOfSampleDays,
-    premarketAvailable: request.premarketAvailable,
-    source: MULTI_CONTRACT_SOURCE,
-    executionMode: "ohlcv_modeled",
-    visualReviewEarlyOrbMomentum: request.earlyOrbMomentum,
-    visualReviewEnabledStrategies: request.enabledStrategies,
-    strategyConfigOverride: request.governedStrategy?.config,
-  }, undefined, dataset, ({ completedSessions: completed, totalSessions: total }) => {
-    emitProgress({
-      phase: "replaying_sessions",
-      completedUnits: total > 0 ? 15 + Math.round((completed / total) * 60) : 15,
-      completedSessions: completed,
-      totalSessions: total,
-      message: `Replaying session ${Math.min(completed + 1, total)} of ${total}`,
-    });
+  const abortController = new AbortController();
+  const report = await runBatchBacktest({
+    request: {
+      symbol: request.symbol,
+      endDate: request.endDate,
+      inSampleDays: request.inSampleDays,
+      outOfSampleDays: request.outOfSampleDays,
+      premarketAvailable: request.premarketAvailable,
+      source: MULTI_CONTRACT_SOURCE,
+      executionMode: "ohlcv_modeled",
+      visualReviewEarlyOrbMomentum: request.earlyOrbMomentum,
+      visualReviewEnabledStrategies: request.enabledStrategies,
+      strategyConfigOverride: request.governedStrategy?.config,
+      selectedDates: dataset.selectedDates ? [...dataset.selectedDates] : undefined,
+    },
+    replayDataset: dataset,
+  }, {
+    timeoutMs: 300_000,
+    signal: abortController.signal,
+    includeSensitivity: false,
+    onProgress: ({ completedPartitions, totalPartitions, message }) => {
+      emitProgress({
+        phase: "replaying_sessions",
+        completedUnits: totalPartitions > 0 ? 15 + Math.round((completedPartitions / totalPartitions) * 60) : 15,
+        completedSessions: completedPartitions,
+        totalSessions: totalPartitions,
+        message: message ?? "Replaying historical session partitions.",
+      });
+    },
+    runPartition: async ({ request: partitionRequest, risk, replayDataset }) => (
+      runCausalBacktest(partitionRequest, risk, replayDataset)
+    ),
+    sessionCache: {
+      catalogEntries: imported.summary.sessionCatalog,
+      sourceIdentity: {
+        source: MULTI_CONTRACT_SOURCE,
+        contentFingerprint: imported.contentFingerprint,
+        calendarVersion: imported.calendar.calendarVersion,
+      },
+      strategyIdentity: {
+        version: request.governedStrategy?.versionId ?? "active",
+        formulaHash: request.governedStrategy?.formulaHash ?? "active",
+        enabledStrategies: request.enabledStrategies ?? null,
+      },
+    },
   });
   emitProgress({
     phase: "building_ledger",

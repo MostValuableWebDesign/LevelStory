@@ -4993,6 +4993,32 @@ export type VisualValidationSnapshotReview = {
   teaching?: VisualValidationTeachingExample;
 };
 
+export type VisualValidationReviewCompatibilityStatus = typeof VisualValidationReviewCompatibilityStatus[keyof typeof VisualValidationReviewCompatibilityStatus];
+
+
+export const VisualValidationReviewCompatibilityStatus = {
+  new: 'new',
+  compatible: 'compatible',
+  blocked: 'blocked',
+} as const;
+
+export type VisualValidationReviewCompatibilityReason = typeof VisualValidationReviewCompatibilityReason[keyof typeof VisualValidationReviewCompatibilityReason];
+
+
+export const VisualValidationReviewCompatibilityReason = {
+  no_prior_occurrence: 'no_prior_occurrence',
+  same_occurrence_same_provenance: 'same_occurrence_same_provenance',
+  provenance_changed: 'provenance_changed',
+} as const;
+
+export interface VisualValidationReviewCompatibility {
+  status: VisualValidationReviewCompatibilityStatus;
+  reason: VisualValidationReviewCompatibilityReason;
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  priorReviewSetId?: string;
+  priorSnapshotId?: string;
+}
+
 export interface VisualValidationSnapshot {
   snapshotId: string;
   occurrenceId?: string;
@@ -5027,6 +5053,7 @@ export interface VisualValidationSnapshot {
   futureCandleAccess: false;
   categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
+  reviewCompatibility?: VisualValidationReviewCompatibility;
   machineEvidence: VisualValidationSnapshotMachineEvidence;
   review: VisualValidationSnapshotReview;
 }

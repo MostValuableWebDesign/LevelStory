@@ -539,6 +539,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /backtest/visual-validation/{reviewSetId}/snapshots/{snapshotId}:
+    get:
+      operationId: getVisualValidationSnapshot
+      tags: [backtest]
+      summary: Load one immutable visual-validation chart snapshot
+      parameters:
+        - name: reviewSetId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        - name: snapshotId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: One immutable chart snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualValidationSnapshot"
+        "404":
+          description: Review set or snapshot not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /backtest/visual-validation/replay:
     get:
       operationId: getShadowAccountReplay
@@ -4681,6 +4708,8 @@ components:
         annotations:
           type: array
           items: { $ref: "#/components/schemas/VisualValidationAnnotation" }
+        reviewCompatibility:
+          $ref: "#/components/schemas/VisualValidationReviewCompatibility"
         machineEvidence:
           type: object
           additionalProperties: true
@@ -4694,6 +4723,14 @@ components:
             teaching: { $ref: "#/components/schemas/VisualValidationTeachingExample" }
           required: [status, note, reviewedAt, revision]
       required: [snapshotId, sampleIndex, category, categoryLabel, machineLabel, strategyKey, formulaHash, formulaVersion, symbol, contractSymbol, contractMonth, tradingDate, entryWindow, selectionReason, period, evaluationCursor, reviewCursor, machineCandles, reviewCandles, premarketCandles, indicatorSeries, tradeEvents, coverage, outcomeContextEnd, futureCandleAccess, categoryAnchor, annotations, machineEvidence, review]
+    VisualValidationReviewCompatibility:
+      type: object
+      properties:
+        status: { type: string, enum: [new, compatible, blocked] }
+        reason: { type: string, enum: [no_prior_occurrence, same_occurrence_same_provenance, provenance_changed] }
+        priorReviewSetId: { type: string, pattern: '^[0-9a-fA-F-]{36}$' }
+        priorSnapshotId: { type: string }
+      required: [status, reason]
     VisualValidationCategoryCoverage:
       type: object
       properties:

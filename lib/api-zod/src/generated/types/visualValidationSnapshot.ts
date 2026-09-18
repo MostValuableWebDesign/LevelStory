@@ -13,6 +13,7 @@ import type { VisualValidationCategoryAnchor } from './visualValidationCategoryA
 import type { VisualValidationCoverage } from './visualValidationCoverage';
 import type { VisualValidationCursor } from './visualValidationCursor';
 import type { VisualValidationIndicatorPoint } from './visualValidationIndicatorPoint';
+import type { VisualValidationReviewCompatibility } from './visualValidationReviewCompatibility';
 import type { VisualValidationReviewCursor } from './visualValidationReviewCursor';
 import type { VisualValidationSnapshotEntryWindow } from './visualValidationSnapshotEntryWindow';
 import type { VisualValidationSnapshotMachineEvidence } from './visualValidationSnapshotMachineEvidence';
@@ -54,6 +55,7 @@ export interface VisualValidationSnapshot {
   futureCandleAccess: false;
   categoryAnchor: VisualValidationCategoryAnchor;
   annotations: VisualValidationAnnotation[];
+  reviewCompatibility?: VisualValidationReviewCompatibility;
   machineEvidence: VisualValidationSnapshotMachineEvidence;
   review: VisualValidationSnapshotReview;
 }

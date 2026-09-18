@@ -3,6 +3,8 @@ import {
   CreateVisualValidationSetBody,
   GetVisualValidationSetQueryParams,
   GetVisualValidationSetResponse,
+  GetVisualValidationSnapshotParams,
+  GetVisualValidationSnapshotResponse,
   RecordVisualValidationReviewBody,
   RecordVisualValidationReviewResponse,
   ExportVisualValidationDiscrepanciesQueryParams,
@@ -198,6 +200,30 @@ export function createVisualValidationRouter(): IRouter {
       const unavailable = detail.includes("unavailable") || detail.includes("ready multi-contract index");
       res.status(error instanceof HistoricalNoDataError ? error.statusCode : unavailable ? 503 : 500).json({ error: detail });
     }
+  });
+
+  router.get("/backtest/visual-validation/:reviewSetId/snapshots/:snapshotId", async (req, res): Promise<void> => {
+    const parsed = GetVisualValidationSnapshotParams.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const reviewerId = req.user?.id;
+    let set = getVisualValidationSet(parsed.data.reviewSetId, reviewerId);
+    if (!set && reviewerId) {
+      const persistedSet = await loadVisualValidationSet(parsed.data.reviewSetId, reviewerId);
+      if (persistedSet) {
+        restoreVisualValidationSet(persistedSet);
+        restoreVisualValidationReviews(parsed.data.reviewSetId, reviewerId, await loadVisualValidationReviews(parsed.data.reviewSetId, reviewerId));
+        set = getVisualValidationSet(parsed.data.reviewSetId, reviewerId);
+      }
+    }
+    const snapshot = set?.snapshots.find((item) => item.snapshotId === parsed.data.snapshotId);
+    if (!snapshot) {
+      res.status(404).json({ error: "Visual-validation snapshot not found or expired." });
+      return;
+    }
+    res.json(GetVisualValidationSnapshotResponse.parse(snapshot));
   });
 
   router.post("/backtest/visual-validation", async (req, res): Promise<void> => {

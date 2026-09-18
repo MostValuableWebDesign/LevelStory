@@ -83,7 +83,8 @@ import type {
   VisualValidationRequest,
   VisualValidationReview,
   VisualValidationReviewRequest,
-  VisualValidationSet
+  VisualValidationSet,
+  VisualValidationSnapshot
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1387,6 +1388,88 @@ export const useCreateVisualValidationSet = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateVisualValidationSetMutationOptions(options));
     }
+
+export const getGetVisualValidationSnapshotUrl = (reviewSetId: string,
+    snapshotId: string,) => {
+
+
+
+
+  return `/api/backtest/visual-validation/${reviewSetId}/snapshots/${snapshotId}`
+}
+
+/**
+ * @summary Load one immutable visual-validation chart snapshot
+ */
+export const getVisualValidationSnapshot = async (reviewSetId: string,
+    snapshotId: string, options?: Parameters<typeof customFetch>[1]): Promise<VisualValidationSnapshot> => {
+
+  return customFetch<VisualValidationSnapshot>(getGetVisualValidationSnapshotUrl(reviewSetId,snapshotId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVisualValidationSnapshotQueryKey = (reviewSetId: string,
+    snapshotId: string,) => {
+    return [
+    `/api/backtest/visual-validation/${reviewSetId}/snapshots/${snapshotId}`
+    ] as const;
+    }
+
+
+export const getGetVisualValidationSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof getVisualValidationSnapshot>>, TError = ErrorType<ErrorResponse>>(reviewSetId: string,
+    snapshotId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVisualValidationSnapshotQueryKey(reviewSetId,snapshotId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVisualValidationSnapshot>>> = ({ signal }) => getVisualValidationSnapshot(reviewSetId,snapshotId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: reviewSetId !== null && reviewSetId !== undefined && snapshotId !== null && snapshotId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSnapshot>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVisualValidationSnapshotQueryResult = NonNullable<Awaited<ReturnType<typeof getVisualValidationSnapshot>>>
+export type GetVisualValidationSnapshotQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Load one immutable visual-validation chart snapshot
+ */
+
+export function useGetVisualValidationSnapshot<TData = Awaited<ReturnType<typeof getVisualValidationSnapshot>>, TError = ErrorType<ErrorResponse>>(
+ reviewSetId: string,
+    snapshotId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualValidationSnapshot>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVisualValidationSnapshotQueryOptions(reviewSetId,snapshotId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetShadowAccountReplayUrl = (params: GetShadowAccountReplayParams,) => {
   const normalizedParams = new URLSearchParams();
