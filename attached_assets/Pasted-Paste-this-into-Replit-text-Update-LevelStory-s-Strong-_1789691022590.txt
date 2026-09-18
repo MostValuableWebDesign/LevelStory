@@ -1,0 +1,164 @@
+Paste this into Replit:
+
+```text
+Update LevelStory’s Strong Breakout After Consolidation strategy so a consolidation range requires at least four completed candlesticks.
+
+Inspect current HEAD first and preserve newer valid changes.
+
+REQUIRED RULE
+
+A frozen consolidation must contain:
+
+- A minimum of 4 completed consecutive candles.
+- Four candles is valid.
+- More than four candles is valid.
+- One, two, or three candles can never qualify as consolidation.
+
+Apply this rule to CONSOLIDATION_BREAKOUT_CONTINUATION everywhere consolidation detection or reconstruction occurs.
+
+Causal requirements:
+
+- Count only candles completed before the breakout threshold is crossed.
+- Do not count the breakout/entry candle as one of the consolidation candles.
+- Do not count incomplete or future candles.
+- Do not duplicate a candle when evaluation runs repeatedly.
+- Require the candles to be consecutive in the strategy’s expected timeframe.
+- Missing intervals or invalid candle timing must fail closed unless the repository has an explicit governed gap policy.
+- Freeze the range from the exact qualifying source candles.
+- Preserve their identities and timestamps in directConsolidationSourceCandleTimestamps and related evidence.
+- A later candle must not rewrite the original frozen range after the breakout setup has qualified.
+
+There is no new maximum candle count. A consolidation with 4, 5, 6, or more candles may qualify if it satisfies all existing consolidation-quality rules.
+
+PRESERVE EXISTING QUALITY RULES
+
+The four-candle minimum is only the minimum sample size. Continue enforcing the existing causal consolidation requirements, including applicable:
+
+- Volatility-relative compression.
+- Stable range boundaries.
+- Required candle-range overlap.
+- Rejection evidence at the range edges.
+- Maximum directional progression.
+- Range-expansion limits.
+- Completed-candle and timestamp validity.
+
+Do not make every sequence of four candles a consolidation.
+
+PRESERVE CURRENT ENTRY AND STOP RULES
+
+Do not alter these rules:
+
+Bullish trend:
+- LONG entry threshold = frozen consolidation HIGH + 8 instrument ticks.
+- Actual modeled fill must be strictly above the frozen range.
+- Stop = frozen consolidation LOW − 8 instrument ticks.
+
+Bearish trend:
+- SHORT entry threshold = frozen consolidation LOW − 8 instrument ticks.
+- Actual modeled fill must be strictly below the frozen range.
+- Stop = frozen consolidation HIGH + 8 instrument ticks.
+
+Also preserve:
+
+- Independently established causal trend authorization.
+- Future trend evidence cannot authorize an earlier setup.
+- Price-crossing entry and stop semantics without requiring a candle close.
+- Stable occurrence and candidate identities.
+- Persistent rejection of conflicting crossing or trend evidence.
+- Existing account-position arbitration.
+- Equivalent-Candle Reversal and all unrelated strategies.
+
+FULL-PATH CONSISTENCY
+
+Inspect and update every place that defines, validates, serializes, displays, or reconstructs the consolidation range:
+
+- Strategy configuration and defaults.
+- Consolidation detector.
+- Phase 6 qualification.
+- Phase 9 replay and occurrence construction.
+- Market snapshot serialization.
+- Candidate projection.
+- Visual Review reconstruction and frozen-zone display.
+- API schemas and frontend assumptions.
+- Formula/cache configuration.
+
+Use one authoritative minimum-candle configuration. Do not leave competing hardcoded values in backend, frontend, tests, or Visual Review.
+
+Visual Review must display the authoritative frozen consolidation built from at least four source candles. It must not reconstruct a different range using fewer candles.
+
+REQUIRED REGRESSION TESTS
+
+Use production functions and deterministic candle fixtures.
+
+Minimum count:
+
+1. Three completed valid consolidation candles:
+   - Must not detect or qualify consolidation.
+   - Must create no candidate or trade.
+
+2. Exactly four completed valid consolidation candles:
+   - May detect and qualify when every other rule passes.
+   - Preserve all four source-candle identities.
+
+3. Five or more completed valid consolidation candles:
+   - May detect and qualify when every other rule passes.
+   - Must not be rejected merely because the sequence exceeds four candles.
+
+4. Three completed candles plus the breakout candle:
+   - Must reject.
+   - The breakout candle cannot be counted as the fourth consolidation candle.
+
+5. Three completed candles plus one incomplete candle:
+   - Must reject.
+
+6. Four nonconsecutive candles or a sequence with an unsupported interval:
+   - Must fail according to the governed continuity policy.
+
+7. Four candles that fail compression, overlap, rejection, directional-progression, or expansion rules:
+   - Must still reject.
+
+Full production path:
+
+- Valid four-candle bullish consolidation reaches audit, occurrence, candidate, account arbitration, and authoritative long execution.
+- Valid four-candle bearish consolidation reaches the same stages for a short.
+- Verify the exact eight-tick entry and opposite-side stop formulas.
+- Verify the modeled fill is strictly outside the frozen range.
+- Verify Visual Review shows the same four-or-more source candles and frozen boundaries used by execution.
+- Repeated evaluation preserves one stable setup identity and does not duplicate source candles.
+- Existing missing/future/conflicting trend tests continue passing.
+- Existing duplicate-conflict tests continue passing.
+- Equivalent-Candle Reversal behavior remains unchanged.
+
+VERSIONING AND VERIFICATION
+
+Update the governed formula/cache version because changing the minimum consolidation length changes strategy qualification.
+
+Do not reuse old cached results or silently attach existing human reviews to newly qualified setups.
+
+Run:
+
+- Consolidation detector and Phase 6 tests.
+- Phase 9 unit and integration tests.
+- Execution, account-arbitration, and batch tests.
+- Relevant Visual Review tests.
+- API typecheck and build.
+- git diff --check.
+
+Use focused tests before running any broad historical replay.
+
+FINAL REPORT
+
+Provide:
+
+1. Previous and new minimum candle counts.
+2. The authoritative configuration field and files changed.
+3. Confirmation that exactly four qualifies and fewer than four rejects.
+4. Confirmation that more than four remains allowed.
+5. Confirmation that the breakout candle is excluded from the count.
+6. Bullish and bearish production-path results.
+7. Entry and stop formulas preserved.
+8. Formula/cache version change.
+9. Tests and builds passed, failed, or not run.
+
+Do not claim completion merely because the configuration default says 4. Verify the detector, replay, candidate projection, and Visual Review all use the same minimum and the same frozen source candles.
+```
