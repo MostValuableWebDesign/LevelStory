@@ -16,6 +16,7 @@ import {
   assertMultiContractCoverageReconciles,
   validateMultiContractContentFingerprint,
   validateMesRolloverSchedule,
+  getHistoricalMultiContractIndexStatus,
   type HistoricalMultiContractImport,
 } from "./multi-contract-replay.js";
 import { newYorkTimeToUtc, sessionCalendarForContract } from "./session-calendar.js";
@@ -271,6 +272,30 @@ test("resolves stored dates even when the rollover schedule has no entry", () =>
   assert.deepEqual(resolveStoredHistoricalDates(imported, tradingDate, tradingDate), [tradingDate]);
 });
 
+test("repeated date selection queries the persisted catalog instead of contract discovery", () => {
+  let dateQueries = 0;
+  let contractQueries = 0;
+  const storage = {
+    getSessionCatalogDates: () => {
+      dateQueries += 1;
+      return ["2025-09-05", "2025-09-08"];
+    },
+    getSessionCatalogContractSymbolsForDate: (tradingDate: string) => {
+      contractQueries += 1;
+      return tradingDate === "2025-09-05" ? ["MESU5"] : ["MESZ5"];
+    },
+  } as any;
+  const imported = {
+    storage,
+    summary: { allObservedTradingDates: [] },
+    contracts: new Map(),
+  } as unknown as HistoricalMultiContractImport;
+  assert.deepEqual(resolveStoredHistoricalDates(imported, "2025-09-05", "2025-09-08"), ["2025-09-05", "2025-09-08"]);
+  assert.deepEqual(resolveStoredHistoricalDates(imported, "2025-09-05", "2025-09-08"), ["2025-09-05", "2025-09-08"]);
+  assert.equal(dateQueries, 2);
+  assert.equal(contractQueries, 4);
+});
+
 test("explains when a requested range has no stored history", () => {
   const imported = {
     summary: {
@@ -407,4 +432,12 @@ test("validates every composite source fingerprint component, including MESH7", 
   });
   assert.equal(malformed.valid, false);
   assert.ok(malformed.errors.some((error) => error.startsWith("DUPLICATE_FILENAME:")));
+});
+
+test("failed indexing is distinct from an empty ready session catalog", async () => {
+  const status = await getHistoricalMultiContractIndexStatus({ sources: [] });
+  assert.equal(status.state, "failed");
+  assert.equal(status.sessionCatalogState, "failed");
+  assert.match(status.error ?? "", /No accepted outright MES contract files/i);
+  assert.deepEqual(status.availableTradingDates, []);
 });

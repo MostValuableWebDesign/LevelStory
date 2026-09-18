@@ -3041,10 +3041,41 @@ components:
           minimum: 0
           description: Round-trip commission and exchange/regulatory fee assumption per contract.
       required: [symbol, endDate, inSampleDays, outOfSampleDays]
+    HistoricalSessionCatalogEntry:
+      type: object
+      properties:
+        tradingDate: { type: string }
+        contractSymbol: { type: string }
+        sessionType: { type: string }
+        timeZone: { type: string }
+        calendarIdentity: { type: string }
+        partitionIdentity: { type: string }
+        availableTimeframes:
+          type: array
+          items: { type: number }
+        candleCounts:
+          type: object
+          properties:
+            oneMinute: { type: number, minimum: 0 }
+            fiveMinute: { type: number, minimum: 0 }
+            fifteenMinute: { type: number, minimum: 0 }
+            oneHour: { type: number, minimum: 0 }
+          required: [oneMinute, fiveMinute, fifteenMinute, oneHour]
+        tickCoverage: { type: string, enum: [not_indexed, available] }
+        earliestTimestamp: { type: ["string", "null"], format: date-time }
+        latestTimestamp: { type: ["string", "null"], format: date-time }
+        coverageStatus: { type: string, enum: [complete, incomplete] }
+        completenessStatus: { type: string, enum: [complete, incomplete] }
+        validationStatus: { type: string, enum: [validated, failed] }
+        sourceFingerprint: { type: string }
+        ingestionVersion: { type: string }
+        schemaVersion: { type: number, minimum: 1 }
+      required: [tradingDate, contractSymbol, sessionType, timeZone, calendarIdentity, partitionIdentity, availableTimeframes, candleCounts, tickCoverage, earliestTimestamp, latestTimestamp, coverageStatus, completenessStatus, validationStatus, sourceFingerprint, ingestionVersion, schemaVersion]
     HistoricalDataIndexStatus:
       type: object
       properties:
         state: { type: string, enum: [not_started, indexing, ready, failed] }
+        sessionCatalogState: { type: string, enum: [not_initialized, indexing, ready, failed, incomplete] }
         indexKey: { type: ["string", "null"] }
         progress: { type: number, minimum: 0, maximum: 100 }
         discoveredFileCount: { type: number, minimum: 0 }
@@ -3095,7 +3126,7 @@ components:
         message: { type: ["string", "null"] }
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
-      required: [state, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, availableTradingDates, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
+      required: [state, sessionCatalogState, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, availableTradingDates, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
     HistoricalDataUploadRequest:
       type: object
       properties:
@@ -3341,6 +3372,11 @@ components:
         indexKey: { type: string }
         importerVersion: { type: string }
         indexedAt: { type: string, format: date-time }
+        sessionCatalogState: { type: string, enum: [not_initialized, indexing, ready, failed, incomplete] }
+        sessionCatalog:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoricalSessionCatalogEntry'
         scheduleVersion: { type: ["string", "null"] }
         acceptedContracts:
           type: array

@@ -949,7 +949,8 @@ export default function Backtest() {
   } as const;
 
   const availableBatchDates = useMemo(() => {
-    const dates = historicalImport.data?.allObservedTradingDates
+    const dates = historicalImport.data?.sessionCatalog?.map((entry) => entry.tradingDate)
+      ?? historicalImport.data?.allObservedTradingDates
       ?? historicalImport.data?.availableTradingDates
       ?? [];
     return [...new Set(dates.filter((date) => date >= startDate && date <= endDate))].sort();
@@ -962,11 +963,19 @@ export default function Backtest() {
     ? `This range contains ${availableBatchDates.length} stored trading sessions. Select a range containing no more than ${MAX_BACKTEST_SESSIONS}.`
     : null;
   const storedSessionAvailabilityMessage = source !== "simulated" && !historicalImport.isLoading
-    ? availableBatchDates.length === 0
-      ? "No stored trading sessions are available in this range."
-      : availableBatchDates.length === 1
-        ? "This range contains 1 stored trading session; at least 2 are required for a qualification batch."
-        : null
+    ? source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state !== "ready"
+      ? multiContractIndex.data?.state === "failed"
+        ? `Historical session catalog indexing failed: ${multiContractIndex.data.error ?? "the catalog is unavailable."}`
+        : multiContractIndex.data?.state === "indexing"
+          ? "Historical session catalog is still indexing; date selection will update when it is ready."
+          : "Historical session catalog is not initialized; no stored-session result is available yet."
+      : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "failed"
+        ? `Historical session catalog validation failed: ${multiContractIndex.data.error ?? "the catalog is unavailable."}`
+        : availableBatchDates.length === 0
+          ? "No stored trading sessions are available in this range."
+          : availableBatchDates.length === 1
+            ? "This range contains 1 stored trading session; at least 2 are required for a qualification batch."
+            : null
     : null;
 
   const submit = (event: FormEvent) => {

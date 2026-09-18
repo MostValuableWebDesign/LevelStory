@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
-import { HistoricalIndexStore } from "./historical-index-store.js";
+import { HistoricalIndexStore, type HistoricalSessionCatalogEntry } from "./historical-index-store.js";
 import { getFuturesContractSpecification } from "./contracts.js";
 import { sessionCalendarForContract } from "./session-calendar.js";
 import type { HistoricalCsvImport } from "./historical-csv-import.js";
@@ -86,6 +86,28 @@ function fixtureImport(): HistoricalCsvImport {
   };
 }
 
+function catalogEntry(tradingDate: string, contractSymbol: string, sourceFingerprint: string): HistoricalSessionCatalogEntry {
+  return {
+    tradingDate,
+    contractSymbol,
+    sessionType: "cme_equity_index_globex",
+    timeZone: "America/New_York",
+    calendarIdentity: "CME_EQUITY_INDEX_2025_2026_V3",
+    partitionIdentity: `candle_partitions:${contractSymbol}:${tradingDate}`,
+    availableTimeframes: [1, 5],
+    candleCounts: { oneMinute: 390, fiveMinute: 78, fifteenMinute: 26, oneHour: 7 },
+    tickCoverage: "not_indexed",
+    earliestTimestamp: "2025-09-05T13:30:00.000Z",
+    latestTimestamp: "2025-09-05T20:00:00.000Z",
+    coverageStatus: "complete",
+    completenessStatus: "complete",
+    validationStatus: "validated",
+    sourceFingerprint,
+    ingestionVersion: "fixture-import-v1",
+    schemaVersion: 4,
+  };
+}
+
 test("stores and reloads date/timeframe partitions and the committed source manifest", async () => {
   const directory = await mkdtemp("/tmp/levelstory-index-");
   const path = join(directory, "history.sqlite");
@@ -101,6 +123,7 @@ test("stores and reloads date/timeframe partitions and the committed source mani
   });
   store.writeImport(imported, imported.contentFingerprint);
   store.writeImport(imported, imported.contentFingerprint);
+  store.upsertSessionCatalog([catalogEntry("2025-09-05", "MESU5", imported.contentFingerprint)]);
   store.writeManifest({
     indexKey: "fixture-index",
     source: "historical_databento_multicontract",
@@ -159,6 +182,56 @@ test("stores and reloads date/timeframe partitions and the committed source mani
   assert.deepEqual(reopened.readCheckpoint(), checkpoint);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 1).map((candle) => candle.close), [100.5]);
   assert.deepEqual(reopened.getCandles("MESU5", "2025-09-05", 5).map((candle) => candle.close), [100.5]);
+  assert.deepEqual(reopened.getSessionCatalogDates(), ["2025-09-05"]);
+  assert.equal(reopened.getSessionCatalogEntries()[0]?.calendarIdentity, "CME_EQUITY_INDEX_2025_2026_V3");
+  reopened.close();
+});
+
+test("session catalog queries stay local, survive replacement, and remove only affected entries", async () => {
+  const directory = await mkdtemp("/tmp/levelstory-session-catalog-");
+  const path = join(directory, "history.sqlite");
+  const store = await HistoricalIndexStore.createAtomic(path);
+  store.upsertSessionCatalog([
+    catalogEntry("2025-09-05", "MESU5", "source-u5-v1"),
+    catalogEntry("2025-09-08", "MESU5", "source-u5-v1"),
+    catalogEntry("2025-09-09", "MESZ5", "source-z5-v1"),
+  ]);
+  await store.commitAtomic();
+
+  const reopened = HistoricalIndexStore.create(path, { readOnly: true });
+  assert.deepEqual(reopened.getSessionCatalogDates({ startDate: "2025-09-05", endDate: "2025-09-08" }), [
+    "2025-09-05",
+    "2025-09-08",
+  ]);
+  assert.deepEqual(reopened.getSessionCatalogContractSymbolsForDate("2025-09-06"), []);
+  assert.deepEqual(reopened.getSessionCatalogContractSymbolsForDate("2025-09-09"), ["MESZ5"]);
+  reopened.close();
+
+  const updated = HistoricalIndexStore.create(path);
+  updated.upsertSessionCatalog([catalogEntry("2025-09-05", "MESU5", "source-u5-v2")]);
+  assert.equal(updated.getSessionCatalogEntries({ startDate: "2025-09-05", endDate: "2025-09-05" })[0]?.sourceFingerprint, "source-u5-v2");
+  assert.equal(updated.getSessionCatalogEntries({ startDate: "2025-09-08", endDate: "2025-09-08" })[0]?.sourceFingerprint, "source-u5-v1");
+  assert.equal(updated.removeSessionCatalogEntries({ tradingDates: ["2025-09-05"] }), 1);
+  assert.deepEqual(updated.getSessionCatalogContractSymbolsForDate("2025-09-05"), []);
+  assert.deepEqual(updated.getSessionCatalogContractSymbolsForDate("2025-09-09"), ["MESZ5"]);
+  updated.close();
+});
+
+test("session catalog distinguishes incomplete coverage from a missing stored date", async () => {
+  const directory = await mkdtemp("/tmp/levelstory-session-catalog-status-");
+  const path = join(directory, "history.sqlite");
+  const store = await HistoricalIndexStore.createAtomic(path);
+  const incomplete = {
+    ...catalogEntry("2025-09-10", "MESU5", "source-u5-v1"),
+    coverageStatus: "incomplete" as const,
+    completenessStatus: "incomplete" as const,
+  };
+  store.upsertSessionCatalog([incomplete]);
+  await store.commitAtomic();
+
+  const reopened = HistoricalIndexStore.create(path, { readOnly: true });
+  assert.equal(reopened.getSessionCatalogEntries({ startDate: "2025-09-10", endDate: "2025-09-10" })[0]?.coverageStatus, "incomplete");
+  assert.deepEqual(reopened.getSessionCatalogEntries({ startDate: "2025-09-11", endDate: "2025-09-11" }), []);
   reopened.close();
 });
 

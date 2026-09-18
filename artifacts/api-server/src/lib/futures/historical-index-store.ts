@@ -7,6 +7,32 @@ import { tradingDateForTimestamp, type FuturesSessionCalendar } from "./session-
 
 export const HISTORICAL_INDEX_SCHEMA_VERSION = 4 as const;
 export const HISTORICAL_INDEX_MANIFEST_VERSION = 2 as const;
+export const HISTORICAL_SESSION_CATALOG_VERSION = 1 as const;
+
+export type HistoricalSessionCatalogEntry = {
+  tradingDate: string;
+  contractSymbol: string;
+  sessionType: string;
+  timeZone: string;
+  calendarIdentity: string;
+  partitionIdentity: string;
+  availableTimeframes: number[];
+  candleCounts: {
+    oneMinute: number;
+    fiveMinute: number;
+    fifteenMinute: number;
+    oneHour: number;
+  };
+  tickCoverage: "not_indexed" | "available";
+  earliestTimestamp: string | null;
+  latestTimestamp: string | null;
+  coverageStatus: "complete" | "incomplete";
+  completenessStatus: "complete" | "incomplete";
+  validationStatus: "validated" | "failed";
+  sourceFingerprint: string;
+  ingestionVersion: string;
+  schemaVersion: number;
+};
 
 export type HistoricalIndexMetadata = {
   indexKey: string;
@@ -204,6 +230,30 @@ export class HistoricalIndexStore {
         timeframe INTEGER NOT NULL,
         candle_count INTEGER NOT NULL,
         PRIMARY KEY (contract_symbol, trading_date, timeframe)
+      );
+      CREATE TABLE IF NOT EXISTS session_catalog (
+        trading_date TEXT NOT NULL,
+        contract_symbol TEXT NOT NULL,
+        session_type TEXT NOT NULL,
+        time_zone TEXT NOT NULL,
+        calendar_identity TEXT NOT NULL,
+        partition_identity TEXT NOT NULL,
+        available_timeframes_json TEXT NOT NULL,
+        one_minute_candle_count INTEGER NOT NULL,
+        five_minute_candle_count INTEGER NOT NULL,
+        fifteen_minute_candle_count INTEGER NOT NULL,
+        one_hour_candle_count INTEGER NOT NULL,
+        tick_coverage TEXT NOT NULL CHECK (tick_coverage IN ('not_indexed', 'available')),
+        earliest_timestamp TEXT,
+        latest_timestamp TEXT,
+        coverage_status TEXT NOT NULL CHECK (coverage_status IN ('complete', 'incomplete')),
+        completeness_status TEXT NOT NULL CHECK (completeness_status IN ('complete', 'incomplete')),
+        validation_status TEXT NOT NULL CHECK (validation_status IN ('validated', 'failed')),
+        source_fingerprint TEXT NOT NULL,
+        ingestion_version TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        indexed_at TEXT NOT NULL,
+        PRIMARY KEY (trading_date, contract_symbol)
       );
       CREATE TABLE IF NOT EXISTS candles (
         contract_symbol TEXT NOT NULL,
@@ -519,6 +569,254 @@ export class HistoricalIndexStore {
       summary.duplicateRowsRemoved,
       new Date().toISOString(),
     );
+  }
+
+  upsertSessionCatalog(entries: readonly HistoricalSessionCatalogEntry[], indexedAt = new Date().toISOString()): void {
+    if (!entries.length) return;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const statement = this.database.prepare(`
+        INSERT INTO session_catalog
+        (trading_date, contract_symbol, session_type, time_zone, calendar_identity,
+         partition_identity, available_timeframes_json, one_minute_candle_count,
+         five_minute_candle_count, fifteen_minute_candle_count, one_hour_candle_count,
+         tick_coverage, earliest_timestamp, latest_timestamp, coverage_status,
+         completeness_status, validation_status, source_fingerprint, ingestion_version,
+         schema_version, indexed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(trading_date, contract_symbol)
+        DO UPDATE SET
+          session_type = excluded.session_type,
+          time_zone = excluded.time_zone,
+          calendar_identity = excluded.calendar_identity,
+          partition_identity = excluded.partition_identity,
+          available_timeframes_json = excluded.available_timeframes_json,
+          one_minute_candle_count = excluded.one_minute_candle_count,
+          five_minute_candle_count = excluded.five_minute_candle_count,
+          fifteen_minute_candle_count = excluded.fifteen_minute_candle_count,
+          one_hour_candle_count = excluded.one_hour_candle_count,
+          tick_coverage = excluded.tick_coverage,
+          earliest_timestamp = excluded.earliest_timestamp,
+          latest_timestamp = excluded.latest_timestamp,
+          coverage_status = excluded.coverage_status,
+          completeness_status = excluded.completeness_status,
+          validation_status = excluded.validation_status,
+          source_fingerprint = excluded.source_fingerprint,
+          ingestion_version = excluded.ingestion_version,
+          schema_version = excluded.schema_version,
+          indexed_at = excluded.indexed_at
+      `);
+      for (const entry of entries) {
+        statement.run(
+          entry.tradingDate,
+          entry.contractSymbol,
+          entry.sessionType,
+          entry.timeZone,
+          entry.calendarIdentity,
+          entry.partitionIdentity,
+          JSON.stringify(entry.availableTimeframes),
+          entry.candleCounts.oneMinute,
+          entry.candleCounts.fiveMinute,
+          entry.candleCounts.fifteenMinute,
+          entry.candleCounts.oneHour,
+          entry.tickCoverage,
+          entry.earliestTimestamp,
+          entry.latestTimestamp,
+          entry.coverageStatus,
+          entry.completenessStatus,
+          entry.validationStatus,
+          entry.sourceFingerprint,
+          entry.ingestionVersion,
+          entry.schemaVersion,
+          indexedAt,
+        );
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  removeSessionCatalogEntries(filter: { tradingDates?: readonly string[]; contractSymbols?: readonly string[] }): number {
+    const dates = [...new Set(filter.tradingDates ?? [])];
+    const contracts = [...new Set(filter.contractSymbols ?? [])];
+    if (!dates.length && !contracts.length) return 0;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const clauses: string[] = [];
+      const parameters: string[] = [];
+      if (dates.length) {
+        clauses.push(`trading_date IN (${dates.map(() => "?").join(", ")})`);
+        parameters.push(...dates);
+      }
+      if (contracts.length) {
+        clauses.push(`contract_symbol IN (${contracts.map(() => "?").join(", ")})`);
+        parameters.push(...contracts);
+      }
+      const result = this.database.prepare(
+        `DELETE FROM session_catalog WHERE ${clauses.join(" OR ")}`,
+      ).run(...parameters);
+      this.database.exec("COMMIT");
+      return Number(result.changes ?? 0);
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getSessionCatalogEntries(options: {
+    startDate?: string;
+    endDate?: string;
+    contractSymbol?: string;
+    includeIncomplete?: boolean;
+  } = {}): HistoricalSessionCatalogEntry[] {
+    const clauses: string[] = [];
+    const parameters: string[] = [];
+    if (options.startDate) {
+      clauses.push("trading_date >= ?");
+      parameters.push(options.startDate);
+    }
+    if (options.endDate) {
+      clauses.push("trading_date <= ?");
+      parameters.push(options.endDate);
+    }
+    if (options.contractSymbol) {
+      clauses.push("contract_symbol = ?");
+      parameters.push(options.contractSymbol);
+    }
+    if (options.includeIncomplete === false) clauses.push("coverage_status = 'complete'");
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.database.prepare(`
+      SELECT trading_date, contract_symbol, session_type, time_zone, calendar_identity,
+             partition_identity, available_timeframes_json, one_minute_candle_count,
+             five_minute_candle_count, fifteen_minute_candle_count, one_hour_candle_count,
+             tick_coverage, earliest_timestamp, latest_timestamp, coverage_status,
+             completeness_status, validation_status, source_fingerprint, ingestion_version,
+             schema_version
+      FROM session_catalog
+      ${where}
+      ORDER BY trading_date, contract_symbol
+    `).all(...parameters) as Array<{
+      trading_date: string;
+      contract_symbol: string;
+      session_type: string;
+      time_zone: string;
+      calendar_identity: string;
+      partition_identity: string;
+      available_timeframes_json: string;
+      one_minute_candle_count: number;
+      five_minute_candle_count: number;
+      fifteen_minute_candle_count: number;
+      one_hour_candle_count: number;
+      tick_coverage: "not_indexed" | "available";
+      earliest_timestamp: string | null;
+      latest_timestamp: string | null;
+      coverage_status: "complete" | "incomplete";
+      completeness_status: "complete" | "incomplete";
+      validation_status: "validated" | "failed";
+      source_fingerprint: string;
+      ingestion_version: string;
+      schema_version: number;
+    }>;
+    return rows.map((row) => ({
+      tradingDate: row.trading_date,
+      contractSymbol: row.contract_symbol,
+      sessionType: row.session_type,
+      timeZone: row.time_zone,
+      calendarIdentity: row.calendar_identity,
+      partitionIdentity: row.partition_identity,
+      availableTimeframes: JSON.parse(row.available_timeframes_json) as number[],
+      candleCounts: {
+        oneMinute: row.one_minute_candle_count,
+        fiveMinute: row.five_minute_candle_count,
+        fifteenMinute: row.fifteen_minute_candle_count,
+        oneHour: row.one_hour_candle_count,
+      },
+      tickCoverage: row.tick_coverage,
+      earliestTimestamp: row.earliest_timestamp,
+      latestTimestamp: row.latest_timestamp,
+      coverageStatus: row.coverage_status,
+      completenessStatus: row.completeness_status,
+      validationStatus: row.validation_status,
+      sourceFingerprint: row.source_fingerprint,
+      ingestionVersion: row.ingestion_version,
+      schemaVersion: row.schema_version,
+    }));
+  }
+
+  getSessionCatalogDates(options: { startDate?: string; endDate?: string } = {}): string[] {
+    const catalogExists = this.database.prepare(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
+    ).get() as { present?: number } | undefined;
+    if (!catalogExists?.present) {
+      const clauses: string[] = [];
+      const parameters: string[] = [];
+      if (options.startDate) {
+        clauses.push("trading_date >= ?");
+        parameters.push(options.startDate);
+      }
+      if (options.endDate) {
+        clauses.push("trading_date <= ?");
+        parameters.push(options.endDate);
+      }
+      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+      return (this.database.prepare(
+        `SELECT DISTINCT trading_date FROM candle_partitions ${where} ORDER BY trading_date`,
+      ).all(...parameters) as Array<{ trading_date: string }>).map((row) => row.trading_date);
+    }
+    return [...new Set(this.getSessionCatalogEntries(options).map((entry) => entry.tradingDate))];
+  }
+
+  getSessionCatalogContractSymbolsForDate(tradingDate: string): string[] {
+    const catalogExists = this.database.prepare(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
+    ).get() as { present?: number } | undefined;
+    if (!catalogExists?.present) return this.getContractSymbolsForDate(tradingDate, 1);
+    return this.getSessionCatalogEntries({ startDate: tradingDate, endDate: tradingDate })
+      .map((entry) => entry.contractSymbol);
+  }
+
+  getPartitionCoverage(contractSymbol: string, tradingDate: string): {
+    candleCounts: HistoricalSessionCatalogEntry["candleCounts"];
+    availableTimeframes: number[];
+    earliestTimestamp: string | null;
+    latestTimestamp: string | null;
+  } {
+    const rows = this.database.prepare(`
+      SELECT p.timeframe, p.candle_count,
+             MIN(c.open_time) AS earliest_timestamp,
+             MAX(c.close_time) AS latest_timestamp
+      FROM candle_partitions p
+      LEFT JOIN candles c
+        ON c.contract_symbol = p.contract_symbol
+       AND c.trading_date = p.trading_date
+       AND c.timeframe = p.timeframe
+      WHERE p.contract_symbol = ? AND p.trading_date = ?
+      GROUP BY p.timeframe, p.candle_count
+      ORDER BY p.timeframe
+    `).all(contractSymbol, tradingDate) as Array<{
+      timeframe: number;
+      candle_count: number;
+      earliest_timestamp: number | null;
+      latest_timestamp: number | null;
+    }>;
+    const countFor = (timeframe: number): number => rows.find((row) => row.timeframe === timeframe)?.candle_count ?? 0;
+    const timestamps = rows.flatMap((row) => [
+      row.earliest_timestamp,
+      row.latest_timestamp,
+    ]).filter((value): value is number => value !== null);
+    return {
+      candleCounts: {
+        oneMinute: countFor(1),
+        fiveMinute: countFor(5),
+        fifteenMinute: countFor(15),
+        oneHour: countFor(60),
+      },
+      availableTimeframes: rows.filter((row) => row.candle_count > 0).map((row) => row.timeframe),
+      earliestTimestamp: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
+      latestTimestamp: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
+    };
   }
 
   /**

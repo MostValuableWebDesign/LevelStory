@@ -17,7 +17,9 @@ import type { HistoricalImportSummaryIneligibleObservedDatesItem } from './histo
 import type { HistoricalImportSummaryRejectedFilesItem } from './historicalImportSummaryRejectedFilesItem';
 import type { HistoricalImportSummaryRejectionReasons } from './historicalImportSummaryRejectionReasons';
 import type { HistoricalImportSummaryRolloverBoundariesItem } from './historicalImportSummaryRolloverBoundariesItem';
+import type { HistoricalImportSummarySessionCatalogState } from './historicalImportSummarySessionCatalogState';
 import type { HistoricalImportSummarySource } from './historicalImportSummarySource';
+import type { HistoricalSessionCatalogEntry } from './historicalSessionCatalogEntry';
 
 export interface HistoricalImportSummary {
   source: HistoricalImportSummarySource;
@@ -98,6 +100,8 @@ export interface HistoricalImportSummary {
   indexKey?: string;
   importerVersion?: string;
   indexedAt?: Date;
+  sessionCatalogState?: HistoricalImportSummarySessionCatalogState;
+  sessionCatalog?: HistoricalSessionCatalogEntry[];
   /** @nullable */
   scheduleVersion?: string | null;
   acceptedContracts?: string[];

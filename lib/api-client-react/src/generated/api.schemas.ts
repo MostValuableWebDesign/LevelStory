@@ -1769,6 +1769,72 @@ export interface BacktestRequest {
   ohlcvCommissionPerContract?: number;
 }
 
+export type HistoricalSessionCatalogEntryCandleCounts = {
+  /** @minimum 0 */
+  oneMinute: number;
+  /** @minimum 0 */
+  fiveMinute: number;
+  /** @minimum 0 */
+  fifteenMinute: number;
+  /** @minimum 0 */
+  oneHour: number;
+};
+
+export type HistoricalSessionCatalogEntryTickCoverage = typeof HistoricalSessionCatalogEntryTickCoverage[keyof typeof HistoricalSessionCatalogEntryTickCoverage];
+
+
+export const HistoricalSessionCatalogEntryTickCoverage = {
+  not_indexed: 'not_indexed',
+  available: 'available',
+} as const;
+
+export type HistoricalSessionCatalogEntryCoverageStatus = typeof HistoricalSessionCatalogEntryCoverageStatus[keyof typeof HistoricalSessionCatalogEntryCoverageStatus];
+
+
+export const HistoricalSessionCatalogEntryCoverageStatus = {
+  complete: 'complete',
+  incomplete: 'incomplete',
+} as const;
+
+export type HistoricalSessionCatalogEntryCompletenessStatus = typeof HistoricalSessionCatalogEntryCompletenessStatus[keyof typeof HistoricalSessionCatalogEntryCompletenessStatus];
+
+
+export const HistoricalSessionCatalogEntryCompletenessStatus = {
+  complete: 'complete',
+  incomplete: 'incomplete',
+} as const;
+
+export type HistoricalSessionCatalogEntryValidationStatus = typeof HistoricalSessionCatalogEntryValidationStatus[keyof typeof HistoricalSessionCatalogEntryValidationStatus];
+
+
+export const HistoricalSessionCatalogEntryValidationStatus = {
+  validated: 'validated',
+  failed: 'failed',
+} as const;
+
+export interface HistoricalSessionCatalogEntry {
+  tradingDate: string;
+  contractSymbol: string;
+  sessionType: string;
+  timeZone: string;
+  calendarIdentity: string;
+  partitionIdentity: string;
+  availableTimeframes: number[];
+  candleCounts: HistoricalSessionCatalogEntryCandleCounts;
+  tickCoverage: HistoricalSessionCatalogEntryTickCoverage;
+  /** @nullable */
+  earliestTimestamp: string | null;
+  /** @nullable */
+  latestTimestamp: string | null;
+  coverageStatus: HistoricalSessionCatalogEntryCoverageStatus;
+  completenessStatus: HistoricalSessionCatalogEntryCompletenessStatus;
+  validationStatus: HistoricalSessionCatalogEntryValidationStatus;
+  sourceFingerprint: string;
+  ingestionVersion: string;
+  /** @minimum 1 */
+  schemaVersion: number;
+}
+
 export type HistoricalDataIndexStatusState = typeof HistoricalDataIndexStatusState[keyof typeof HistoricalDataIndexStatusState];
 
 
@@ -1777,6 +1843,17 @@ export const HistoricalDataIndexStatusState = {
   indexing: 'indexing',
   ready: 'ready',
   failed: 'failed',
+} as const;
+
+export type HistoricalDataIndexStatusSessionCatalogState = typeof HistoricalDataIndexStatusSessionCatalogState[keyof typeof HistoricalDataIndexStatusSessionCatalogState];
+
+
+export const HistoricalDataIndexStatusSessionCatalogState = {
+  not_initialized: 'not_initialized',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+  incomplete: 'incomplete',
 } as const;
 
 export type HistoricalDataIndexStatusIneligibleDatesItemStatus = typeof HistoricalDataIndexStatusIneligibleDatesItemStatus[keyof typeof HistoricalDataIndexStatusIneligibleDatesItemStatus];
@@ -1836,6 +1913,7 @@ export type HistoricalDataIndexStatusRejectedFilesItem = {
 
 export interface HistoricalDataIndexStatus {
   state: HistoricalDataIndexStatusState;
+  sessionCatalogState: HistoricalDataIndexStatusSessionCatalogState;
   /** @nullable */
   indexKey: string | null;
   /**
@@ -2252,6 +2330,17 @@ export const HistoricalImportSummaryIndexingState = {
   ready: 'ready',
 } as const;
 
+export type HistoricalImportSummarySessionCatalogState = typeof HistoricalImportSummarySessionCatalogState[keyof typeof HistoricalImportSummarySessionCatalogState];
+
+
+export const HistoricalImportSummarySessionCatalogState = {
+  not_initialized: 'not_initialized',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+  incomplete: 'incomplete',
+} as const;
+
 export type HistoricalImportSummaryRejectedFilesItem = {
   filename: string;
   reason: string;
@@ -2416,6 +2505,8 @@ export interface HistoricalImportSummary {
   indexKey?: string;
   importerVersion?: string;
   indexedAt?: string;
+  sessionCatalogState?: HistoricalImportSummarySessionCatalogState;
+  sessionCatalog?: HistoricalSessionCatalogEntry[];
   /** @nullable */
   scheduleVersion?: string | null;
   acceptedContracts?: string[];

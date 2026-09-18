@@ -31,6 +31,8 @@ import {
   HistoricalIndexStore,
   type HistoricalIndexCheckpoint,
   type HistoricalIndexManifestFile,
+  HISTORICAL_INDEX_SCHEMA_VERSION,
+  type HistoricalSessionCatalogEntry,
 } from "./historical-index-store.js";
 import { historicalDataPath } from "./historical-storage-paths.js";
 import { HistoricalNoDataError, MAX_HISTORICAL_SESSIONS } from "./historical-session-range.js";
@@ -60,6 +62,8 @@ export const MULTI_CONTRACT_SOURCE = "historical_databento_multicontract" as con
 export const MULTI_SYMBOL_SOURCE = "__MULTI_SYMBOL_BATCH__" as const;
 export const MES_ROLLOVER_SCHEDULE_VERSION = "MES_QUARTERLY_2021_2026_V3_US_INDEX" as const;
 export const MULTI_CONTRACT_IMPORTER_VERSION = "multi-contract-index-v5" as const;
+export const HISTORICAL_SESSION_CATALOG_STATE = "ready" as const;
+const HISTORICAL_SESSION_TYPE = "cme_equity_index_globex";
 export const MES_SUPPORTED_START_DATE = "2021-09-12" as const;
 export const MES_SUPPORTED_END_DATE = "2026-09-11" as const;
 export const MES_ROLLOVER_SCHEDULE_SOURCES = [
@@ -235,9 +239,11 @@ export type MultiContractEligibility = {
 };
 
 export type MultiContractIndexState = "not_started" | "indexing" | "ready" | "failed";
+export type HistoricalSessionCatalogState = "not_initialized" | "indexing" | "ready" | "failed" | "incomplete";
 
 export type MultiContractIndexStatus = {
   state: MultiContractIndexState;
+  sessionCatalogState: HistoricalSessionCatalogState;
   indexKey: string | null;
   progress: number;
   discoveredFileCount: number;
@@ -299,6 +305,8 @@ export type HistoricalMultiContractImportSummary = Omit<
   indexKey: string;
   importerVersion: typeof MULTI_CONTRACT_IMPORTER_VERSION;
   indexedAt: string;
+  sessionCatalogState: HistoricalSessionCatalogState;
+  sessionCatalog: HistoricalSessionCatalogEntry[];
 };
 
 export type HistoricalMultiContractImport = {
@@ -618,7 +626,7 @@ export function resolveExplicitMultiContractFiles(
   return { accepted, rejectedFiles };
 }
 
-function emptyAggregate(): Omit<HistoricalMultiContractImportSummary, "source" | "filename" | "detectedSymbol" | "coverageScope" | "scheduleVersion" | "acceptedContracts" | "inactiveContracts" | "rejectedFiles" | "files" | "rolloverBoundaries" | "activeContractByDate" | "eligibleTradingDates" | "ineligibleDates" | "allObservedTradingDates" | "ineligibleObservedDates" | "dateEligibility" | "acceptedOutrightFileCount" | "scheduledActiveContractCount" | "inactiveFutureContractCount" | "rejectedSpreadOrDuplicateFileCount" | "missingScheduledContractFileCount" | "allObservedDateCount" | "eligibleScheduledReplayDateCount" | "ineligibleObservedDateCount" | "ineligibleScheduledDateCount" | "coverageReconciles" | "indexingState" | "indexKey" | "importerVersion" | "indexedAt"> {
+function emptyAggregate(): Omit<HistoricalMultiContractImportSummary, "source" | "filename" | "detectedSymbol" | "coverageScope" | "scheduleVersion" | "acceptedContracts" | "inactiveContracts" | "rejectedFiles" | "files" | "rolloverBoundaries" | "activeContractByDate" | "eligibleTradingDates" | "ineligibleDates" | "allObservedTradingDates" | "ineligibleObservedDates" | "dateEligibility" | "acceptedOutrightFileCount" | "scheduledActiveContractCount" | "inactiveFutureContractCount" | "rejectedSpreadOrDuplicateFileCount" | "missingScheduledContractFileCount" | "allObservedDateCount" | "eligibleScheduledReplayDateCount" | "ineligibleObservedDateCount" | "ineligibleScheduledDateCount" | "coverageReconciles" | "indexingState" | "indexKey" | "importerVersion" | "indexedAt" | "sessionCatalogState" | "sessionCatalog"> {
   return {
     earliestTimestamp: null,
     latestTimestamp: null,
@@ -723,10 +731,12 @@ export function resolveStoredHistoricalDates(
   startDate: string | undefined,
   endDate: string,
 ): string[] {
-  const observedDates = (imported.summary.allObservedTradingDates
-    ?? [...imported.contracts.values()].flatMap((contract) => contract.summary.availableTradingDates))
-    .filter((date) => (!startDate || date >= startDate) && date <= endDate)
-    .sort();
+  const observedDates = imported.storage
+    ? imported.storage.getSessionCatalogDates({ startDate, endDate })
+    : (imported.summary.allObservedTradingDates
+      ?? [...imported.contracts.values()].flatMap((contract) => contract.summary.availableTradingDates))
+      .filter((date) => (!startDate || date >= startDate) && date <= endDate)
+      .sort();
   return observedDates.filter((tradingDate) => storedHistoricalContractForDate(imported, tradingDate) !== null);
 }
 
@@ -740,7 +750,7 @@ export function storedHistoricalContractForDate(
   tradingDate: string,
 ): string | null {
   const candidates = imported.storage
-    ? imported.storage.getContractSymbolsForDate(tradingDate, 1)
+    ? imported.storage.getSessionCatalogContractSymbolsForDate(tradingDate)
     : [...imported.contracts.entries()]
       .filter(([, contract]) => contract.summary.availableTradingDates.includes(tradingDate))
       .map(([contractSymbol]) => contractSymbol);
@@ -948,6 +958,7 @@ let activeIndexKey: string | null = null;
 let readyIndexLoad: Promise<HistoricalMultiContractImport | null> | null = null;
 let indexStatus: MultiContractIndexStatus = {
   state: "not_started",
+  sessionCatalogState: "not_initialized",
   indexKey: null,
   progress: 0,
   discoveredFileCount: 0,
@@ -1231,6 +1242,8 @@ function indexStatusFromSummary(
   summary: HistoricalMultiContractImportSummary,
   discoveredContracts: readonly string[],
 ): Partial<MultiContractIndexStatus> {
+  const sessionCatalogState = summary.sessionCatalogState
+    ?? (summary.sessionCatalog?.length ? "ready" : "not_initialized");
   const filesMergedPerContract = [...new Set(summary.files.map((file) => file.contractSymbol))]
     .sort(compareMesContractSymbols)
     .map((contractSymbol) => ({
@@ -1240,6 +1253,7 @@ function indexStatusFromSummary(
   const scheduledRows = summary.dateEligibility.filter((item) =>
     item.tradingDate >= MES_SUPPORTED_START_DATE && item.tradingDate <= MES_SUPPORTED_END_DATE);
   return {
+    sessionCatalogState,
     requestedStartDate: MES_SUPPORTED_START_DATE,
     requestedEndDate: MES_SUPPORTED_END_DATE,
     indexedStartDate: summary.allObservedTradingDates[0] ?? null,
@@ -1263,6 +1277,48 @@ function indexStatusFromSummary(
     filesMergedPerContract,
     rejectedFiles: summary.rejectedFiles,
     fullRangeReady: scheduledRows.length > 0 && scheduledRows.every((item) => item.backtestEligible),
+  };
+}
+
+function buildSessionCatalog(
+  importedContracts: ReadonlyMap<string, HistoricalCsvImport>,
+  storage: HistoricalIndexStore,
+  indexedAt: string,
+): { entries: HistoricalSessionCatalogEntry[]; state: HistoricalSessionCatalogState } {
+  const entries: HistoricalSessionCatalogEntry[] = [];
+  for (const [contractSymbol, imported] of importedContracts.entries()) {
+    const completeDates = new Set(imported.summary.completeRegularSessionDates);
+    for (const tradingDate of imported.summary.availableTradingDates) {
+      const coverage = storage.getPartitionCoverage(contractSymbol, tradingDate);
+      const complete = completeDates.has(tradingDate);
+      const hasReplayCandles = coverage.candleCounts.oneMinute > 0 && coverage.candleCounts.fiveMinute > 0;
+      entries.push({
+        tradingDate,
+        contractSymbol,
+        sessionType: HISTORICAL_SESSION_TYPE,
+        timeZone: imported.calendar.timeZone,
+        calendarIdentity: imported.calendar.calendarVersion,
+        partitionIdentity: `candle_partitions:${contractSymbol}:${tradingDate}`,
+        availableTimeframes: coverage.availableTimeframes,
+        candleCounts: coverage.candleCounts,
+        tickCoverage: "not_indexed",
+        earliestTimestamp: coverage.earliestTimestamp,
+        latestTimestamp: coverage.latestTimestamp,
+        coverageStatus: complete && hasReplayCandles ? "complete" : "incomplete",
+        completenessStatus: complete ? "complete" : "incomplete",
+        validationStatus: "validated",
+        sourceFingerprint: imported.contentFingerprint,
+        ingestionVersion: MULTI_CONTRACT_IMPORTER_VERSION,
+        schemaVersion: HISTORICAL_INDEX_SCHEMA_VERSION,
+      });
+    }
+  }
+  entries.sort((left, right) =>
+    left.tradingDate.localeCompare(right.tradingDate)
+    || compareMesContractSymbols(left.contractSymbol, right.contractSymbol));
+  return {
+    entries,
+    state: entries.some((entry) => entry.coverageStatus === "incomplete") ? "incomplete" : HISTORICAL_SESSION_CATALOG_STATE,
   };
 }
 
@@ -1742,6 +1798,7 @@ async function buildMultiContractIndex(
   const ineligibleScheduledDateCount = ineligibleDates.length;
   const coverageReconciles = allObservedDateCount
     === eligibleScheduledReplayDateCount + ineligibleObservedDateCount;
+  const catalog = buildSessionCatalog(importedContracts, stagedStore, indexedAt);
   const summary: HistoricalMultiContractImportSummary = {
     source: MULTI_CONTRACT_SOURCE,
     filename: `${fileSummaries.length} outright MES contract files`,
@@ -1781,12 +1838,15 @@ async function buildMultiContractIndex(
     indexKey: identity.indexKey,
     importerVersion: MULTI_CONTRACT_IMPORTER_VERSION,
     indexedAt,
+    sessionCatalogState: catalog.state,
+    sessionCatalog: catalog.entries,
   };
   assertMultiContractCoverageReconciles(summary);
   const partitionErrors = stagedStore.runMaintenanceValidation(summary);
   if (partitionErrors.length) {
     throw new Error(`Historical staging reconciliation failed: ${partitionErrors.join(", ")}.`);
   }
+  stagedStore.upsertSessionCatalog(catalog.entries, indexedAt);
   const valueWithoutStorage: HistoricalMultiContractImport = {
     summary,
     contentFingerprint: identity.contentFingerprint,
@@ -1902,6 +1962,7 @@ function startIndexing(
   activeIndexKey = identity.indexKey;
   updateIndexStatus({
     state: "indexing",
+    sessionCatalogState: "indexing",
     indexKey: identity.indexKey,
     progress: 0,
     discoveredFileCount: identity.resolved.accepted.length + identity.resolved.rejectedFiles.length,
@@ -1918,6 +1979,7 @@ function startIndexing(
       const message = error instanceof Error ? error.message : "Historical MES index failed.";
       updateIndexStatus({
         state: "failed",
+        sessionCatalogState: "failed",
         indexKey: identity.indexKey,
         message: "Historical MES index failed.",
         error: message,
@@ -1974,7 +2036,13 @@ export async function getHistoricalMultiContractIndexStatus(
     return { ...indexStatus };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Historical MES index could not be discovered.";
-    updateIndexStatus({ state: "failed", progress: 0, error: message, message: "Historical MES index discovery failed." });
+    updateIndexStatus({
+      state: "failed",
+      sessionCatalogState: "failed",
+      progress: 0,
+      error: message,
+      message: "Historical MES index discovery failed.",
+    });
     return { ...indexStatus };
   }
 }

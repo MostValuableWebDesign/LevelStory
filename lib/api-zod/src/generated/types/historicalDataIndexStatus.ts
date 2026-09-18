@@ -8,10 +8,12 @@
 import type { HistoricalDataIndexStatusFilesMergedPerContractItem } from './historicalDataIndexStatusFilesMergedPerContractItem';
 import type { HistoricalDataIndexStatusIneligibleDatesItem } from './historicalDataIndexStatusIneligibleDatesItem';
 import type { HistoricalDataIndexStatusRejectedFilesItem } from './historicalDataIndexStatusRejectedFilesItem';
+import type { HistoricalDataIndexStatusSessionCatalogState } from './historicalDataIndexStatusSessionCatalogState';
 import type { HistoricalDataIndexStatusState } from './historicalDataIndexStatusState';
 
 export interface HistoricalDataIndexStatus {
   state: HistoricalDataIndexStatusState;
+  sessionCatalogState: HistoricalDataIndexStatusSessionCatalogState;
   /** @nullable */
   indexKey: string | null;
   /**

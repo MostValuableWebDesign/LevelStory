@@ -13790,6 +13790,15 @@ export const getHistoricalDataResponseIneligibleObservedDateCountMin = 0;
 
 export const getHistoricalDataResponseIneligibleScheduledDateCountMin = 0;
 
+export const getHistoricalDataResponseSessionCatalogItemCandleCountsOneMinuteMin = 0;
+
+export const getHistoricalDataResponseSessionCatalogItemCandleCountsFiveMinuteMin = 0;
+
+export const getHistoricalDataResponseSessionCatalogItemCandleCountsFifteenMinuteMin = 0;
+
+export const getHistoricalDataResponseSessionCatalogItemCandleCountsOneHourMin = 0;
+
+
 
 
 export const GetHistoricalDataResponse = zod.object({
@@ -13902,6 +13911,31 @@ export const GetHistoricalDataResponse = zod.object({
   "indexKey": zod.string().optional(),
   "importerVersion": zod.string().optional(),
   "indexedAt": zod.coerce.date().optional(),
+  "sessionCatalogState": zod.enum(['not_initialized', 'indexing', 'ready', 'failed', 'incomplete']).optional(),
+  "sessionCatalog": zod.array(zod.object({
+  "tradingDate": zod.string(),
+  "contractSymbol": zod.string(),
+  "sessionType": zod.string(),
+  "timeZone": zod.string(),
+  "calendarIdentity": zod.string(),
+  "partitionIdentity": zod.string(),
+  "availableTimeframes": zod.array(zod.number()),
+  "candleCounts": zod.object({
+  "oneMinute": zod.number().min(getHistoricalDataResponseSessionCatalogItemCandleCountsOneMinuteMin),
+  "fiveMinute": zod.number().min(getHistoricalDataResponseSessionCatalogItemCandleCountsFiveMinuteMin),
+  "fifteenMinute": zod.number().min(getHistoricalDataResponseSessionCatalogItemCandleCountsFifteenMinuteMin),
+  "oneHour": zod.number().min(getHistoricalDataResponseSessionCatalogItemCandleCountsOneHourMin)
+}),
+  "tickCoverage": zod.enum(['not_indexed', 'available']),
+  "earliestTimestamp": zod.coerce.date().nullable(),
+  "latestTimestamp": zod.coerce.date().nullable(),
+  "coverageStatus": zod.enum(['complete', 'incomplete']),
+  "completenessStatus": zod.enum(['complete', 'incomplete']),
+  "validationStatus": zod.enum(['validated', 'failed']),
+  "sourceFingerprint": zod.string(),
+  "ingestionVersion": zod.string(),
+  "schemaVersion": zod.number().min(1)
+})).optional(),
   "scheduleVersion": zod.string().nullish(),
   "acceptedContracts": zod.array(zod.string()).optional(),
   "inactiveContracts": zod.array(zod.string()).optional(),
@@ -13976,6 +14010,7 @@ export const getHistoricalDataIndexStatusResponseMergedFileCountMin = 0;
 
 export const GetHistoricalDataIndexStatusResponse = zod.object({
   "state": zod.enum(['not_started', 'indexing', 'ready', 'failed']),
+  "sessionCatalogState": zod.enum(['not_initialized', 'indexing', 'ready', 'failed', 'incomplete']),
   "indexKey": zod.string().nullable(),
   "progress": zod.number().min(getHistoricalDataIndexStatusResponseProgressMin).max(getHistoricalDataIndexStatusResponseProgressMax),
   "discoveredFileCount": zod.number().min(getHistoricalDataIndexStatusResponseDiscoveredFileCountMin),
@@ -14152,6 +14187,7 @@ export const GetHistoricalDataImportStatusResponse = zod.object({
   "error": zod.string().nullable(),
   "status": zod.object({
   "state": zod.enum(['not_started', 'indexing', 'ready', 'failed']),
+  "sessionCatalogState": zod.enum(['not_initialized', 'indexing', 'ready', 'failed', 'incomplete']),
   "indexKey": zod.string().nullable(),
   "progress": zod.number().min(getHistoricalDataImportStatusResponseStatusOneProgressMin).max(getHistoricalDataImportStatusResponseStatusOneProgressMax),
   "discoveredFileCount": zod.number().min(getHistoricalDataImportStatusResponseStatusOneDiscoveredFileCountMin),
@@ -14261,6 +14297,7 @@ export const CancelHistoricalDataImportResponse = zod.object({
   "error": zod.string().nullable(),
   "status": zod.object({
   "state": zod.enum(['not_started', 'indexing', 'ready', 'failed']),
+  "sessionCatalogState": zod.enum(['not_initialized', 'indexing', 'ready', 'failed', 'incomplete']),
   "indexKey": zod.string().nullable(),
   "progress": zod.number().min(cancelHistoricalDataImportResponseStatusOneProgressMin).max(cancelHistoricalDataImportResponseStatusOneProgressMax),
   "discoveredFileCount": zod.number().min(cancelHistoricalDataImportResponseStatusOneDiscoveredFileCountMin),
