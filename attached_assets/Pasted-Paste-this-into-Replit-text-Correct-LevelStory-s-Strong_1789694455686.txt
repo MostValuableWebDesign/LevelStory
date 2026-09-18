@@ -1,0 +1,204 @@
+Paste this into Replit:
+
+```text
+Correct LevelStory’s Strong Breakout qualification and compact qualification funnel.
+
+AUTHORITATIVE RULE
+
+A Strong Breakout candidate does not require a patience candle.
+
+Patience-candle evidence must never determine whether the strong_breakout_candidate stage passes or fails.
+
+This applies both to strategy qualification and to compact-funnel attribution. Do not merely change displayed wording while leaving patience as a hidden gate.
+
+STRONG BREAKOUT CANDIDATE STAGE
+
+Evaluate the strong breakout candidate only from evidence that belongs to the breakout itself, including the strategy’s governed requirements such as:
+
+- Causal trend direction.
+- Directional price movement.
+- Required breakout boundary.
+- Required eight-tick breakout distance where applicable.
+- Valid completed or intrabar crossing evidence according to the strategy contract.
+- Causal time and session eligibility.
+- Any breakout-specific body, close-location, or volume rule that is genuinely mandatory for that strategy.
+
+Do not require:
+
+- A patience candle.
+- A patience candle closing outside the ORB or NTZ.
+- An immediate patience trigger.
+- A pullback.
+- A two-candle continuation pattern.
+- A completed later entry sequence.
+
+Those belong to later strategy-specific stages, if the selected strategy requires them.
+
+STRATEGY-SPECIFIC ROUTING
+
+Keep breakout detection separate from downstream entry qualification.
+
+For strategies that require pullback and patience after a breakout:
+
+1. Strong breakout candidate may pass without patience.
+2. Later pullback/consolidation stage may reject.
+3. Later patience-candle stage may reject.
+4. Immediate-trigger stage may reject.
+
+For Strong Breakout After Consolidation:
+
+- Do not require a patience candle at any point.
+- Require the independently established causal trend.
+- Require at least four completed consolidation candles.
+- Require the governed consolidation-quality rules.
+- Bullish entry threshold = frozen range HIGH + 8 instrument ticks.
+- Bearish entry threshold = frozen range LOW − 8 instrument ticks.
+- The modeled fill must be strictly outside the frozen range.
+- Bullish stop = frozen range LOW − 8 ticks.
+- Bearish stop = frozen range HIGH + 8 ticks.
+
+For Equivalent-Candle Reversal:
+
+- Preserve its own two-candle pattern and immediate trigger rules.
+- Do not report its missing pattern as a Strong Breakout candidate failure.
+
+Do not loosen patience requirements for strategies whose later entry contract genuinely requires patience. Move those failures to the correct later funnel stage.
+
+COMPACT QUALIFICATION FUNNEL
+
+Fix the funnel so every primary rejection is attributed to the earliest actual failed requirement.
+
+The strong_breakout_candidate stage must not emit reasons such as:
+
+- No qualifying patience candle.
+- Patience candle did not close outside the finalized ORB.
+- Waiting for valid patience context.
+- Immediate patience trigger unavailable.
+- No equivalent opposing-candle structure.
+- No eligible two-candle continuation pattern.
+
+Examples of valid strong-breakout rejection reasons include:
+
+- Required breakout boundary was not crossed.
+- Required eight-tick breakout distance was not reached.
+- Breakout direction conflicted with the causal trend.
+- Required breakout evidence was missing or noncausal.
+- Breakout occurred outside the authorized session window.
+- A genuinely mandatory breakout-quality rule failed.
+
+Route other failures to the correct stage:
+
+- Missing pullback or consolidation context → pullback_or_consolidation.
+- Missing required level interaction → critical_level_interaction.
+- Missing patience candle → valid_trend_aligned_patience_candle.
+- Missing immediate trigger → immediate_next_candle_confirmation.
+- Equivalent-candle structure failure → its strategy-specific continuation/reversal stage.
+- Invalid stop, target, or reward-to-risk → risk_approved.
+- Active account position → account arbitration, after candidate creation.
+
+A single occurrence must have one primary rejection stage. Diagnostic details may show supporting failures, but later failures must not replace the earliest causal blocker.
+
+Do not combine unrelated failures into misleading diagnostic bundles.
+
+REPORTING CORRECTION
+
+When a user asks why no trades were generated:
+
+- First report whether the selected date range actually generated trades.
+- If trades exist, clearly state the number of candidates and executed trades.
+- Describe the top qualification blockers as reasons other observed setups did not become trades.
+- Do not claim that no trades were generated when trades exist.
+- Keep qualification rejection counts separate from account-position blocks.
+
+REQUIRED REGRESSION TESTS
+
+Use production functions and compact-funnel aggregation.
+
+1. Strong breakout with no patience evidence:
+   - strong_breakout_candidate passes when all breakout requirements pass.
+   - No patience-related reason appears at that stage.
+
+2. Strong breakout followed by missing required patience for an ORB pullback strategy:
+   - strong_breakout_candidate passes.
+   - Rejection occurs at valid_trend_aligned_patience_candle.
+   - Primary rejection is counted once.
+
+3. Strong breakout followed by missing immediate trigger:
+   - Breakout and patience stages pass.
+   - Rejection occurs at immediate_next_candle_confirmation.
+
+4. Strong Breakout After Consolidation:
+   - Valid four-or-more-candle consolidation qualifies without patience.
+   - No fabricated P/E evidence is created.
+   - Entry and stop formulas remain unchanged.
+
+5. Equivalent-Candle Reversal:
+   - Missing equivalent-candle structure is not counted as a Strong Breakout candidate rejection.
+
+6. Failed breakout:
+   - A setup that never reaches the governed breakout boundary fails strong_breakout_candidate.
+   - Later patience failures do not become its primary reason.
+
+7. Funnel counts:
+   - Each occurrence contributes to only one primary rejection stage.
+   - Stage totals reconcile with occurrence totals.
+   - Candidate, executed-trade, and account-block counts remain separate.
+   - Batch aggregation across date ranges preserves the same totals as one combined run.
+
+8. Historical report:
+   - Re-run the compact qualification funnel for 2026-01-01 through 2026-01-30.
+   - Confirm that patience-related reasons are absent from strong_breakout_candidate.
+   - Report the revised top three primary rejection reasons.
+   - Report candidates, executed trades, and account-position blocks separately.
+   - Explain any material count changes caused by the corrected qualification logic versus corrected attribution only.
+
+IMPLEMENTATION SCOPE
+
+Inspect:
+
+- Strategy qualification and rule evidence.
+- Phase 6 strategy routing.
+- Phase 9 occurrence and candidate projection.
+- Qualification-funnel stage assignment.
+- Compact-funnel aggregation.
+- API response schemas.
+- Any frontend labels or summaries that construct rejection bundles.
+
+Use one canonical mapping from rule failure to funnel stage. Do not maintain separate mappings that can drift between the API and UI.
+
+VERSIONING AND VERIFICATION
+
+If patience currently blocks Strong Breakout qualification, update the governed strategy/formula/cache version because execution eligibility changes.
+
+If qualification is already correct and only funnel attribution changes, update the relevant funnel/report version and invalidate stale reports without changing strategy execution identity unnecessarily.
+
+Preserve historical provenance and do not silently reuse stale funnel results.
+
+Run:
+
+- Phase 6 strategy tests.
+- Phase 9 unit and integration tests.
+- Qualification-funnel tests.
+- Batch aggregation tests.
+- Relevant API and frontend tests.
+- API typecheck/build.
+- git diff --check.
+
+Use the available January data only after focused deterministic tests pass.
+
+FINAL REPORT
+
+Provide:
+
+1. Whether patience previously blocked execution or only distorted funnel attribution.
+2. Root cause and files changed.
+3. Canonical Strong Breakout candidate requirements.
+4. Before/after regression results.
+5. Revised January 1–30 compact-funnel results.
+6. Revised top three primary rejection reasons.
+7. Candidates, executed trades, and account-position blocks as separate totals.
+8. Formula, cache, or funnel version changes.
+9. Tests and builds passed, failed, or not run.
+
+Do not claim this is fixed merely because the phrase “patience candle” was removed from the UI. Verify that qualification, primary rejection assignment, aggregation, and reporting all enforce the same rule.
+```
