@@ -62,6 +62,11 @@ import {
   MES_TICK_SIZE,
   levelTolerancePoints,
 } from "@workspace/api-spec/constants";
+import {
+  acceptsGenerationJobResult,
+  acceptsGenerationResponse,
+  preserveReviewEndDate,
+} from "./visual-review-request-state";
 import { LevelStoryShell } from "@/components/levelstory-shell";
 import { LockedNote, Panel, PanelTitle, QueryError, QuerySkeleton, ShadowBadge } from "@/components/levelstory-ui";
 import { UploadedChartAnalysis } from "@/components/uploaded-chart-analysis";
@@ -714,7 +719,7 @@ export default function VisualReview() {
 
   useEffect(() => {
     if (!generationJob) return;
-    if (generationJobId && acceptedGenerationJobRef.current && generationJobId !== acceptedGenerationJobRef.current) return;
+    if (!acceptsGenerationJobResult(generationJobId, acceptedGenerationJobRef.current)) return;
     if ((generationJob.status === "completed" || generationJob.status === "partial") && generationJob.result) {
       setLocalSet(generationJob.result);
       setReviewSetId(generationJob.result.reviewSetId);
@@ -784,7 +789,7 @@ export default function VisualReview() {
 
   useEffect(() => {
     if (!data) return;
-    setRequest(data.request);
+    setRequest((current) => preserveReviewEndDate(current, data.request, reviewSetRequested, INITIAL_REQUEST.endDate));
     if (!availableCategories.length) {
       setSelectedCategory(null);
       return;
@@ -935,7 +940,12 @@ export default function VisualReview() {
     setReport(null);
     startGeneration.mutate({ data: { ...generationRequest, ...(regenerateFresh ? { regenerateFresh: true } : {}) } }, {
       onSuccess: (job) => {
-        if (requestToken !== generationRequestTokenRef.current) return;
+        if (!acceptsGenerationResponse({
+          requestToken,
+          activeRequestToken: generationRequestTokenRef.current,
+          jobId: job.jobId,
+          acceptedJobId: "",
+        })) return;
         acceptedGenerationJobRef.current = job.jobId;
         setGenerationJobId(job.jobId);
         if (typeof window !== "undefined") window.sessionStorage.setItem("levelstory.visualReviewGenerationJobId", job.jobId);
