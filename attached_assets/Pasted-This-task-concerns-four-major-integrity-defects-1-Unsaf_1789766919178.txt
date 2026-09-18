@@ -1,0 +1,231 @@
+This task concerns four major integrity defects:
+
+1. Unsafe duplicate-occurrence classification and merging.
+2. Conflicted evidence contaminating aggregate results.
+3. Pullback lifecycle history being suppressed instead of reconciled.
+4. Old persistent results remaining reusable after changed semantics.
+
+1. REPLACE THE TOP-LEVEL MERGE ALLOWLIST
+
+Current batch aggregation treats these fields as harmless enrichment:
+
+- management
+- targetLevelInputs
+- atrTicks
+- causalEvidence
+- causalEvidenceByAudit
+- orbTrendEpochId
+- eligibilityArmTransitionTime
+- reasonCode
+
+This is unsafe. These values can affect eligibility, stop, target, risk, execution, identity, or lifecycle interpretation.
+
+Replace the broad field-name allowlist with explicit field-specific compatibility rules.
+
+The following differences must be contradictions unless exact governed equivalence is proven:
+
+- Strategy and primary edge.
+- Direction.
+- Contract and trading date.
+- Frozen consolidation identity and boundaries.
+- Consolidation source candles.
+- Trend direction, source, timestamp, or epoch.
+- Arm identity and terminal state.
+- Entry candle, threshold, fill, or crossing evidence.
+- Strategy stop, target, risk, management, or sizing.
+- Target-level identity or selected target.
+- Candidate or execution ownership.
+- Formula/source provenance.
+- Conflicting exact timestamps.
+- Any field that can change qualification, execution, outcome, P/L, or Visual Review.
+
+Safe enrichment may include:
+
+- Additional compatible audit IDs.
+- A later evaluation cursor.
+- Additional noncontradictory diagnostic text.
+- Missing optional evidence becoming available when it agrees with all existing evidence.
+
+Do not classify an entire object such as management or causalEvidence as mergeable merely because its top-level field name matches an allowlist. Compare its governed subfields.
+
+2. IMPLEMENT A REAL CANONICAL MERGE
+
+The current merge function sorts payloads and keeps the first record for most fields. It also calculates audit IDs without storing the complete set.
+
+Implement a canonical merge that:
+
+- Produces identical output for every input order and partition order.
+- Unions and sorts all compatible audit IDs.
+- Selects the latest valid evaluation cursor.
+- Preserves the most complete compatible evidence.
+- Merges arrays and maps deterministically.
+- Retains missing-to-present enrichment.
+- Never replaces authoritative evidence with a lexicographically selected payload.
+- Rejects present-to-different-present contradictions.
+- Reports exact conflicting field paths and source partitions.
+
+If compatible merging cannot be proven for a field, fail closed.
+
+3. REMOVE CONFLICTED IDENTITIES FROM ALL CURRENT RESULTS
+
+When an occurrence is contradictory, exclude that physical identity from:
+
+- Current occurrences.
+- Trade candidates.
+- Candidate execution evidence.
+- Authoritative trades.
+- Rejected-candidate records derived from the contradictory payload.
+- Orphan modeled trades.
+- Account arbitration.
+- Qualification-funnel candidates and stage totals.
+- Metrics, segments, execution summaries, and P/L.
+- Current Visual Review charts.
+
+Add one explicit fail-closed conflict record or diagnostic for the rejected physical identity. Do not silently remove it without explanation.
+
+Recalculate aggregate totals from the filtered canonical evidence. Do not sum partition counts that still include conflicted candidates.
+
+Required reconciliation:
+
+- Funnel candidate totals match the surviving canonical candidates.
+- Execution-summary counts match surviving candidates and trades.
+- Account replay uses only surviving evidence.
+- Metrics and P/L match authoritative surviving trades.
+- Diagnostic counts identify excluded conflicts separately.
+
+4. RECONCILE PULLBACK LIFECYCLES WITHOUT ERASING HISTORY
+
+The current terminal-arm repair returns only the terminal transition and drops the earlier patience-armed transition.
+
+Preserve the actual chronological history:
+
+- Level interaction found.
+- Patience armed, if it genuinely occurred.
+- Signal confirmed, expired, invalidated, consumed, or superseded.
+- Terminal transition.
+
+Rules:
+
+- A terminal state remains terminal for that arm.
+- A later valid setup must receive a new stable arm ID.
+- Earlier historical transitions remain visible.
+- Later observations cannot overwrite or reopen a terminal arm.
+- Duplicate cursors merge deterministically.
+- Contradictory transitions fail closed.
+- Transition timestamps must be causally ordered.
+- Do not suppress a lifecycle violation merely by deleting an earlier transition.
+
+Reproduce the real-data case where an arm was superseded and later appeared patience-armed. Determine whether it was stale state, incorrect merge precedence, partition ordering, or reused arm identity.
+
+5. INVALIDATE OLD PERSISTED RESULTS
+
+Advance the appropriate strategy-result, aggregation, funnel, lifecycle, and cache identity versions.
+
+Existing persisted results created under the old merge/lifecycle semantics must not be served as current.
+
+Preserve old results under their original provenance for historical comparison. Do not delete or relabel them as compatible.
+
+6. REQUIRED DETERMINISTIC TESTS
+
+Duplicate merging:
+
+- Missing optional evidence plus compatible present evidence merges correctly.
+- Additional audit IDs are retained.
+- Evaluation cursor enrichment is deterministic.
+- Input and partition permutations produce identical output.
+- Different stops reject.
+- Different targets reject.
+- Different risk or management evidence rejects.
+- Different causal trend or ORB epoch rejects.
+- Different arm state or transition time rejects when not causally equivalent.
+- Different entry, threshold, fill, or crossing evidence rejects.
+- A third duplicate cannot restore a conflicted identity.
+
+Aggregate reconciliation:
+
+- Conflicted identity produces zero current occurrences, candidates, trades, and charts.
+- Conflict is represented by one explicit diagnostic.
+- Funnel and execution-summary counts exclude it.
+- Metrics and P/L exclude it.
+- Account arbitration is unaffected by its removed trade.
+- Cached, fresh, and partitioned results reconcile exactly.
+
+Lifecycle:
+
+- A valid arm preserves its full ordered transition history.
+- Superseded arms cannot return to patience-armed.
+- A later valid setup receives a new arm ID.
+- Input-order permutations produce the same lifecycle.
+- Contradictory lifecycle evidence fails closed.
+- The real-data lifecycle sequence has a focused regression fixture.
+
+Cache:
+
+- Old result/cache versions miss after the version change.
+- Current results persist and reload after restart.
+- Zero-trade completed results remain valid.
+- Failed or conflicted results cannot become compatible cache hits.
+
+7. REAL-DATA VERIFICATION
+
+After focused tests pass, rerun:
+
+- 2026-09-09 through 2026-09-11.
+- The same MESU6 catalog sessions and execution settings used previously.
+
+Report:
+
+- Duplicate occurrence classifications and exact differing paths.
+- Number of compatible merges.
+- Number of rejected contradictory identities.
+- Pullback lifecycle conflicts.
+- Funnel candidates.
+- Surviving occurrences.
+- Trade candidates and trades.
+- Net P/L.
+- Fresh, repeat, and post-restart hashes.
+- Session memory hits, persistent hits, and recomputations.
+
+Acceptance requires:
+
+- No unresolved duplicate-occurrence conflict.
+- No terminal-arm lifecycle violation.
+- Funnel and execution totals reconcile with filtered evidence.
+- Fresh, cached, and restarted reports match.
+- Old persisted results are not reused under the new semantics.
+
+If the range legitimately produces zero trades, report that result. Do not alter strategy rules to manufacture a trade.
+
+8. VERIFICATION
+
+Run:
+
+- Batch aggregation tests.
+- Occurrence identity and merge tests.
+- Pullback lifecycle tests.
+- Phase 9 unit and integration tests.
+- Qualification-funnel tests.
+- Account-position arbitration tests.
+- Persistent cache and restart tests.
+- Visual Review tests.
+- Batch HTTP lifecycle tests.
+- API and frontend typechecks/builds.
+- git diff --check.
+
+FINAL REPORT
+
+Provide:
+
+1. Root cause of each real duplicate conflict.
+2. Exact compatibility and contradiction rules.
+3. Canonical merge behavior.
+4. Lifecycle root cause and corrected transition history.
+5. Before/after aggregate reconciliation.
+6. Cache/version changes.
+7. Real-data replay results.
+8. Tests/builds passed, failed, or not run.
+
+Do not claim completion because diagnostics disappeared. Prove the surviving occurrences, candidates, trades, funnel totals, and P/L are consistent.
+
+
+5:27 PM
