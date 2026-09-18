@@ -158,13 +158,26 @@ export type PatienceOccurrence = {
 export function patienceArmLifecycleTransitions(
   occurrence: PatienceOccurrence,
 ): PullbackArmTransition[] {
+  const terminalArmState = occurrence.eligibilityArmState === "invalidated"
+    ? "STRUCTURALLY_INVALIDATED"
+    : occurrence.eligibilityArmState === "superseded"
+      ? "SUPERSEDED_BY_NEW_BREAKOUT"
+      : null;
+  const transitionTime = occurrence.eligibilityArmTransitionTime ?? occurrence.evaluationCursor;
+  if (terminalArmState) {
+    return [{
+      from: "LEVEL_INTERACTION_FOUND",
+      to: terminalArmState,
+      time: transitionTime,
+      reason: occurrence.eligibilityArmStateReason ?? occurrence.reasonCode,
+    }];
+  }
   const transitions: PullbackArmTransition[] = [{
     from: "LEVEL_INTERACTION_FOUND",
     to: "PATIENCE_ARMED",
     time: occurrence.patienceCandle.closeTime,
     reason: "Phase 5 found a trend-aligned patience shape for the causal level interaction.",
   }];
-  const transitionTime = occurrence.eligibilityArmTransitionTime ?? occurrence.evaluationCursor;
   if (occurrence.qualificationStatus === "SIGNAL_CONFIRMED" || occurrence.outcomeStatus === "CONFIRMED") {
     transitions.push({
       from: "PATIENCE_ARMED",

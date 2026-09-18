@@ -123,6 +123,60 @@ export type BatchRunnerOptions = {
   includeSensitivity?: boolean;
 };
 
+export type CatalogedSessionCacheDiagnostic = {
+  tradingDate: string;
+  contractSymbol: string;
+  cacheKey: string | null;
+  memoryHit: boolean;
+  persistentHit: boolean;
+  recomputed: boolean;
+  durationMs: number;
+};
+
+export type CatalogedBatchCacheDiagnostics = {
+  startedAt: string;
+  completedAt: string;
+  totalMs: number;
+  aggregationMs: number;
+  sessionCount: number;
+  memoryHits: number;
+  persistentHits: number;
+  recomputations: number;
+  rawIndexSessionReuseCount: number;
+  sessions: CatalogedSessionCacheDiagnostic[];
+};
+
+let lastCatalogedBatchCacheDiagnostics: CatalogedBatchCacheDiagnostics | null = null;
+let lastCatalogedBatchResultCacheLookup: {
+  cacheKey: string;
+  hit: boolean;
+  lookedUpAt: string;
+} | null = null;
+
+export function getCatalogedBatchCacheDiagnostics(): CatalogedBatchCacheDiagnostics | null {
+  return lastCatalogedBatchCacheDiagnostics
+    ? structuredClone(lastCatalogedBatchCacheDiagnostics)
+    : null;
+}
+
+export function recordCatalogedBatchResultCacheLookup(cacheKey: string, hit: boolean): void {
+  lastCatalogedBatchResultCacheLookup = {
+    cacheKey,
+    hit,
+    lookedUpAt: new Date().toISOString(),
+  };
+}
+
+export function getCatalogedBatchResultCacheLookup(): {
+  cacheKey: string;
+  hit: boolean;
+  lookedUpAt: string;
+} | null {
+  return lastCatalogedBatchResultCacheLookup
+    ? { ...lastCatalogedBatchResultCacheLookup }
+    : null;
+}
+
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
@@ -150,26 +204,117 @@ function jsonSafe(value: unknown): unknown {
   return value;
 }
 
+const MERGEABLE_OCCURRENCE_ENRICHMENT_FIELDS = new Set([
+  "auditId",
+  "auditIds",
+  "atrTicks",
+  "causalEvidence",
+  "causalEvidenceByAudit",
+  "evaluationCursor",
+  "identityInvariantViolations",
+  "management",
+  "orbTrendEpochId",
+  "reasonCode",
+  "secondaryStrategyMatches",
+  "targetLevelInputs",
+  "matchedEdges",
+  "supportingConfluences",
+  "eligibilityArmTransitionTime",
+]);
+
+type BatchOccurrenceConflict = {
+  occurrenceId: string;
+  differingFields: string[];
+  classification: "compatible_enrichment" | "contradiction";
+};
+
+function topLevelDifferingFields(
+  left: HistoricalOccurrence,
+  right: HistoricalOccurrence,
+): string[] {
+  const keys = new Set([
+    ...Object.keys(left),
+    ...Object.keys(right),
+  ]);
+  return [...keys]
+    .filter((key) => stableSerialize(left[key as keyof HistoricalOccurrence]) !== stableSerialize(right[key as keyof HistoricalOccurrence]))
+    .sort();
+}
+
+function mergeOccurrenceEnrichment(
+  occurrences: readonly HistoricalOccurrence[],
+): HistoricalOccurrence {
+  const ordered = [...occurrences].sort((left, right) => stableSerialize(left).localeCompare(stableSerialize(right)));
+  const merged = structuredClone(ordered[0]!);
+  const auditIds = ordered.map((occurrence) => occurrence.auditId).sort();
+  if (auditIds.length > 0) merged.auditId = auditIds[0]!;
+  const evaluationCursors = ordered
+    .map((occurrence) => Date.parse(occurrence.evaluationCursor ?? ""))
+    .filter(Number.isFinite);
+  if (evaluationCursors.length > 0) {
+    merged.evaluationCursor = new Date(Math.max(...evaluationCursors)).toISOString();
+  }
+  for (const field of ["identityInvariantViolations", "secondaryStrategyMatches", "matchedEdges", "supportingConfluences"] as const) {
+    const values = ordered.flatMap((occurrence) => {
+      const value = occurrence[field];
+      return Array.isArray(value) ? value : [];
+    });
+    if (values.length > 0) {
+      (merged[field] as unknown as string[]) = [...new Set(values)].sort();
+    }
+  }
+  return merged;
+}
+
 function mergeBatchOccurrences(
   reports: readonly BacktestReport[],
-): { occurrences: HistoricalOccurrence[]; conflicts: string[] } {
+): {
+  occurrences: HistoricalOccurrence[];
+  conflicts: string[];
+  conflictedOccurrenceIds: Set<string>;
+  conflictDetails: BatchOccurrenceConflict[];
+} {
   const byId = new Map<string, HistoricalOccurrence>();
+  const grouped = new Map<string, HistoricalOccurrence[]>();
+  for (const occurrence of reports
+    .flatMap((report) => report.occurrences)
+    .sort((left, right) => stableSerialize(left).localeCompare(stableSerialize(right)))) {
+    const items = grouped.get(occurrence.occurrenceId) ?? [];
+    items.push(occurrence);
+    grouped.set(occurrence.occurrenceId, items);
+  }
   const conflicts: string[] = [];
-  for (const occurrence of reports.flatMap((report) => report.occurrences)) {
-    const existing = byId.get(occurrence.occurrenceId);
-    if (!existing) {
-      byId.set(occurrence.occurrenceId, occurrence);
-      continue;
+  const conflictDetails: BatchOccurrenceConflict[] = [];
+  const conflictedOccurrenceIds = new Set<string>();
+  for (const [occurrenceId, occurrences] of grouped) {
+    const differingFields = [...new Set(
+      occurrences.slice(1).flatMap((occurrence) => topLevelDifferingFields(occurrences[0]!, occurrence)),
+    )].sort();
+    const classification = differingFields.every((field) => MERGEABLE_OCCURRENCE_ENRICHMENT_FIELDS.has(field))
+      ? "compatible_enrichment"
+      : "contradiction";
+    if (differingFields.length > 0) {
+      conflictDetails.push({ occurrenceId, differingFields, classification });
     }
-    if (stableSerialize(existing) !== stableSerialize(occurrence)) {
+    if (classification === "contradiction") {
+      conflictedOccurrenceIds.add(occurrenceId);
+      conflicts.push(`BATCH_DUPLICATE_OCCURRENCE_REJECTED:${occurrenceId}`);
       conflicts.push(
-        `BATCH_DUPLICATE_OCCURRENCE_CONFLICT:${occurrence.occurrenceId}`,
+        `BATCH_DUPLICATE_OCCURRENCE_REJECTED_FIELDS:${occurrenceId}:${classification}:${differingFields.join(",")}`,
       );
     }
+    byId.set(
+      occurrenceId,
+      differingFields.length > 0 && classification === "compatible_enrichment"
+        ? mergeOccurrenceEnrichment(occurrences)
+        : occurrences[0]!,
+    );
   }
   return {
     occurrences: [...byId.values()],
     conflicts: [...new Set(conflicts)].sort(),
+    conflictedOccurrenceIds,
+    conflictDetails,
   };
 }
 
@@ -463,9 +608,19 @@ export function aggregateBatchReports(
   const first = reports[0];
   if (!first) throw new Error("The batch produced no completed replay partitions.");
   const audit = reports.flatMap((report) => report.audit);
-  const candidateExecutionEvidence = reports.flatMap((report) => report.candidateExecutionEvidence ?? []);
-  const partitionTrades = reports.flatMap((report) => report.trades);
-  const partitionCandidates = reports.flatMap((report) => report.tradeCandidates);
+  const mergedOccurrences = mergeBatchOccurrences(reports);
+  const conflictedOccurrenceIds = mergedOccurrences.conflictedOccurrenceIds;
+  const belongsToConflictedOccurrence = (occurrenceId: string | undefined): boolean =>
+    occurrenceId !== undefined && conflictedOccurrenceIds.has(occurrenceId);
+  const candidateExecutionEvidence = reports
+    .flatMap((report) => report.candidateExecutionEvidence ?? [])
+    .filter((trade) => !belongsToConflictedOccurrence(trade.signalOccurrenceId));
+  const partitionTrades = reports
+    .flatMap((report) => report.trades)
+    .filter((trade) => !belongsToConflictedOccurrence(trade.signalOccurrenceId));
+  const partitionCandidates = reports
+    .flatMap((report) => report.tradeCandidates)
+    .filter((candidate) => !belongsToConflictedOccurrence(candidate.signalOccurrenceId));
   const schedule = partitions.find((partition) => partition.dataset.contractSchedule)?.dataset.contractSchedule;
   const globalAccountGate = candidateExecutionEvidence.length > 0
     ? applyHistoricalAccountPositionGate(partitionCandidates, candidateExecutionEvidence, {
@@ -475,9 +630,12 @@ export function aggregateBatchReports(
     : null;
   const trades = globalAccountGate?.authoritativeTrades ?? partitionTrades;
   const tradeCandidates = globalAccountGate?.candidates ?? partitionCandidates;
-  const rejectedCandidateSignals = reports.flatMap((report) => report.rejectedCandidateSignals);
-  const orphanModeledTrades = reports.flatMap((report) => report.orphanModeledTrades);
-  const mergedOccurrences = mergeBatchOccurrences(reports);
+  const rejectedCandidateSignals = reports
+    .flatMap((report) => report.rejectedCandidateSignals)
+    .filter((rejection) => !belongsToConflictedOccurrence(rejection.signalOccurrenceId));
+  const orphanModeledTrades = reports
+    .flatMap((report) => report.orphanModeledTrades)
+    .filter((trade) => !belongsToConflictedOccurrence(trade.matchingSignalOccurrenceId));
   const occurrences = mergedOccurrences.occurrences;
   const executionSummary = {
     detectedCandidateCount: reports.reduce((sum, report) => sum + (report.executionSummary.detectedCandidateCount ?? 0), 0),
@@ -587,6 +745,7 @@ async function runPartitionSet(
   risk: BacktestWorkerInput["risk"],
   options: BatchRunnerOptions,
   emitProgress: boolean,
+  sessionDiagnostics?: CatalogedSessionCacheDiagnostic[],
 ): Promise<BacktestReport[]> {
   const runPartition = options.runPartition ?? ((partitionInput, partitionOptions) => runBacktestInWorker(partitionInput, partitionOptions));
   const reports: BacktestReport[] = [];
@@ -608,14 +767,36 @@ async function runPartitionSet(
     );
     const descriptor = buildSessionResultCacheDescriptor(partition, backtestRequest, risk, options.sessionCache);
     const cacheKey = descriptor?.cacheKey ?? null;
+    const sessionStartedAt = Date.now();
+    let memoryHit = false;
+    let persistentHit = false;
+    let recomputed = false;
     let report: BacktestReport;
     try {
       report = descriptor && options.persistentSessionCache
-        ? await options.persistentSessionCache.getOrCompute(descriptor, async () =>
-          sessionResultCache.getOrCompute(descriptor.cacheKey, run))
+        ? await options.persistentSessionCache.getOrCompute(
+          descriptor,
+          async () => sessionResultCache.getOrCompute(
+            descriptor.cacheKey,
+            run,
+            (resolution) => {
+              memoryHit = resolution === "memory_hit" || resolution === "pending_reuse";
+              recomputed = resolution === "computed";
+            },
+          ),
+          (resolution) => {
+            persistentHit = resolution === "persistent_hit";
+          },
+        )
         : cacheKey
-          ? await sessionResultCache.getOrCompute(cacheKey, run)
-          : await run();
+          ? await sessionResultCache.getOrCompute(cacheKey, run, (resolution) => {
+            memoryHit = resolution === "memory_hit" || resolution === "pending_reuse";
+            recomputed = resolution === "computed";
+          })
+          : await (async () => {
+            recomputed = true;
+            return run();
+          })();
       if (descriptor && options.persistentSessionCache) {
         sessionResultCache.setComplete(descriptor.cacheKey, report);
       }
@@ -628,6 +809,15 @@ async function runPartitionSet(
       }
       throw error;
     }
+    sessionDiagnostics?.push({
+      tradingDate: partition.tradingDate,
+      contractSymbol: partition.contractSymbol,
+      cacheKey,
+      memoryHit,
+      persistentHit,
+      recomputed,
+      durationMs: Date.now() - sessionStartedAt,
+    });
     reports.push(report);
     if (emitProgress) {
       options.onProgress?.({
@@ -651,6 +841,9 @@ export async function runBatchBacktest(
   },
   options: BatchRunnerOptions,
 ): Promise<BatchBacktestReport> {
+  const batchStartedAt = Date.now();
+  const cacheStartedAt = new Date(batchStartedAt).toISOString();
+  const sessionDiagnostics: CatalogedSessionCacheDiagnostic[] = [];
   const partitions = createPartitions(input.request, input.replayDataset);
   if (!partitions.length) throw new Error("No replay partitions contain completed candles.");
   const { selectedDates, ...backtestRequest } = input.request;
@@ -662,7 +855,7 @@ export async function runBatchBacktest(
     currentContractSymbol: null,
     message: "Batch queued; waiting for the first causal partition.",
   });
-  const reports = await runPartitionSet(partitions, backtestRequest, input.risk, options, true);
+  const reports = await runPartitionSet(partitions, backtestRequest, input.risk, options, true, sessionDiagnostics);
   abortIfNeeded(options.signal);
   const dates = selectedDates ?? partitions.map((partition) => partition.tradingDate);
   const first = reports[0];
@@ -726,7 +919,21 @@ export async function runBatchBacktest(
   } else {
     normalEvaluation.sensitivity = [];
   }
+  const aggregationStartedAt = Date.now();
   const result = aggregateBatchReports(reports, partitions, dates, normalEvaluation);
+  const completedAt = new Date().toISOString();
+  lastCatalogedBatchCacheDiagnostics = {
+    startedAt: cacheStartedAt,
+    completedAt,
+    totalMs: Date.now() - batchStartedAt,
+    aggregationMs: Date.now() - aggregationStartedAt,
+    sessionCount: sessionDiagnostics.length,
+    memoryHits: sessionDiagnostics.filter((session) => session.memoryHit).length,
+    persistentHits: sessionDiagnostics.filter((session) => session.persistentHit).length,
+    recomputations: sessionDiagnostics.filter((session) => session.recomputed).length,
+    rawIndexSessionReuseCount: sessionDiagnostics.filter((session) => session.memoryHit || session.persistentHit).length,
+    sessions: sessionDiagnostics,
+  };
   options.onProgress?.({
     status: "completed",
     totalPartitions: partitions.length,

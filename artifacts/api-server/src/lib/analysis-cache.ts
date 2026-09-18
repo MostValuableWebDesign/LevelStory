@@ -4,6 +4,7 @@ export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v1";
 export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v2-persistent-session-provenance";
 
 export type AnalysisCacheStatus = "complete" | "incomplete" | "failed";
+export type AnalysisCacheResolution = "memory_hit" | "pending_reuse" | "computed";
 
 export type AnalysisCacheRecord<T> = {
   cacheKey: string;
@@ -117,11 +118,22 @@ export class VersionedAnalysisCache<T> {
     this.prune(now);
   }
 
-  async getOrCompute(cacheKey: string, compute: () => Promise<T>): Promise<T> {
+  async getOrCompute(
+    cacheKey: string,
+    compute: () => Promise<T>,
+    onResolution?: (resolution: AnalysisCacheResolution) => void,
+  ): Promise<T> {
     const cached = this.get(cacheKey);
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      onResolution?.("memory_hit");
+      return cached;
+    }
     const pending = this.pending.get(cacheKey);
-    if (pending) return pending;
+    if (pending) {
+      onResolution?.("pending_reuse");
+      return pending;
+    }
+    onResolution?.("computed");
     const computation = Promise.resolve()
       .then(compute)
       .then((value) => {

@@ -365,9 +365,43 @@ test("batch aggregation retains populated partition evidence and detects conflic
   );
   assert.equal(result.occurrences.length, 3);
   assert.equal(
-    result.diagnostics?.candidateInvariantViolations.includes("BATCH_DUPLICATE_OCCURRENCE_CONFLICT:occ-shared"),
+    result.diagnostics?.candidateInvariantViolations.includes("BATCH_DUPLICATE_OCCURRENCE_REJECTED:occ-shared"),
     true,
   );
+});
+
+test("contradictory duplicate occurrences fail closed before account arbitration", () => {
+  const sharedCandidate = {
+    ...candidate("shared-candidate"),
+    signalOccurrenceId: "occ-shared",
+  };
+  const sharedTrade = {
+    ...trade("shared-trade", "in_sample", "target", sharedCandidate.candidateId),
+    signalOccurrenceId: "occ-shared",
+  };
+  const first = report({
+    occurrences: [occurrence("occ-shared")],
+    tradeCandidates: [sharedCandidate],
+    trades: [sharedTrade],
+    candidateExecutionEvidence: [sharedTrade],
+  });
+  const second = report({
+    occurrences: [{ ...occurrence("occ-shared"), status: "contradictory" } as HistoricalOccurrence],
+  });
+  const result = aggregateBatchReports(
+    [first, second],
+    [
+      { tradingDate: "2022-08-10", contractSymbol: "MESU2", period: "in_sample", dataset: {} as never },
+      { tradingDate: "2022-08-11", contractSymbol: "MESU2", period: "out_of_sample", dataset: {} as never },
+    ],
+    ["2022-08-10", "2022-08-11"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+
+  assert.equal(result.tradeCandidates.length, 0);
+  assert.equal(result.candidateExecutionEvidence?.length, 0);
+  assert.equal(result.trades.length, 0);
+  assert.ok(result.diagnostics?.candidateInvariantViolations.includes("BATCH_DUPLICATE_OCCURRENCE_REJECTED:occ-shared"));
 });
 
 function executableCandidate(

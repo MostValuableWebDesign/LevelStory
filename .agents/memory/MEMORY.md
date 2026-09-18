@@ -24,6 +24,7 @@
 - [Artifact preview base paths](artifact-preview-base-paths.md) — build previews must use the artifact manifest BASE_PATH; overriding it manually can make the proxied preview serve HTML for asset requests.
 - [Visual review invariant isolation](visual-review-invariant-isolation.md) — review evidence must remain inspectable when a reconstructed historical snapshot exposes a dashboard consistency contradiction.
 - [Historical occurrence identity](historical-occurrence-identity.md) — merge ledger rows by causal occurrence, not setup label, then retain canonical ownership and secondary strategy matches.
+- [Batch occurrence conflict resolution](batch-occurrence-conflict-resolution.md) — merge overlapping partition enrichment deterministically, but reject lifecycle-authority contradictions before execution arbitration.
 - [Consolidation threshold governance](consolidation-threshold-governance.md) — active threshold config must fingerprint caches and travel with audit and occurrence provenance.
 - [Consolidation entry guard](consolidation-entry-guard.md) — freeze the zone before P or a completed breakout; only an immediate buffered E closing strictly outside zone and NTZ may execute.
 - [Historical index load concurrency](historical-index-load-concurrency.md) — serialize reads of the large persisted multi-contract index so overlapping visual-review requests do not exhaust string memory.

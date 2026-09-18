@@ -1,0 +1,242 @@
+The caching implementation is materially working:
+
+- Initial three-session search: 54.2 seconds.
+- Identical repeat: 5.0 seconds.
+- Restart reuse: 11.3 seconds.
+- Catalog: 5,437 rows and 1,085 usable sessions.
+- Cached and restarted reports produced identical hashes.
+
+However, the real-data replay is not ready for acceptance because it produced:
+
+- Four BATCH_DUPLICATE_OCCURRENCE_CONFLICT diagnostics.
+- One pullback lifecycle invariant violation.
+- One confirmed signal with no qualified strategy edge.
+- Zero executable candidates and trades.
+
+Matching cache hashes prove reproducibility. They do not prove that the replay is correct.
+
+1. RESOLVE DUPLICATE OCCURRENCE CONFLICTS
+
+Current batch aggregation keeps the first occurrence when another occurrence with the same occurrenceId has a different payload. It only adds a diagnostic.
+
+Do not silently select the first conflicting record.
+
+Inspect each real-data conflict and identify the exact fields that differ.
+
+Classify differences into:
+
+A. Mergeable evidence enrichment:
+- Later evaluation cursor.
+- Additional audit IDs.
+- More complete causal evidence.
+- Exact crossing timestamp added to previously missing evidence.
+- Other fields explicitly governed as non-identity enrichment.
+
+B. Non-mergeable contradictions:
+- Different strategy.
+- Different direction.
+- Different frozen consolidation.
+- Different trend evidence.
+- Different entry candle or threshold.
+- Different candidate ownership.
+- Different stop, target, or execution linkage.
+- Conflicting exact crossing timestamps.
+- Any difference that changes trade eligibility or outcome.
+
+For mergeable records:
+- Use one canonical deterministic merge function.
+- Preserve the most complete compatible evidence.
+- Produce the same merged result regardless of partition or input order.
+- Do not let evaluation cursor or audit-row identity create a new physical occurrence.
+
+For contradictory records:
+- Fail closed for that physical occurrence.
+- Exclude its candidate and execution evidence.
+- Keep an explicit diagnostic showing the conflicting fields and source partitions.
+- A later duplicate must not restore the rejected identity.
+- Do not continue account arbitration using a conflicted occurrence.
+
+Update batch aggregation so unresolved BATCH_DUPLICATE_OCCURRENCE_CONFLICT is never treated as an informational warning while related execution evidence remains eligible.
+
+Required tests:
+
+- Compatible enrichment merges into one stable occurrence.
+- Merge output is identical for every input ordering.
+- Conflicting strategy, direction, zone, trend, entry, or crossing evidence rejects the whole identity.
+- A third duplicate cannot restore a conflicted identity.
+- Candidate and authoritative trade counts are zero for conflicted identities.
+- Single-run and partitioned aggregation produce identical canonical occurrences.
+- Cache reuse and restart produce the same valid merged result.
+
+2. FIX THE PULLBACK LIFECYCLE INVARIANT
+
+Investigate the real-data sequence where an arm reached a terminal superseded state and was later observed as patience-armed.
+
+A terminal lifecycle state must not reopen unless the strategy has an explicit governed new-arm transition with a new stable arm identity.
+
+Trace:
+
+- Eligibility arm creation.
+- Pullback events.
+- Supersession event and timestamp.
+- Patience state observations.
+- Occurrence ownership.
+- Partition boundaries.
+- Batch merging.
+- Cached versus fresh session evidence.
+
+Determine whether the cause is:
+
+- Stale derived state.
+- Incorrect merge precedence.
+- An evaluation cursor preceding the terminal event.
+- Reuse of an arm ID for a later physical setup.
+- Partition ordering.
+- Cache-key omission.
+- A valid new setup incorrectly sharing the old arm identity.
+
+Required behavior:
+
+- Terminal states remain terminal for that arm.
+- Later valid setups receive a new causal arm ID.
+- Earlier observations remain historical evidence but cannot overwrite the terminal state.
+- Merge results are independent of input order.
+- Missing or contradictory lifecycle evidence fails closed.
+- Do not discard legitimate new setups merely because an earlier arm was superseded.
+
+Add a deterministic fixture matching the real-data state sequence.
+
+3. REVIEW THE CONFIRMED SIGNAL WITH NO QUALIFIED EDGE
+
+Inspect the exact confirmed signal from the bounded replay.
+
+Determine whether it represents:
+
+A. A valid confirmed physical signal that correctly failed every enabled strategy edge.
+
+B. A strategy-routing defect where a qualifying edge was lost.
+
+C. A funnel/status naming problem where “confirmed signal” implies more qualification than actually occurred.
+
+If A:
+- Preserve the rejection.
+- Report its exact earliest causal rejection reason.
+- Ensure the UI does not imply that it should have produced a trade.
+
+If B:
+- Repair the edge linkage through audit, occurrence, candidate projection, and Visual Review.
+- Add a production-path regression.
+
+If C:
+- Correct the status or explanation without changing trading eligibility.
+
+Do not create an edge merely to force a trade.
+
+4. IMPROVE CACHE INSTRUMENTATION
+
+The overlapping range took 49.6 seconds, close to a fresh run. Add concrete instrumentation to explain reuse.
+
+Report:
+
+- Requested sessions.
+- Session-result memory hits.
+- Persistent session-result hits.
+- Session-result misses.
+- Sessions recomputed.
+- Raw-data cache hits and loads.
+- Combined account replay time.
+- Funnel aggregation time.
+- Chart generation time.
+- Total elapsed time.
+
+Do not expose excessive implementation detail in the normal user flow. Keep detailed metrics in diagnostics or developer details.
+
+The instrumentation must prove whether the overlap reused September 9–10 and computed only September 8.
+
+5. PRESERVE CURRENT CACHE BEHAVIOR
+
+Do not regress:
+
+- Persistent catalog migration.
+- Persistent session results across process restart.
+- Completed zero-trade cache entries.
+- Source/formula/configuration invalidation.
+- Atomic result publication.
+- Concurrent request deduplication.
+- Chronological account arbitration.
+- Strategy changes causing charts to appear or disappear.
+- Protection against stale asynchronous UI responses.
+- Human-review provenance compatibility.
+
+Do not modify production strategy rules or historical source data while repairing replay integrity.
+
+6. REAL-DATA ACCEPTANCE VERIFICATION
+
+First run focused deterministic tests.
+
+Then rerun the bounded range:
+
+- 2026-09-09 through 2026-09-11.
+- MESU6 sessions from the populated catalog.
+- Same strategy formula and execution settings used in the previous verification.
+
+Compare fresh, cached, and post-restart reports.
+
+Required acceptance:
+
+- No unresolved BATCH_DUPLICATE_OCCURRENCE_CONFLICT diagnostics.
+- No lifecycle invariant violations.
+- Confirmed signals have an explicit qualified edge or an explicit causal rejection.
+- Fresh, cached, and restarted reports match.
+- Candidate/trade/P&L totals reconcile.
+- Cache instrumentation explains reuse accurately.
+
+If this bounded range legitimately produces zero trades, state that clearly. Do not change strategy rules to manufacture a trade.
+
+After the integrity defects are resolved, select a small catalog range known to contain at least one current-version executable trade. Use it only to verify:
+
+- Candidate-to-occurrence linkage.
+- Entry and modeled fill.
+- Stop and target.
+- Account arbitration.
+- P/L.
+- Visual Review chart markup.
+- Matching provenance before and after cache reuse and restart.
+
+If no executable trade exists under the current rules in available data, report that limitation rather than fabricating one.
+
+7. VERIFICATION
+
+Run:
+
+- Batch aggregation tests.
+- Occurrence identity and merge tests.
+- Pullback lifecycle tests.
+- Phase 9 unit and integration tests.
+- Account-position arbitration tests.
+- Persistent session-cache tests.
+- Qualification-funnel tests.
+- Visual Review tests.
+- Batch HTTP lifecycle tests.
+- API and frontend typechecks/builds.
+- git diff --check.
+
+FINAL REPORT
+
+Provide:
+
+1. Root cause of each duplicate occurrence conflict.
+2. Fields classified as compatible enrichment versus contradiction.
+3. Canonical merge and fail-closed policy.
+4. Root cause of the terminal-arm lifecycle violation.
+5. Disposition of the confirmed signal without a qualified edge.
+6. Before/after bounded real-data diagnostics.
+7. Fresh, repeat, overlap, and restart timings with hit/miss counts.
+8. Proof that cached and fresh reports match.
+9. Executed-trade chart verification, if current data contains one.
+10. Tests/builds passed, failed, or not run.
+
+Do not claim completion solely because duplicate diagnostics disappeared. Demonstrate that the underlying occurrence, candidate, execution, and lifecycle evidence is consistent.
+
+
+4:57 PM

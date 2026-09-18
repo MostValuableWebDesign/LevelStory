@@ -59,6 +59,8 @@ export type SessionAnalysisStoreStats = {
   memoryPending: number;
 };
 
+export type PersistentSessionCacheResolution = "persistent_hit" | "computed";
+
 export class PersistentSessionAnalysisStore {
   private readonly pending = new Map<string, Promise<BacktestReport>>();
 
@@ -87,6 +89,7 @@ export class PersistentSessionAnalysisStore {
   async getOrCompute(
     descriptor: SessionResultCacheDescriptor,
     compute: () => Promise<BacktestReport>,
+    onResolution?: (resolution: PersistentSessionCacheResolution) => void,
   ): Promise<BacktestReport> {
     if (!validDescriptor(descriptor)) {
       throw new Error("SESSION_ANALYSIS_CACHE_IDENTITY_INVALID");
@@ -108,12 +111,14 @@ export class PersistentSessionAnalysisStore {
         && stored.formulaHash === descriptor.formulaHash
         && stableSerialize(stored.dependencyIdentity) === stableSerialize(descriptor.dependencyIdentity)
         && isBacktestReport(stored.resultPayload)) {
+        onResolution?.("persistent_hit");
         await tx.update(sessionAnalysisResultsTable)
           .set({ lastAccessedAt: new Date() })
           .where(eq(sessionAnalysisResultsTable.cacheKey, descriptor.cacheKey));
         return structuredClone(stored.resultPayload);
       }
 
+      onResolution?.("computed");
       const result = await compute();
       if (!isBacktestReport(result)) {
         throw new Error("SESSION_ANALYSIS_RESULT_SCHEMA_INVALID");

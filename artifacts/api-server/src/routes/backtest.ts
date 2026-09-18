@@ -45,6 +45,9 @@ import { QUALIFICATION_FUNNEL_VERSION, type BacktestReport } from "../lib/phase9
 import { buildReplayDataset, type BacktestRequest } from "../lib/phase9.js";
 import {
   runBatchBacktest,
+  getCatalogedBatchCacheDiagnostics,
+  getCatalogedBatchResultCacheLookup,
+  recordCatalogedBatchResultCacheLookup,
   type CatalogedSessionCacheContext,
   type BatchBacktestReport,
   type BatchBacktestRequest,
@@ -523,6 +526,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
         });
         record.cacheKey = cacheKey;
         const cached = completedBatchCache.get(cacheKey);
+        recordCatalogedBatchResultCacheLookup(cacheKey, Boolean(cached));
         if (cached) {
           record.report = cached;
           record.progress = {
@@ -618,6 +622,17 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       return;
     }
     res.json(GetBatchBacktestStatusResponse.parse(batchStatus(record)));
+  });
+
+  router.get("/backtest/batch-cache-diagnostics", (req, res): void => {
+    if (process.env.NODE_ENV === "production") {
+      res.status(404).json({ error: "Developer diagnostics are disabled in production." });
+      return;
+    }
+    res.json({
+      batchResultCache: getCatalogedBatchResultCacheLookup(),
+      sessionRun: getCatalogedBatchCacheDiagnostics(),
+    });
   });
 
   router.delete("/backtest/batch-cancel", backtestRateLimit, (req, res): void => {
