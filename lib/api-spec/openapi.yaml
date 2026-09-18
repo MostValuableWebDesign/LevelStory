@@ -4332,7 +4332,29 @@ components:
               $ref: "#/components/schemas/QualificationFunnel"
             walkForward:
               $ref: "#/components/schemas/WalkForwardReport"
-          required: [batch, funnel, walkForward]
+            accountReplay:
+              $ref: "#/components/schemas/BatchAccountReplay"
+          required: [batch, funnel, walkForward, accountReplay]
+    BatchAccountReplay:
+      type: object
+      properties:
+        startingBalance: { type: number }
+        endingBalance: { type: number }
+        realizedNetPnl: { type: number }
+        equityCurve:
+          type: array
+          items:
+            type: object
+            properties:
+              tradeNumber: { type: number }
+              entryTime: { type: string }
+              balance: { type: number }
+              netPnl: { type: ["number", "null"] }
+              status: { type: string, enum: [start, win, loss, flat, open] }
+            required: [tradeNumber, entryTime, balance, netPnl, status]
+        blockedCandidateCount: { type: number }
+        blockedCandidateIds: { type: array, items: { type: string } }
+      required: [startingBalance, endingBalance, realizedNetPnl, equityCurve, blockedCandidateCount, blockedCandidateIds]
     BatchBacktestStatus:
       type: object
       properties:

@@ -16,6 +16,12 @@ import {
 } from "./phase9.js";
 import { FIXED_FORMULA_VERSION } from "./formula-hash.js";
 import {
+  buildVersionedAnalysisCacheKey,
+  STRATEGY_RESULT_CACHE_KEY_VERSION,
+  VersionedAnalysisCache,
+} from "./analysis-cache.js";
+import type { HistoricalSessionCatalogEntry } from "./futures/historical-index-store.js";
+import {
   buildSensitivityCase,
   evaluateWalkForward,
   type WalkForwardReport,
@@ -46,7 +52,43 @@ export type BatchBacktestReport = BacktestReport & {
   };
   funnel: QualificationFunnel;
   walkForward: WalkForwardReport;
+  accountReplay: BatchAccountReplay;
 };
+
+export type BatchAccountReplay = {
+  startingBalance: number;
+  endingBalance: number;
+  realizedNetPnl: number;
+  equityCurve: Array<{
+    tradeNumber: number;
+    entryTime: string;
+    balance: number;
+    netPnl: number | null;
+    status: "start" | "win" | "loss" | "flat" | "open";
+  }>;
+  blockedCandidateCount: number;
+  blockedCandidateIds: string[];
+};
+
+export type CatalogedSessionCacheContext = {
+  catalogEntries?: readonly HistoricalSessionCatalogEntry[];
+  sourceIdentity?: unknown;
+  strategyIdentity?: unknown;
+  initialState?: unknown;
+};
+
+const sessionResultCache = new VersionedAnalysisCache<BacktestReport>({
+  maxEntries: 512,
+  ttlMs: 60 * 60_000,
+});
+
+export function clearCatalogedSessionResultCache(): void {
+  sessionResultCache.clear();
+}
+
+export function getCatalogedSessionResultCacheStats(): { entries: number; pending: number } {
+  return sessionResultCache.getStats();
+}
 
 type BatchPartition = {
   tradingDate: string;
@@ -62,6 +104,7 @@ export type BatchRunnerOptions = {
   signal: AbortSignal;
   onProgress?: (progress: BatchBacktestProgress) => void;
   runPartition?: (input: BacktestWorkerInput, options: { timeoutMs: number; signal: AbortSignal }) => Promise<BacktestReport>;
+  sessionCache?: CatalogedSessionCacheContext;
 };
 
 function uniqueSorted(values: readonly string[]): string[] {
@@ -229,6 +272,110 @@ function createPartitions(
   return partitions;
 }
 
+function sessionCatalogEntry(
+  context: CatalogedSessionCacheContext | undefined,
+  partition: BatchPartition,
+): HistoricalSessionCatalogEntry | undefined {
+  return context?.catalogEntries?.find((entry) =>
+    entry.tradingDate === partition.tradingDate
+    && entry.contractSymbol === partition.contractSymbol);
+}
+
+function buildSessionResultCacheKey(
+  partition: BatchPartition,
+  request: BatchBacktestRequest,
+  risk: BacktestWorkerInput["risk"],
+  context: CatalogedSessionCacheContext | undefined,
+): string | null {
+  const catalog = sessionCatalogEntry(context, partition);
+  if (catalog && (
+    catalog.coverageStatus !== "complete"
+    || catalog.completenessStatus !== "complete"
+    || catalog.validationStatus !== "validated"
+  )) return null;
+  const {
+    selectedDates: _selectedDates,
+    startDate: _startDate,
+    endDate: _endDate,
+    inSampleDays: _inSampleDays,
+    outOfSampleDays: _outOfSampleDays,
+    ...sessionIndependentRequest
+  } = request;
+  return buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+    cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-session`,
+    session: {
+      tradingDate: partition.tradingDate,
+      contractSymbol: partition.contractSymbol,
+      period: partition.period,
+      partitionIdentity: catalog?.partitionIdentity ?? null,
+      sourceFingerprint: catalog?.sourceFingerprint ?? null,
+      ingestionVersion: catalog?.ingestionVersion ?? null,
+      normalizationVersion: catalog?.normalizationVersion ?? null,
+      schemaVersion: catalog?.schemaVersion ?? null,
+      datasetFingerprint: partition.dataset.contentFingerprint ?? null,
+      source: partition.dataset.source ?? null,
+      timeframe: catalog?.availableTimeframes ?? [1, 5],
+    },
+    strategy: context?.strategyIdentity ?? {
+      formulaVersion: FIXED_FORMULA_VERSION,
+      strategyResultVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+    },
+    request: sessionIndependentRequest,
+    risk,
+    source: context?.sourceIdentity ?? null,
+    initialState: context?.initialState ?? {
+      accountPosition: "flat-for-session-analysis",
+      combinedReplayGate: "required",
+    },
+  });
+}
+
+function buildBatchAccountReplay(
+  trades: readonly BacktestReport["trades"][number][],
+  tradeCandidates: readonly BacktestReport["tradeCandidates"][number][],
+  startingBalance = 100_000,
+): BatchAccountReplay {
+  let balance = startingBalance;
+  let closedPnl = 0;
+  const equityCurve: BatchAccountReplay["equityCurve"] = [{
+    tradeNumber: 0,
+    entryTime: trades[0]?.entryTime ?? new Date(0).toISOString(),
+    balance,
+    netPnl: null,
+    status: "start",
+  }];
+  for (const [index, trade] of [...trades].sort((left, right) =>
+    Date.parse(left.entryTime) - Date.parse(right.entryTime)
+    || left.id.localeCompare(right.id),
+  ).entries()) {
+    const closed = trade.outcome !== "open" && trade.exitTime !== null;
+    const netPnl = closed ? trade.netPnl : null;
+    if (netPnl !== null) {
+      closedPnl += netPnl;
+      balance += netPnl;
+    }
+    equityCurve.push({
+      tradeNumber: index + 1,
+      entryTime: trade.entryTime,
+      balance,
+      netPnl,
+      status: netPnl === null ? "open" : netPnl > 0 ? "win" : netPnl < 0 ? "loss" : "flat",
+    });
+  }
+  const blockedCandidateIds = tradeCandidates
+    .filter((candidate) => candidate.accountEntryStatus === "BLOCKED_ACTIVE_POSITION")
+    .map((candidate) => candidate.candidateId)
+    .sort();
+  return {
+    startingBalance,
+    endingBalance: balance,
+    realizedNetPnl: closedPnl,
+    equityCurve,
+    blockedCandidateCount: blockedCandidateIds.length,
+    blockedCandidateIds,
+  };
+}
+
 export function aggregateBatchReports(
   reports: readonly BacktestReport[],
   partitions: readonly BatchPartition[],
@@ -352,6 +499,7 @@ export function aggregateBatchReports(
     },
     funnel,
     walkForward,
+    accountReplay: buildBatchAccountReplay(trades, tradeCandidates),
   };
 }
 
@@ -376,10 +524,25 @@ async function runPartitionSet(
         message: `Replaying ${partition.tradingDate} on ${partition.contractSymbol}.`,
       });
     }
-    const report = await runPartition(
+    const run = () => runPartition(
       { request: backtestRequest, risk, replayDataset: partition.dataset },
       { timeoutMs: options.timeoutMs, signal: options.signal },
     );
+    const cacheKey = buildSessionResultCacheKey(partition, backtestRequest, risk, options.sessionCache);
+    let report: BacktestReport;
+    try {
+      report = cacheKey
+        ? await sessionResultCache.getOrCompute(cacheKey, run)
+        : await run();
+    } catch (error) {
+      if (cacheKey && options.signal.aborted) {
+        sessionResultCache.setIncomplete(
+          cacheKey,
+          error instanceof Error ? error.message : "Session computation did not complete.",
+        );
+      }
+      throw error;
+    }
     reports.push(report);
     if (emitProgress) {
       options.onProgress?.({

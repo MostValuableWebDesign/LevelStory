@@ -2,13 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   aggregateBatchReports,
+  clearCatalogedSessionResultCache,
+  getCatalogedSessionResultCacheStats,
+  runBatchBacktest,
   type BatchBacktestReport,
+  type BatchBacktestRequest,
 } from "./batch-backtest.js";
 import type {
   BacktestReport,
+  CausalReplayDataset,
   HistoricalOccurrence,
   HistoricalTradeCandidate,
 } from "./phase9.js";
+import type { BacktestWorkerInput } from "./backtest-worker-client.js";
 
 function report(overrides: Partial<BacktestReport>): BacktestReport {
   return {
@@ -124,6 +130,94 @@ function candidate(id: string, period: "in_sample" | "out_of_sample" = "in_sampl
     executionStatus: "MODELED_TRADE_CREATED",
     entryReachedThreshold: true,
   } as unknown as HistoricalTradeCandidate;
+}
+
+function sessionReport(tradingDate: string, period: "in_sample" | "out_of_sample"): BacktestReport {
+  const base = report({
+    dataset: {
+      ...report({}).dataset,
+      startDate: tradingDate,
+      endDate: tradingDate,
+      requestedStartDate: tradingDate,
+      requestedEndDate: tradingDate,
+      selectedDates: [tradingDate],
+      inSampleDates: period === "in_sample" ? [tradingDate] : [],
+      outOfSampleDates: period === "out_of_sample" ? [tradingDate] : [],
+      activeContractByDate: [{ tradingDate, contractSymbol: "MESU2" }],
+    },
+  });
+  return base;
+}
+
+function catalogEntry(tradingDate: string): import("./futures/historical-index-store.js").HistoricalSessionCatalogEntry {
+  return {
+    tradingDate,
+    contractSymbol: "MESU2",
+    sessionType: "cme_equity_index_globex",
+    timeZone: "America/New_York",
+    calendarIdentity: "calendar",
+    partitionIdentity: `partition-${tradingDate}`,
+    availableTimeframes: [1, 5],
+    candleCounts: { oneMinute: 1, fiveMinute: 1, fifteenMinute: 0, oneHour: 0 },
+    tickCoverage: "not_indexed",
+    earliestTimestamp: `${tradingDate}T14:00:00.000Z`,
+    latestTimestamp: `${tradingDate}T14:05:00.000Z`,
+    coverageStatus: "complete",
+    completenessStatus: "complete",
+    validationStatus: "validated",
+    sourceFingerprint: `source-${tradingDate}`,
+    ingestionVersion: "ingestion-v1",
+    normalizationVersion: "normalization-v1",
+    schemaVersion: 1,
+  };
+}
+
+function sessionDataset(dates: readonly string[]): CausalReplayDataset {
+  return {
+    candles: dates.map((tradingDate) => ({
+      timestamp: Date.parse(`${tradingDate}T14:00:00.000Z`),
+      openTime: Date.parse(`${tradingDate}T14:00:00.000Z`),
+      closeTime: Date.parse(`${tradingDate}T14:05:00.000Z`),
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 1,
+      bid: 100,
+      ask: 100,
+      bidSize: 1,
+      askSize: 1,
+      contractSymbol: "MESU2",
+      isComplete: true,
+    })),
+    oneMinute: [],
+    contractSymbol: "MESU2",
+    contractMonth: "U2",
+    inSampleDates: dates.slice(0, -1),
+    outOfSampleDates: dates.slice(-1),
+    selectedDates: dates,
+    source: "historical_databento_multicontract",
+    contentFingerprint: "dataset-fingerprint",
+    contractSchedule: {
+      version: "schedule-v1",
+      activeContractByDate: dates.map((tradingDate) => ({ tradingDate, contractSymbol: "MESU2" })),
+      boundaries: [],
+    },
+  };
+}
+
+function batchRequest(selectedDates: readonly string[]): BatchBacktestRequest {
+  return {
+    symbol: "MES",
+    startDate: selectedDates[0]!,
+    endDate: selectedDates.at(-1)!,
+    inSampleDays: selectedDates.length - 1,
+    outOfSampleDays: 1,
+    seed: 1,
+    source: "historical_databento_multicontract",
+    executionMode: "ohlcv_modeled",
+    selectedDates: [...selectedDates],
+  };
 }
 
 test("batch aggregation preserves execution and occurrence data from every partition", () => {
@@ -340,5 +434,124 @@ test("batch account gating carries active positions across partitions unless a s
   assert.equal(
     result.tradeCandidates.find((candidate) => candidate.candidateId === secondCandidate.candidateId)?.accountEntryStatus,
     "BLOCKED_ACTIVE_POSITION",
+  );
+});
+
+test("overlapping cataloged ranges reuse valid session analysis and preserve the combined result", async () => {
+  clearCatalogedSessionResultCache();
+  const dates = ["2022-08-10", "2022-08-11", "2022-08-12"];
+  const dataset = sessionDataset(dates);
+  const context = {
+    catalogEntries: dates.map(catalogEntry),
+    sourceIdentity: { source: "catalog-source", calendar: "calendar-v1" },
+    strategyIdentity: { strategy: "test-strategy", version: "v1", formulaHash: "formula" },
+    initialState: { accountPosition: "flat", arbitration: "combined-chronological" },
+  };
+  const run = async (input: BacktestWorkerInput) => {
+    const replayDataset = input.replayDataset!;
+    const tradingDate = replayDataset.selectedDates?.[0] ?? dates[0]!;
+    const period = replayDataset.inSampleDates.includes(tradingDate)
+      ? "in_sample"
+      : "out_of_sample";
+    return sessionReport(tradingDate, period);
+  };
+  let calls = 0;
+  const countedRun = async (input: BacktestWorkerInput) => {
+    calls += 1;
+    return run(input);
+  };
+  const options: Parameters<typeof runBatchBacktest>[1] = {
+    timeoutMs: 1_000,
+    signal: new AbortController().signal,
+    runPartition: countedRun,
+    sessionCache: context,
+  };
+  await runBatchBacktest({
+    request: batchRequest(dates),
+    replayDataset: dataset,
+  }, options);
+  assert.equal(calls, 9);
+  const cached = await runBatchBacktest({
+    request: batchRequest(dates.slice(1)),
+    replayDataset: dataset,
+  }, options);
+  assert.equal(calls, 9);
+  assert.equal(getCatalogedSessionResultCacheStats().entries, 9);
+  clearCatalogedSessionResultCache();
+  const fresh = await runBatchBacktest({
+    request: batchRequest(dates.slice(1)),
+    replayDataset: dataset,
+  }, options);
+  assert.equal(calls, 15);
+  assert.deepEqual(cached, fresh);
+});
+
+test("a changed earlier exit changes downstream account arbitration without recomputing session evidence", () => {
+  const firstCandidate = executableCandidate("changed-first", "2022-08-10");
+  const secondCandidate = executableCandidate("changed-second", "2022-08-11");
+  const openFirst = report({
+    trades: [trade("changed-first-trade", "in_sample", "open", firstCandidate.candidateId)],
+    candidateExecutionEvidence: [trade("changed-first-trade", "in_sample", "open", firstCandidate.candidateId)],
+    tradeCandidates: [firstCandidate],
+  });
+  const later = report({
+    trades: [trade("changed-second-trade", "out_of_sample", "target", secondCandidate.candidateId)],
+    candidateExecutionEvidence: [trade("changed-second-trade", "out_of_sample", "target", secondCandidate.candidateId)],
+    tradeCandidates: [secondCandidate],
+    dataset: { ...report({}).dataset, selectedDates: ["2022-08-11"], inSampleDates: [], outOfSampleDates: ["2022-08-11"] },
+  });
+  const openResult = aggregateBatchReports(
+    [openFirst, later],
+    [
+      { tradingDate: "2022-08-10", contractSymbol: "MESU2", period: "in_sample", dataset: {} as never },
+      { tradingDate: "2022-08-11", contractSymbol: "MESU2", period: "out_of_sample", dataset: {} as never },
+    ],
+    ["2022-08-10", "2022-08-11"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+  const closedFirst = report({
+    trades: [trade("changed-first-trade", "in_sample", "target", firstCandidate.candidateId)],
+    candidateExecutionEvidence: [trade("changed-first-trade", "in_sample", "target", firstCandidate.candidateId)],
+    tradeCandidates: [firstCandidate],
+  });
+  const closedResult = aggregateBatchReports(
+    [closedFirst, later],
+    [
+      { tradingDate: "2022-08-10", contractSymbol: "MESU2", period: "in_sample", dataset: {} as never },
+      { tradingDate: "2022-08-11", contractSymbol: "MESU2", period: "out_of_sample", dataset: {} as never },
+    ],
+    ["2022-08-10", "2022-08-11"],
+    {} as BatchBacktestReport["walkForward"],
+  );
+  assert.equal(openResult.trades.length, 1);
+  assert.equal(closedResult.trades.length, 2);
+  assert.equal(openResult.accountReplay.blockedCandidateCount, 1);
+  assert.equal(closedResult.accountReplay.blockedCandidateCount, 0);
+});
+
+test("an empty cataloged range fails without producing a partial combined result", async () => {
+  await assert.rejects(
+    runBatchBacktest({
+      request: {
+        symbol: "MES",
+        startDate: "2022-08-10",
+        endDate: "2022-08-10",
+        inSampleDays: 1,
+        outOfSampleDays: 0,
+        seed: 1,
+        source: "historical_databento_multicontract",
+        executionMode: "ohlcv_modeled",
+        selectedDates: ["2022-08-10"],
+      },
+      replayDataset: {
+        ...sessionDataset([]),
+        contractSchedule: {
+          version: "schedule-v1",
+          activeContractByDate: [{ tradingDate: "2022-08-10", contractSymbol: "MESU2" }],
+          boundaries: [],
+        },
+      },
+    }, { timeoutMs: 100, signal: new AbortController().signal }),
+    /no completed candles/,
   );
 });

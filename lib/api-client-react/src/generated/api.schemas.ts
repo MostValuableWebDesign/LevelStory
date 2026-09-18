@@ -4334,10 +4334,40 @@ export type BatchBacktestReportBatch = {
   contractPartitions: BatchBacktestReportBatchContractPartitionsItem[];
 };
 
+export type BatchAccountReplayEquityCurveItemStatus = typeof BatchAccountReplayEquityCurveItemStatus[keyof typeof BatchAccountReplayEquityCurveItemStatus];
+
+
+export const BatchAccountReplayEquityCurveItemStatus = {
+  start: 'start',
+  win: 'win',
+  loss: 'loss',
+  flat: 'flat',
+  open: 'open',
+} as const;
+
+export type BatchAccountReplayEquityCurveItem = {
+  tradeNumber: number;
+  entryTime: string;
+  balance: number;
+  /** @nullable */
+  netPnl: number | null;
+  status: BatchAccountReplayEquityCurveItemStatus;
+};
+
+export interface BatchAccountReplay {
+  startingBalance: number;
+  endingBalance: number;
+  realizedNetPnl: number;
+  equityCurve: BatchAccountReplayEquityCurveItem[];
+  blockedCandidateCount: number;
+  blockedCandidateIds: string[];
+}
+
 export type BatchBacktestReport = BacktestReport & {
   batch: BatchBacktestReportBatch;
   funnel: QualificationFunnel;
   walkForward: WalkForwardReport;
+  accountReplay: BatchAccountReplay;
 };
 
 export type BatchBacktestStatusStatus = typeof BatchBacktestStatusStatus[keyof typeof BatchBacktestStatusStatus];

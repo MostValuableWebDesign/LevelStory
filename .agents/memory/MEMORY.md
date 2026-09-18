@@ -103,3 +103,4 @@
 - [Legacy session catalog backfill](legacy-session-catalog-backfill.md) — pre-catalog SQLite indexes need an explicit atomic backfill or reindex before catalog-only date selection can be authoritative.
 - [Raw market-data cache identity](raw-market-data-cache-identity.md) — raw replay reuse follows source, coverage, calendar, schema, and normalization identity; strategy revisions must not invalidate it.
 - [Batch route fixture timing](batch-route-fixture-timing.md) — synchronous in-process replay fixtures can block HTTP polling and cause ECONNRESET; validate batch routes with non-blocking workers or an explicit serial harness.
+- [Cataloged session range orchestration](part4-session-range-orchestration.md) — reuse session evidence by session identity, then rerun chronological account arbitration for the selected range.

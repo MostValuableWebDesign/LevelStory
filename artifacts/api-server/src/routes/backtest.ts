@@ -45,6 +45,7 @@ import { QUALIFICATION_FUNNEL_VERSION, type BacktestReport } from "../lib/phase9
 import { buildReplayDataset, type BacktestRequest } from "../lib/phase9.js";
 import {
   runBatchBacktest,
+  type CatalogedSessionCacheContext,
   type BatchBacktestReport,
   type BatchBacktestRequest,
   type BatchBacktestProgress,
@@ -447,12 +448,22 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
         const multiContract = source === MULTI_CONTRACT_SOURCE
           ? await getReadyHistoricalMultiContractIndex()
           : null;
+        const activeStrategy = activeShadowStrategySnapshot();
         const replayDataset = imported
           ? historicalImportToReplayDataset(imported, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
           : multiContract
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
-        const activeStrategy = activeShadowStrategySnapshot();
+        const sessionCatalogEntries = multiContract
+          ? (
+            multiContract.storage?.getSessionCatalogEntries({
+              startDate: batchStart,
+              endDate: batchEnd,
+              includeIncomplete: true,
+            })
+            ?? multiContract.summary.sessionCatalog
+          )
+          : [];
         cacheKey = buildVersionedAnalysisCacheKey("strategy-result", {
           cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-batch`,
           qualificationFunnelVersion: QUALIFICATION_FUNNEL_VERSION,
@@ -536,6 +547,30 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
             signal: controller.signal,
             runPartition: config.runBatchPartition,
             onProgress: (progress) => { record.progress = progress; },
+            sessionCache: {
+              catalogEntries: sessionCatalogEntries,
+              sourceIdentity: {
+                source,
+                contentFingerprint: imported?.contentFingerprint ?? multiContract?.contentFingerprint ?? null,
+                calendarVersion: imported?.calendar.calendarVersion ?? multiContract?.calendar.calendarVersion ?? null,
+                scheduleVersion: multiContract?.summary.scheduleVersion ?? null,
+              },
+              strategyIdentity: {
+                strategyKey: activeStrategy.strategyKey,
+                versionId: activeStrategy.versionId,
+                versionNumber: activeStrategy.versionNumber,
+                formulaVersion: activeStrategy.formulaVersion,
+                formulaHash: activeStrategy.formulaHash,
+                candidateProjectionVersion: CANDIDATE_PROJECTION_VERSION,
+                executionManagementVersion: EXECUTION_MANAGEMENT_VERSION,
+                accountPositionStateVersion: ACCOUNT_STATE_VERSION,
+              },
+              initialState: {
+                accountPosition: "flat-for-session-analysis",
+                combinedReplay: "chronological-selected-dates",
+                resetAtContractBoundary: source === MULTI_CONTRACT_SOURCE,
+              },
+            } satisfies CatalogedSessionCacheContext,
           },
         );
         if (controller.signal.aborted) throw new BacktestRequestAbortedError();

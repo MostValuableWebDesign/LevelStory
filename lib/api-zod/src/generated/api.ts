@@ -3685,6 +3685,20 @@ export const StartBatchBacktestResponse = zod.object({
 }),
   "edgeStatus": zod.enum(['insufficient_evidence', 'negative_observed_expectancy', 'mixed_inconclusive', 'positive_observed_expectancy_requires_further_validation'])
 }))
+}),
+  "accountReplay": zod.object({
+  "startingBalance": zod.number(),
+  "endingBalance": zod.number(),
+  "realizedNetPnl": zod.number(),
+  "equityCurve": zod.array(zod.object({
+  "tradeNumber": zod.number(),
+  "entryTime": zod.string(),
+  "balance": zod.number(),
+  "netPnl": zod.number().nullable(),
+  "status": zod.enum(['start', 'win', 'loss', 'flat', 'open'])
+})),
+  "blockedCandidateCount": zod.number(),
+  "blockedCandidateIds": zod.array(zod.string())
 })
 })).nullable(),
   "error": zod.string().nullable()
@@ -5331,6 +5345,20 @@ export const GetBatchBacktestStatusResponse = zod.object({
 }),
   "edgeStatus": zod.enum(['insufficient_evidence', 'negative_observed_expectancy', 'mixed_inconclusive', 'positive_observed_expectancy_requires_further_validation'])
 }))
+}),
+  "accountReplay": zod.object({
+  "startingBalance": zod.number(),
+  "endingBalance": zod.number(),
+  "realizedNetPnl": zod.number(),
+  "equityCurve": zod.array(zod.object({
+  "tradeNumber": zod.number(),
+  "entryTime": zod.string(),
+  "balance": zod.number(),
+  "netPnl": zod.number().nullable(),
+  "status": zod.enum(['start', 'win', 'loss', 'flat', 'open'])
+})),
+  "blockedCandidateCount": zod.number(),
+  "blockedCandidateIds": zod.array(zod.string())
 })
 })).nullable(),
   "error": zod.string().nullable()
@@ -6977,6 +7005,20 @@ export const CancelBatchBacktestResponse = zod.object({
 }),
   "edgeStatus": zod.enum(['insufficient_evidence', 'negative_observed_expectancy', 'mixed_inconclusive', 'positive_observed_expectancy_requires_further_validation'])
 }))
+}),
+  "accountReplay": zod.object({
+  "startingBalance": zod.number(),
+  "endingBalance": zod.number(),
+  "realizedNetPnl": zod.number(),
+  "equityCurve": zod.array(zod.object({
+  "tradeNumber": zod.number(),
+  "entryTime": zod.string(),
+  "balance": zod.number(),
+  "netPnl": zod.number().nullable(),
+  "status": zod.enum(['start', 'win', 'loss', 'flat', 'open'])
+})),
+  "blockedCandidateCount": zod.number(),
+  "blockedCandidateIds": zod.array(zod.string())
 })
 })).nullable(),
   "error": zod.string().nullable()
