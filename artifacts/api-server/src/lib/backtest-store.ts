@@ -36,6 +36,12 @@ type StoredRun = {
 
 const runs = new Map<string, StoredRun>();
 const cacheKeys = new Map<string, string>();
+const cacheStatuses = new Map<string, {
+  status: "complete" | "failed" | "incomplete";
+  error?: string;
+  updatedAt: number;
+}>();
+const pendingComputations = new Map<string, Promise<{ runId: string; report: BacktestReport }>>();
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -91,9 +97,52 @@ export function storeBacktestReport(report: BacktestReport, cacheKey?: string): 
   const runId = randomUUID();
   const now = Date.now();
   runs.set(runId, { report, expiresAt: now + RUN_TTL_MS, lastAccessedAt: now, cacheKey });
-  if (cacheKey) cacheKeys.set(cacheKey, runId);
+  if (cacheKey) {
+    cacheKeys.set(cacheKey, runId);
+    cacheStatuses.set(cacheKey, { status: "complete", updatedAt: now });
+  }
   prune(now);
   return runId;
+}
+
+export async function getOrComputeBacktestReport(
+  cacheKey: string,
+  compute: () => Promise<BacktestReport>,
+): Promise<{ runId: string; report: BacktestReport }> {
+  const cached = getCachedBacktestReport(cacheKey);
+  if (cached) return cached;
+  const pending = pendingComputations.get(cacheKey);
+  if (pending) return pending;
+  const computation = Promise.resolve()
+    .then(compute)
+    .then((report) => {
+      const runId = storeBacktestReport(report, cacheKey);
+      return { runId, report };
+    })
+    .catch((error: unknown) => {
+      cacheStatuses.set(cacheKey, {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Backtest computation failed.",
+        updatedAt: Date.now(),
+      });
+      throw error;
+    });
+  pendingComputations.set(cacheKey, computation);
+  try {
+    return await computation;
+  } finally {
+    if (pendingComputations.get(cacheKey) === computation) pendingComputations.delete(cacheKey);
+  }
+}
+
+export function getBacktestCacheRecord(cacheKey: string): {
+  status: "missing" | "complete" | "failed" | "incomplete";
+  error?: string;
+} {
+  const cached = getCachedBacktestReport(cacheKey);
+  if (cached) return { status: "complete" };
+  const status = cacheStatuses.get(cacheKey);
+  return status ? { status: status.status, ...(status.error ? { error: status.error } : {}) } : { status: "missing" };
 }
 
 export function getBacktestAuditPage(

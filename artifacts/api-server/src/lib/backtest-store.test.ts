@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildBacktestCacheKey, getBacktestAuditPage, getCachedBacktestReport, storeBacktestReport } from "./backtest-store.js";
+import "./analysis-cache.test.js";
+import {
+  buildBacktestCacheKey,
+  getBacktestAuditPage,
+  getBacktestCacheRecord,
+  getCachedBacktestReport,
+  getOrComputeBacktestReport,
+  storeBacktestReport,
+} from "./backtest-store.js";
 import type { BacktestAuditRecord, BacktestReport } from "./phase9.js";
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG, strategyConfig } from "./strategy/config.js";
 import { formulaConfigurationHash } from "./formula-hash.js";
@@ -70,4 +78,34 @@ test("source content, risk, and execution changes invalidate cache identity", ()
   assert.notEqual(formulaA, formulaB);
   assert.notEqual(governedFormulaA, governedFormulaB);
   assert.notEqual(governedCacheA, governedCacheB);
+});
+
+test("equivalent backtests deduplicate in flight and publish only after completion", async () => {
+  const key = buildBacktestCacheKey({ test: "concurrent", source: "session-a" });
+  const report = { audit: [] } as unknown as BacktestReport;
+  let calls = 0;
+  const compute = async () => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return report;
+  };
+  const [first, second] = await Promise.all([
+    getOrComputeBacktestReport(key, compute),
+    getOrComputeBacktestReport(key, compute),
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(first.runId, second.runId);
+  assert.equal(getBacktestCacheRecord(key).status, "complete");
+});
+
+test("failed backtests are recorded diagnostically but never become hits", async () => {
+  const key = buildBacktestCacheKey({ test: "failed", source: "session-b" });
+  await assert.rejects(
+    getOrComputeBacktestReport(key, async () => {
+      throw new Error("worker failed");
+    }),
+    /worker failed/,
+  );
+  assert.equal(getCachedBacktestReport(key), null);
+  assert.equal(getBacktestCacheRecord(key).status, "failed");
 });

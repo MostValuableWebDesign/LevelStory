@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import type { SimulatedHourlyCandle } from "../futures/simulated-feed.js";
+import {
+  buildVersionedAnalysisCacheKey,
+  CAUSAL_FEATURE_CACHE_KEY_VERSION,
+  VersionedAnalysisCache,
+} from "../analysis-cache.js";
 
 export type LongTermZoneRole = "support" | "resistance" | "role-flip";
 export type LongTermLookback = "six-month" | "one-year";
@@ -31,7 +36,7 @@ export type LongTermZone = {
 };
 
 const DETECTOR_VERSION = "hourly-causal-zones-v1";
-const cache = new Map<string, LongTermZone[]>();
+const cache = new VersionedAnalysisCache<LongTermZone[]>({ maxEntries: 256 });
 
 export function detectLongTermZones(
   bars: readonly SimulatedHourlyCandle[],
@@ -59,7 +64,16 @@ export function detectLongTermZones(
   const contentFingerprint = createHash("sha256").update(scoped.map((bar) =>
     `${bar.openTime},${bar.closeTime},${bar.open},${bar.high},${bar.low},${bar.close},${bar.volume}`,
   ).join("|")).digest("hex");
-  const key = `${options.seriesIdentity ?? "unknown-series"}|${contentFingerprint}|${configurationHash}|${options.lookback}|${start}|${end}`;
+  const key = buildVersionedAnalysisCacheKey("long-term-zones", {
+    cacheKeyVersion: CAUSAL_FEATURE_CACHE_KEY_VERSION,
+    detectorVersion: DETECTOR_VERSION,
+    seriesIdentity: options.seriesIdentity ?? "unknown-series",
+    contentFingerprint,
+    configurationHash,
+    lookback: options.lookback,
+    start,
+    end,
+  });
   const cached = cache.get(key);
   if (cached) return cached.map((zone) => ({ ...zone, touches: zone.touches.map((touch) => ({ ...touch })) }));
 
@@ -110,7 +124,7 @@ export function detectLongTermZones(
       configurationHash,
     } satisfies LongTermZone];
   }).sort((a, b) => b.touchCount - a.touchCount || b.latestTimestamp - a.latestTimestamp);
-  cache.set(key, result);
+  cache.setComplete(key, result);
   return result.map((zone) => ({ ...zone, touches: zone.touches.map((touch) => ({ ...touch })) }));
 }
 

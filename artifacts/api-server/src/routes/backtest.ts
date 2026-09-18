@@ -51,11 +51,16 @@ import {
 } from "../lib/batch-backtest.js";
 import {
   compactBacktestReport,
-  buildBacktestCacheKey,
   getCachedBacktestReport,
+  getOrComputeBacktestReport,
   getBacktestAuditPage,
   storeBacktestReport,
 } from "../lib/backtest-store.js";
+import {
+  buildVersionedAnalysisCacheKey,
+  STRATEGY_RESULT_CACHE_KEY_VERSION,
+  VersionedAnalysisCache,
+} from "../lib/analysis-cache.js";
 import { requestRateLimit, requestTimeout } from "../lib/security.js";
 import { formulaConfigurationHash } from "../lib/formula-hash.js";
 import { activeShadowStrategySnapshot } from "../lib/active-shadow-strategy.js";
@@ -75,6 +80,10 @@ import {
   type Phase3PilotReport,
 } from "../lib/phase3-edge-pilot.js";
 
+const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v11-orb-trend-epochs-account-single-active-trade";
+const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v16-orb-trend-epochs-account-single-active-trade-fill-time";
+const EXECUTION_MANAGEMENT_VERSION = "execution-management-v14-account-single-active-trade-fill-time";
+const ACCOUNT_STATE_VERSION = "account-position-state-v3-strict-exit-boundary";
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
 export const BACKTEST_REQUEST_TIMEOUT_MS = 120_000;
@@ -183,7 +192,10 @@ type BatchRecord = {
 };
 
 const batchRuns = new Map<string, BatchRecord>();
-const completedBatchCache = new Map<string, BatchBacktestReport>();
+const completedBatchCache = new VersionedAnalysisCache<BatchBacktestReport>({
+  maxEntries: 8,
+  ttlMs: 30 * 60_000,
+});
 
 type PilotRecord = {
   controller: AbortController;
@@ -388,6 +400,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
     }
     const batchId = randomUUID();
     const controller = new AbortController();
+    let cacheKey: string | null = null;
     const selectedDates = request.selectedDates ?? [];
     const record: BatchRecord = {
       batchId,
@@ -439,13 +452,40 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           : multiContract
             ? multiContractImportToReplayDataset(multiContract, batchStart, batchEnd, batchInSampleDays, request.outOfSampleDays, selected)
             : buildReplayDataset(request.symbol, datasetRequest);
-        const cacheKey = buildBacktestCacheKey({
-            cacheVersion: `qualification-batch-${QUALIFICATION_FUNNEL_VERSION}`,
-          formulaHash: formulaConfigurationHash(request, activeShadowStrategySnapshot().config),
+        const activeStrategy = activeShadowStrategySnapshot();
+        cacheKey = buildVersionedAnalysisCacheKey("strategy-result", {
+          cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-batch`,
+          qualificationFunnelVersion: QUALIFICATION_FUNNEL_VERSION,
+          strategyEngineVersion: STRATEGY_ENGINE_VERSION,
+          candidateProjectionVersion: CANDIDATE_PROJECTION_VERSION,
+          executionManagementVersion: EXECUTION_MANAGEMENT_VERSION,
+          accountPositionStateVersion: ACCOUNT_STATE_VERSION,
+          formulaVersion: activeStrategy.formulaVersion,
+          strategyVersion: {
+            strategyKey: activeStrategy.strategyKey,
+            versionId: activeStrategy.versionId,
+            versionNumber: activeStrategy.versionNumber,
+            formulaHash: activeStrategy.formulaHash,
+          },
+          formulaHash: formulaConfigurationHash(request, activeStrategy.config),
           request,
           risk,
           contract: specification,
+          timeframe: "five-minute-causal-replay",
+          initialState: {
+            accountPosition: "flat",
+            crossSessionState: "chronological-selected-dates",
+          },
+          lookback: {
+            startDate: batchStart,
+            endDate: batchEnd,
+            inSampleDays: batchInSampleDays,
+            outOfSampleDays: request.outOfSampleDays,
+            selectedDates: selected ?? null,
+          },
           executionPolicy: {
+            executionMode: request.executionMode ?? "dataset-dependent",
+            slippageMode: request.slippageMode ?? "normal",
             entryBufferTicks: request.ohlcvEntryBufferTicks ?? 4,
             stopBufferPolicy: "atr-adaptive-v1",
             slippageTicks: request.ohlcvSlippageTicks ?? 1,
@@ -499,7 +539,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
           },
         );
         if (controller.signal.aborted) throw new BacktestRequestAbortedError();
-        completedBatchCache.set(cacheKey, report);
+        completedBatchCache.setComplete(cacheKey, report);
         record.report = report;
         record.progress = {
           status: "completed",
@@ -512,6 +552,11 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
       } catch (error) {
         const timedOut = error instanceof BacktestTimeoutError || (error instanceof Error && error.message === "BACKTEST_TIMEOUT");
         const cancelled = controller.signal.aborted && !timedOut;
+        if (cacheKey) {
+          const errorMessage = error instanceof Error ? error.message : "Batch computation failed.";
+          if (timedOut || cancelled) completedBatchCache.setIncomplete(cacheKey, errorMessage);
+          else completedBatchCache.setFailed(cacheKey, errorMessage);
+        }
         record.report = null;
         record.progress = {
           ...record.progress,
@@ -915,35 +960,67 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       if (deadline.signal.aborted) throw signalError(deadline.signal);
       const preparationMs = Date.now() - preparationStartedAt;
       const cacheLookupStartedAt = Date.now();
-      const cacheKey = buildBacktestCacheKey({
-        cacheVersion: "causal-backtest-v7-fixed-eight-tick-target-runner-audit",
-        formulaHash: formulaConfigurationHash(parsed.data, activeShadowStrategySnapshot().config),
+      const activeStrategy = activeShadowStrategySnapshot();
+      const historicalSource = imported
+        ? {
+            fingerprint: imported.contentFingerprint,
+            filename: imported.summary.filename,
+            detectedSymbol: imported.summary.detectedSymbol,
+            latestTimestamp: imported.summary.latestTimestamp,
+          }
+        : multiContract
+          ? {
+              fingerprint: multiContract.contentFingerprint,
+              scheduleVersion: multiContract.summary.scheduleVersion,
+              files: multiContract.summary.files.map((file) => ({
+                contractSymbol: file.contractSymbol,
+                fingerprint: file.contentFingerprint,
+              })),
+            }
+          : null;
+      const cacheKey = buildVersionedAnalysisCacheKey("strategy-result", {
+        cacheKeyVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+        strategyEngineVersion: STRATEGY_ENGINE_VERSION,
+        candidateProjectionVersion: CANDIDATE_PROJECTION_VERSION,
+        executionManagementVersion: EXECUTION_MANAGEMENT_VERSION,
+        accountPositionStateVersion: ACCOUNT_STATE_VERSION,
+        formulaVersion: activeStrategy.formulaVersion,
+        strategyVersion: {
+          strategyKey: activeStrategy.strategyKey,
+          versionId: activeStrategy.versionId,
+          versionNumber: activeStrategy.versionNumber,
+          formulaHash: activeStrategy.formulaHash,
+        },
+        formulaHash: formulaConfigurationHash(parsed.data, activeStrategy.config),
         request: parsed.data,
         risk,
         contract: specification,
+        timeframe: "five-minute-causal-replay",
+        initialState: {
+          accountPosition: "flat",
+          crossSessionState: "single-request-chronological-replay",
+        },
+        lookback: {
+          requestedStartDate: parsed.data.startDate ?? null,
+          requestedEndDate: parsed.data.endDate,
+          inSampleDays: parsed.data.inSampleDays,
+          outOfSampleDays: parsed.data.outOfSampleDays,
+        },
         executionPolicy: {
+          executionMode: parsed.data.executionMode
+            ?? (multiContract || imported
+              ? "ohlcv_modeled"
+              : "quote_based_shadow"),
+          slippageMode: parsed.data.slippageMode ?? "normal",
           entryBufferTicks: parsed.data.ohlcvEntryBufferTicks ?? 4,
           stopBufferPolicy: "atr-adaptive-v1",
           slippageTicks: parsed.data.ohlcvSlippageTicks ?? 1,
           commissionPerContract: parsed.data.ohlcvCommissionPerContract ?? null,
         },
-        historicalSource: imported
-          ? {
-              fingerprint: imported.contentFingerprint,
-              filename: imported.summary.filename,
-              detectedSymbol: imported.summary.detectedSymbol,
-              latestTimestamp: imported.summary.latestTimestamp,
-            }
-          : multiContract
-            ? {
-                fingerprint: multiContract.contentFingerprint,
-                scheduleVersion: multiContract.summary.scheduleVersion,
-                files: multiContract.summary.files.map((file) => ({
-                  contractSymbol: file.contractSymbol,
-                  fingerprint: file.contentFingerprint,
-                })),
-              }
-            : null,
+        sessionCalendarVersion: imported?.calendar.calendarVersion
+          ?? multiContract?.calendar.calendarVersion
+          ?? "simulated-default",
+        historicalSource,
       });
       const cached = getCachedBacktestReport(cacheKey);
       const cacheLookupMs = Date.now() - cacheLookupStartedAt;
@@ -999,32 +1076,35 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
       if (remainingWorkerMs <= 0) throw new BacktestTimeoutError();
       const workerStartedAt = Date.now();
       let workerStartupMs = 0;
-      const resolvedReport = await runBacktest(
-        { request: parsed.data, risk, replayDataset },
-        {
-          timeoutMs: remainingWorkerMs,
-          signal: deadline.signal,
-          onTiming: (timing) => {
-            workerStartupMs = timing.workerStartupMs;
+      const computed = await abortable(getOrComputeBacktestReport(cacheKey, async () => {
+        const resolvedReport = await runBacktest(
+          { request: parsed.data, risk, replayDataset },
+          {
+            timeoutMs: remainingWorkerMs,
+            signal: deadline.signal,
+            onTiming: (timing) => {
+              workerStartupMs = timing.workerStartupMs;
+            },
           },
-        },
-      );
-      if (deadline.signal.aborted) throw signalError(deadline.signal);
-      const workerMs = Date.now() - workerStartedAt;
-      const cacheStoreStartedAt = Date.now();
-      const runId = storeBacktestReport({
-        ...resolvedReport,
-        timing: {
-          preparationMs,
-          cacheLookupMs,
-          cacheStoreMs: 0,
-          workerStartupMs,
-          workerMs,
-          responseValidationMs: 0,
-          totalMs: 0,
-        },
-      }, cacheKey);
-      const cacheStoreMs = Date.now() - cacheStoreStartedAt;
+        );
+        if (deadline.signal.aborted) throw signalError(deadline.signal);
+        const workerMs = Date.now() - workerStartedAt;
+        return {
+          ...resolvedReport,
+          timing: {
+            preparationMs,
+            cacheLookupMs,
+            cacheStoreMs: 0,
+            workerStartupMs,
+            workerMs,
+            responseValidationMs: 0,
+            totalMs: 0,
+          },
+        };
+      }), deadline.signal);
+      const resolvedReport = computed.report;
+      const runId = computed.runId;
+      const cacheStoreMs = 0;
       if (canWriteResponse(res)) {
         const validationStartedAt = Date.now();
         const response = RunBacktestResponse.parse(compactBacktestReport({
@@ -1033,8 +1113,8 @@ router.get("/backtest/audit", auditRateLimit, (req, res): void => {
             preparationMs,
             cacheLookupMs,
             cacheStoreMs,
-            workerStartupMs,
-            workerMs,
+            workerStartupMs: resolvedReport.timing?.workerStartupMs ?? workerStartupMs,
+            workerMs: resolvedReport.timing?.workerMs ?? 0,
             responseValidationMs: Date.now() - validationStartedAt,
             totalMs: Date.now() - requestStartedAt,
           },
