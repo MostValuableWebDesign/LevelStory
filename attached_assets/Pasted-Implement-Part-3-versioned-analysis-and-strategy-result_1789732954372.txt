@@ -1,0 +1,38 @@
+Implement Part 3: versioned analysis and strategy-result caching over the existing session catalog and market data.
+
+Inspect existing formula hashes, result caches, and review-set provenance. Extend them consistently.
+
+Use separate dependency-aware caches for:
+1. Causal market features, where reusable.
+2. Strategy evaluation results: occurrences, candidates, rejection reasons, funnel results, and execution evidence.
+
+Cache identity must include all inputs that affect the output, including:
+- Source fingerprints for the session AND required lookback data.
+- Contract, session/calendar settings, and timeframe.
+- Feature calculation versions and parameters.
+- Strategy/formula version and effective configuration.
+- Candidate-projection and execution-management versions.
+- Execution mode, slippage, fees, sizing, and other applicable inputs.
+- Initial state where evaluation depends on it.
+
+Rules:
+- Same source and same effective rules: reuse results.
+- Changed strategy rules: recompute affected derived results from cached market data.
+- Changed level/indicator logic: invalidate dependent features and strategy results.
+- Previously empty sessions must be reevaluated under new rules; do not search only dates that previously had trades.
+- Distinguish a successfully completed zero-trade result from missing, failed, or incomplete computation.
+- Write complete results atomically and deduplicate concurrent equivalent jobs.
+- Preserve old results with their original provenance.
+- Never label an old formula’s results as current.
+
+Do not assume authoritative executions are independent per day. Respect cross-session state, lookbacks, and active positions. Cache such outputs only with their complete state dependencies.
+
+Required tests:
+- Unchanged requests reuse results.
+- Rule changes can add or remove qualified setups.
+- Zero-trade sessions are reconsidered after rule changes.
+- Source/lookback changes invalidate affected results.
+- Partial or failed jobs cannot become valid cache hits.
+- Different execution settings cannot share incompatible results.
+
+Report cache keys, invalidation rules, and tests. Stop after Part 3.
