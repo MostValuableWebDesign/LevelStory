@@ -312,7 +312,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strong_continuation_confirmed, pullback_or_consolidation, critical_level_interaction, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
+            enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strategy_context_confirmed, pullback_or_consolidation, critical_level_interaction, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
         - name: page
           in: query
           schema: { type: number, minimum: 1, default: 1 }
@@ -4199,7 +4199,7 @@ components:
                 pattern: '^\d{4}-\d{2}-\d{2}$'
     QualificationFunnelStage:
       type: string
-      enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strong_continuation_confirmed, pullback_or_consolidation, critical_level_interaction, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
+      enum: [session_loaded, ntz_orb_completed, strong_breakout_candidate, strategy_context_confirmed, pullback_or_consolidation, critical_level_interaction, valid_trend_aligned_patience_candle, immediate_next_candle_confirmation, risk_approved, modeled_entry, final_exit]
     QualificationFunnelStageCount:
       type: object
       properties:

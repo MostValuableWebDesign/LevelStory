@@ -272,7 +272,7 @@ test("equivalent-candle reversal failure is not a strong-breakout rejection", ()
   const funnel = buildQualificationFunnel([report([record], ["2026-08-24"])]);
   const candidate = funnel.candidates[0];
   assert.equal(candidate?.reachedStage, "strong_breakout_candidate");
-  assert.equal(candidate?.primaryRejectionStage, "strong_continuation_confirmed");
+  assert.equal(candidate?.primaryRejectionStage, "strategy_context_confirmed");
   assert.match(candidate?.rejectionDetail ?? "", /equivalentContext/);
   assert.doesNotMatch(candidate?.rejectionDetail ?? "", /patience/i);
 });

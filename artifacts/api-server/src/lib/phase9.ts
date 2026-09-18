@@ -1569,7 +1569,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "session_loaded",
   "ntz_orb_completed",
   "strong_breakout_candidate",
-  "strong_continuation_confirmed",
+  "strategy_context_confirmed",
   "pullback_or_consolidation",
   "critical_level_interaction",
   "valid_trend_aligned_patience_candle",
@@ -1579,7 +1579,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v3-stage-safe-details";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v4-strategy-context-stage";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -3311,7 +3311,7 @@ function stageRuleKeys(
         return ["ntzComplete", "strongBreakout", "closeOutsideNtz"];
       }
       return ["causalTrend", "strongBreakout", "closeOutsideNtz", "breakout"];
-    case "strong_continuation_confirmed":
+    case "strategy_context_confirmed":
       if (strategy === "EQUIVALENT_CANDLE_REVERSAL") {
         return ["equivalentContext", "directionalConfirmation"];
       }

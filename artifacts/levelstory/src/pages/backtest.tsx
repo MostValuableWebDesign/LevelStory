@@ -574,7 +574,7 @@ const funnelStageLabels: Record<QualificationFunnelStage, string> = {
   session_loaded: "Trading session loaded",
   ntz_orb_completed: "NTZ / ORB completed",
   strong_breakout_candidate: "Strong breakout candidate",
-  strong_continuation_confirmed: "Breakout arm valid (continuation optional)",
+  strategy_context_confirmed: "Strategy-specific context confirmed",
   pullback_or_consolidation: "Pullback / consolidation",
   critical_level_interaction: "Critical-level interaction",
   valid_trend_aligned_patience_candle: "Valid trend-aligned patience candle",

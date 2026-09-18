@@ -99,3 +99,4 @@
 - [Direct review projection](direct-review-projection.md) — visual snapshots must copy frozen direct-zone fields into the audit and reconcile the trade audit before chart rendering.
 - [Serialized causal evidence](serialized-causal-evidence.md) — direct trend evidence must retain its source and availability timestamp through replay, and malformed evidence must fail closed.
 - [Node SQLite constructor options](node-sqlite-options.md) — always pass an options object to DatabaseSync, including writable stores.
+- [Funnel stage naming](funnel-stage-naming.md) — shared qualification stages must use strategy-neutral names; individual rule mappings remain strategy-specific.
