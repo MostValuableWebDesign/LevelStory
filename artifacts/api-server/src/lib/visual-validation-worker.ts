@@ -11,6 +11,7 @@ import {
   MULTI_CONTRACT_SOURCE,
 } from "./futures/multi-contract-replay.js";
 import { runCausalBacktest } from "./phase9.js";
+import { persistentSessionAnalysisStore } from "./session-analysis-store.js";
 
 if (!parentPort) {
   throw new Error("Visual-validation worker must be started by a parent thread.");
@@ -108,7 +109,13 @@ try {
         formulaHash: request.governedStrategy?.formulaHash ?? "active",
         enabledStrategies: request.enabledStrategies ?? null,
       },
+      initialState: {
+        accountPosition: "flat-for-session-analysis",
+        combinedReplay: "chronological-selected-dates",
+        resetAtContractBoundary: true,
+      },
     },
+    persistentSessionCache: persistentSessionAnalysisStore,
   });
   emitProgress({
     phase: "building_ledger",

@@ -84,6 +84,26 @@ export const visualValidationReviewsTable = pgTable("levelstory_visual_validatio
   snapshotRevisionIndex: index("levelstory_visual_review_snapshot_revision_idx").on(table.reviewSetId, table.snapshotId, table.revision),
 }));
 
+export const sessionAnalysisResultsTable = pgTable("levelstory_session_analysis_results", {
+  cacheKey: text("cache_key").primaryKey(),
+  cacheKeyVersion: text("cache_key_version").notNull(),
+  resultSchemaVersion: text("result_schema_version").notNull(),
+  sourceFingerprint: text("source_fingerprint").notNull(),
+  lookbackFingerprint: text("lookback_fingerprint").notNull(),
+  strategyIdentity: jsonb("strategy_identity").notNull(),
+  formulaVersion: text("formula_version").notNull(),
+  formulaHash: text("formula_hash").notNull(),
+  executionSettings: jsonb("execution_settings").notNull(),
+  initialState: jsonb("initial_state").notNull(),
+  dependencyIdentity: jsonb("dependency_identity").notNull(),
+  resultPayload: jsonb("result_payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  retentionIndex: index("levelstory_session_analysis_results_retention_idx").on(table.lastAccessedAt, table.createdAt),
+  sourceIndex: index("levelstory_session_analysis_results_source_idx").on(table.sourceFingerprint),
+}));
+
 export const advisoryRuleProposalsTable = pgTable("levelstory_advisory_rule_proposals", {
   id: text("id").primaryKey(),
   strategyKey: text("strategy_key"),
@@ -203,6 +223,7 @@ export const insertProposalValidationRunSchema = createInsertSchema(proposalVali
 
 export type TeachingExample = typeof teachingExamplesTable.$inferSelect;
 export type VisualValidationReviewRecord = typeof visualValidationReviewsTable.$inferSelect;
+export type SessionAnalysisResultRecord = typeof sessionAnalysisResultsTable.$inferSelect;
 export type AdvisoryRuleProposal = typeof advisoryRuleProposalsTable.$inferSelect;
 export type RuleProposalAuditEvent = typeof ruleProposalAuditEventsTable.$inferSelect;
 export type StrategyVersion = typeof strategyVersionsTable.$inferSelect;

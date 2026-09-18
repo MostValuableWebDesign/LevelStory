@@ -68,6 +68,7 @@ import { activeShadowStrategySnapshot } from "../lib/active-shadow-strategy.js";
 import { HistoricalBacktestValidationError, validateHistoricalBacktestSource } from "../lib/futures/historical-backtest-validation.js";
 import { HistoricalNoDataError } from "../lib/futures/historical-session-range.js";
 import { MAX_BACKTEST_SESSIONS } from "@workspace/api-spec/constants";
+import { persistentSessionAnalysisStore } from "../lib/session-analysis-store.js";
 import type { NormalizedCandle } from "../lib/futures/market-data-provider.js";
 import {
   buildPhase3PilotManifest,
@@ -571,6 +572,7 @@ export function createBacktestRouter(config: BacktestRouteConfig = {}): IRouter 
                 resetAtContractBoundary: source === MULTI_CONTRACT_SOURCE,
               },
             } satisfies CatalogedSessionCacheContext,
+            persistentSessionCache: persistentSessionAnalysisStore,
           },
         );
         if (controller.signal.aborted) throw new BacktestRequestAbortedError();

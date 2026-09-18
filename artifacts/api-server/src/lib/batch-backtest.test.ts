@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import {
   aggregateBatchReports,
@@ -15,6 +16,7 @@ import type {
   HistoricalTradeCandidate,
 } from "./phase9.js";
 import type { BacktestWorkerInput } from "./backtest-worker-client.js";
+import { persistentSessionAnalysisStore } from "./session-analysis-store.js";
 
 function report(overrides: Partial<BacktestReport>): BacktestReport {
   return {
@@ -484,6 +486,44 @@ test("overlapping cataloged ranges reuse valid session analysis and preserve the
   }, options);
   assert.equal(calls, 15);
   assert.deepEqual(cached, fresh);
+});
+
+test("persisted session evidence survives cache eviction while combined replay remains chronological", async () => {
+  clearCatalogedSessionResultCache();
+  const dates = ["2022-08-10", "2022-08-11", "2022-08-12"];
+  const dataset = sessionDataset(dates);
+  const sourceRun = randomUUID();
+  const context = {
+    catalogEntries: dates.map(catalogEntry),
+    sourceIdentity: { source: "persistent-session-test", run: sourceRun, calendar: "calendar-v1" },
+    strategyIdentity: { strategy: "test-strategy", version: "v1", formulaVersion: "formula-v1", formulaHash: "formula" },
+    initialState: { accountPosition: "flat", arbitration: "combined-chronological" },
+  };
+  const run = async (input: BacktestWorkerInput) => {
+    const replayDataset = input.replayDataset!;
+    const tradingDate = replayDataset.selectedDates?.[0] ?? dates[0]!;
+    const period = replayDataset.inSampleDates.includes(tradingDate) ? "in_sample" : "out_of_sample";
+    return sessionReport(tradingDate, period);
+  };
+  let calls = 0;
+  const options: Parameters<typeof runBatchBacktest>[1] = {
+    timeoutMs: 1_000,
+    signal: new AbortController().signal,
+    runPartition: async (input) => {
+      calls += 1;
+      return run(input);
+    },
+    sessionCache: context,
+    persistentSessionCache: persistentSessionAnalysisStore,
+    includeSensitivity: false,
+  };
+  const first = await runBatchBacktest({ request: batchRequest(dates), replayDataset: dataset }, options);
+  assert.equal(calls, dates.length);
+  clearCatalogedSessionResultCache();
+  const persisted = await runBatchBacktest({ request: batchRequest(dates), replayDataset: dataset }, options);
+  assert.equal(calls, dates.length);
+  assert.deepEqual(persisted.trades, first.trades);
+  assert.deepEqual(persisted.accountReplay, first.accountReplay);
 });
 
 test("a changed earlier exit changes downstream account arbitration without recomputing session evidence", () => {

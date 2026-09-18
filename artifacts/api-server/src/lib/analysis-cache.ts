@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v1";
-export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v1";
+export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v2-persistent-session-provenance";
 
 export type AnalysisCacheStatus = "complete" | "incomplete" | "failed";
 

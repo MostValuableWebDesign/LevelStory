@@ -29,6 +29,7 @@ import {
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { tradingDateForTimestamp, sessionCalendarForContract } from "./futures/session-calendar.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
+import type { PersistentSessionAnalysisStore } from "./session-analysis-store.js";
 
 export type BatchBacktestRequest = BacktestRequest & {
   selectedDates?: string[];
@@ -77,6 +78,19 @@ export type CatalogedSessionCacheContext = {
   initialState?: unknown;
 };
 
+export type SessionResultCacheDescriptor = {
+  cacheKey: string;
+  cacheKeyVersion: string;
+  sourceFingerprint: string;
+  lookbackFingerprint: string;
+  strategyIdentity: unknown;
+  formulaVersion: string;
+  formulaHash: string;
+  executionSettings: unknown;
+  initialState: unknown;
+  dependencyIdentity: Record<string, unknown>;
+};
+
 const sessionResultCache = new VersionedAnalysisCache<BacktestReport>({
   maxEntries: 512,
   ttlMs: 60 * 60_000,
@@ -105,6 +119,7 @@ export type BatchRunnerOptions = {
   onProgress?: (progress: BatchBacktestProgress) => void;
   runPartition?: (input: BacktestWorkerInput, options: { timeoutMs: number; signal: AbortSignal }) => Promise<BacktestReport>;
   sessionCache?: CatalogedSessionCacheContext;
+  persistentSessionCache?: PersistentSessionAnalysisStore;
   includeSensitivity?: boolean;
 };
 
@@ -121,6 +136,18 @@ function stableSerialize(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? String(value);
+}
+
+function jsonSafe(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => entry === undefined ? null : jsonSafe(entry));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, jsonSafe(entry)]),
+    );
+  }
+  return value;
 }
 
 function mergeBatchOccurrences(
@@ -282,34 +309,57 @@ function sessionCatalogEntry(
     && entry.contractSymbol === partition.contractSymbol);
 }
 
-function buildSessionResultCacheKey(
+function buildSessionResultCacheDescriptor(
   partition: BatchPartition,
   request: BatchBacktestRequest,
   risk: BacktestWorkerInput["risk"],
   context: CatalogedSessionCacheContext | undefined,
-): string | null {
+): SessionResultCacheDescriptor | null {
   const catalog = sessionCatalogEntry(context, partition);
   if (catalog && (
     catalog.coverageStatus !== "complete"
     || catalog.completenessStatus !== "complete"
     || catalog.validationStatus !== "validated"
   )) return null;
+  const strategyIdentity = jsonSafe(context?.strategyIdentity ?? {
+    formulaVersion: FIXED_FORMULA_VERSION,
+    strategyResultVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+  });
+  const initialState = jsonSafe(context?.initialState ?? {
+    accountPosition: "flat-for-session-analysis",
+    combinedReplayGate: "required",
+  });
+  const sourceFingerprint = catalog?.sourceFingerprint
+    ?? partition.dataset.contentFingerprint
+    ?? "source-fingerprint-unavailable";
+  const lookbackFingerprint = buildVersionedAnalysisCacheKey("cataloged-session-lookback", {
+    tradingDate: partition.tradingDate,
+    contractSymbol: partition.contractSymbol,
+    partitionIdentity: catalog?.partitionIdentity ?? null,
+    sourceFingerprint,
+    datasetFingerprint: partition.dataset.contentFingerprint ?? null,
+    contractSchedule: partition.dataset.contractSchedule ?? null,
+    initialState,
+  });
   const {
     selectedDates: _selectedDates,
     startDate: _startDate,
     endDate: _endDate,
     inSampleDays: _inSampleDays,
     outOfSampleDays: _outOfSampleDays,
-    ...sessionIndependentRequest
+    ...rawSessionIndependentRequest
   } = request;
-  return buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+  const sessionIndependentRequest = jsonSafe(rawSessionIndependentRequest) as Record<string, unknown>;
+  const normalizedRisk = jsonSafe(risk ?? null);
+  const executionSettings = { request: sessionIndependentRequest, risk: normalizedRisk };
+  const dependencyIdentity = {
     cacheKeyVersion: `${STRATEGY_RESULT_CACHE_KEY_VERSION}-session`,
     session: {
       tradingDate: partition.tradingDate,
       contractSymbol: partition.contractSymbol,
       period: partition.period,
       partitionIdentity: catalog?.partitionIdentity ?? null,
-      sourceFingerprint: catalog?.sourceFingerprint ?? null,
+      sourceFingerprint,
       ingestionVersion: catalog?.ingestionVersion ?? null,
       normalizationVersion: catalog?.normalizationVersion ?? null,
       schemaVersion: catalog?.schemaVersion ?? null,
@@ -317,18 +367,45 @@ function buildSessionResultCacheKey(
       source: partition.dataset.source ?? null,
       timeframe: catalog?.availableTimeframes ?? [1, 5],
     },
-    strategy: context?.strategyIdentity ?? {
-      formulaVersion: FIXED_FORMULA_VERSION,
-      strategyResultVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
-    },
+    strategy: strategyIdentity,
     request: sessionIndependentRequest,
-    risk,
-    source: context?.sourceIdentity ?? null,
-    initialState: context?.initialState ?? {
-      accountPosition: "flat-for-session-analysis",
-      combinedReplayGate: "required",
+    risk: normalizedRisk,
+    source: {
+      ...(jsonSafe(context?.sourceIdentity && typeof context.sourceIdentity === "object"
+        ? context.sourceIdentity as Record<string, unknown>
+        : { value: context?.sourceIdentity ?? null }) as Record<string, unknown>),
+      lookbackFingerprint,
     },
-  });
+    initialState,
+  };
+  const strategyRecord = strategyIdentity && typeof strategyIdentity === "object"
+    ? strategyIdentity as Record<string, unknown>
+    : {};
+  return {
+    cacheKey: buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", dependencyIdentity),
+    cacheKeyVersion: dependencyIdentity.cacheKeyVersion,
+    sourceFingerprint,
+    lookbackFingerprint,
+    strategyIdentity,
+    formulaVersion: typeof strategyRecord.formulaVersion === "string"
+      ? strategyRecord.formulaVersion
+      : FIXED_FORMULA_VERSION,
+    formulaHash: typeof strategyRecord.formulaHash === "string"
+      ? strategyRecord.formulaHash
+      : "formula-hash-unavailable",
+    executionSettings,
+    initialState,
+    dependencyIdentity,
+  };
+}
+
+function buildSessionResultCacheKey(
+  partition: BatchPartition,
+  request: BatchBacktestRequest,
+  risk: BacktestWorkerInput["risk"],
+  context: CatalogedSessionCacheContext | undefined,
+): string | null {
+  return buildSessionResultCacheDescriptor(partition, request, risk, context)?.cacheKey ?? null;
 }
 
 function buildBatchAccountReplay(
@@ -529,12 +606,19 @@ async function runPartitionSet(
       { request: backtestRequest, risk, replayDataset: partition.dataset },
       { timeoutMs: options.timeoutMs, signal: options.signal },
     );
-    const cacheKey = buildSessionResultCacheKey(partition, backtestRequest, risk, options.sessionCache);
+    const descriptor = buildSessionResultCacheDescriptor(partition, backtestRequest, risk, options.sessionCache);
+    const cacheKey = descriptor?.cacheKey ?? null;
     let report: BacktestReport;
     try {
-      report = cacheKey
-        ? await sessionResultCache.getOrCompute(cacheKey, run)
-        : await run();
+      report = descriptor && options.persistentSessionCache
+        ? await options.persistentSessionCache.getOrCompute(descriptor, async () =>
+          sessionResultCache.getOrCompute(descriptor.cacheKey, run))
+        : cacheKey
+          ? await sessionResultCache.getOrCompute(cacheKey, run)
+          : await run();
+      if (descriptor && options.persistentSessionCache) {
+        sessionResultCache.setComplete(descriptor.cacheKey, report);
+      }
     } catch (error) {
       if (cacheKey && options.signal.aborted) {
         sessionResultCache.setIncomplete(
