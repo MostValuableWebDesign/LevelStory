@@ -32,6 +32,7 @@ export interface HistoricalDataIndexStatus {
   /** @nullable */
   indexedEndDate: string | null;
   availableTradingDates: string[];
+  sessionCatalogDates: string[];
   scheduleVersion: string;
   importerVersion: string;
   discoveredContracts: string[];
@@ -48,6 +49,17 @@ export interface HistoricalDataIndexStatus {
   filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];
   rejectedFiles: HistoricalDataIndexStatusRejectedFilesItem[];
   fullRangeReady: boolean;
+  /** @minimum 0 */
+  sessionCatalogTotal: number;
+  /** @minimum 0 */
+  sessionCatalogProcessed: number;
+  /** @minimum 0 */
+  sessionCatalogRows: number;
+  /** @minimum 0 */
+  sessionCatalogUsable: number;
+  /** @minimum 0 */
+  sessionCatalogIncomplete: number;
+  sessionCatalogReindexReasons: string[];
   /** @nullable */
   message: string | null;
   /** @nullable */

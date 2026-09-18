@@ -1933,6 +1933,7 @@ export interface HistoricalDataIndexStatus {
   /** @nullable */
   indexedEndDate: string | null;
   availableTradingDates: string[];
+  sessionCatalogDates: string[];
   scheduleVersion: string;
   importerVersion: string;
   discoveredContracts: string[];
@@ -1949,11 +1950,54 @@ export interface HistoricalDataIndexStatus {
   filesMergedPerContract: HistoricalDataIndexStatusFilesMergedPerContractItem[];
   rejectedFiles: HistoricalDataIndexStatusRejectedFilesItem[];
   fullRangeReady: boolean;
+  /** @minimum 0 */
+  sessionCatalogTotal: number;
+  /** @minimum 0 */
+  sessionCatalogProcessed: number;
+  /** @minimum 0 */
+  sessionCatalogRows: number;
+  /** @minimum 0 */
+  sessionCatalogUsable: number;
+  /** @minimum 0 */
+  sessionCatalogIncomplete: number;
+  sessionCatalogReindexReasons: string[];
   /** @nullable */
   message: string | null;
   /** @nullable */
   error: string | null;
   updatedAt: string;
+}
+
+export type HistoricalSessionCatalogMigrationReportState = typeof HistoricalSessionCatalogMigrationReportState[keyof typeof HistoricalSessionCatalogMigrationReportState];
+
+
+export const HistoricalSessionCatalogMigrationReportState = {
+  not_initialized: 'not_initialized',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+  incomplete: 'incomplete',
+} as const;
+
+export interface HistoricalSessionCatalogMigrationReport {
+  state: HistoricalSessionCatalogMigrationReportState;
+  indexKey: string;
+  sourceFingerprint: string;
+  /** @minimum 0 */
+  totalSessions: number;
+  /** @minimum 0 */
+  processedSessions: number;
+  /** @minimum 0 */
+  rowsCreated: number;
+  /** @minimum 0 */
+  usableSessions: number;
+  /** @minimum 0 */
+  incompleteSessions: number;
+  /** @minimum 0 */
+  failedSessions: number;
+  requiredReindexReasons: string[];
+  /** @nullable */
+  error: string | null;
 }
 
 export interface HistoricalDataUploadRequest {

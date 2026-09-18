@@ -7,6 +7,7 @@ import {
   useGetHistoricalData,
   useGetHistoricalEmaComparison,
   useGetHistoricalDataIndexStatus,
+  useInitializeHistoricalSessionCatalog,
   useRunBacktest,
   useStartBatchBacktest,
 } from "@workspace/api-client-react";
@@ -909,7 +910,16 @@ export default function Backtest() {
       queryKey: ["historical-data-index-status"],
       refetchInterval: (query) => {
         const state = query.state.data?.state;
-        return state === "indexing" || state === "not_started" ? 1200 : false;
+        const catalogState = query.state.data?.sessionCatalogState;
+        return state === "indexing" || state === "not_started" || catalogState === "indexing" ? 1200 : false;
+      },
+    },
+  });
+  const initializeCatalog = useInitializeHistoricalSessionCatalog({
+    mutation: {
+      onSuccess: () => {
+        void multiContractIndex.refetch();
+        void historicalImport.refetch();
       },
     },
   });
@@ -949,12 +959,22 @@ export default function Backtest() {
   } as const;
 
   const availableBatchDates = useMemo(() => {
-    const dates = historicalImport.data?.sessionCatalog?.map((entry) => entry.tradingDate)
+    const dates = historicalImport.data?.sessionCatalog
+      ?.filter((entry) => entry.coverageStatus === "complete"
+        && entry.completenessStatus === "complete"
+        && entry.validationStatus === "validated")
+      .map((entry) => entry.tradingDate)
       ?? historicalImport.data?.allObservedTradingDates
       ?? historicalImport.data?.availableTradingDates
       ?? [];
     return [...new Set(dates.filter((date) => date >= startDate && date <= endDate))].sort();
-  }, [endDate, historicalImport.data?.allObservedTradingDates, historicalImport.data?.availableTradingDates, startDate]);
+  }, [
+    endDate,
+    historicalImport.data?.allObservedTradingDates,
+    historicalImport.data?.availableTradingDates,
+    historicalImport.data?.sessionCatalog,
+    startDate,
+  ]);
   const batchRequest = {
     ...request,
     ...(availableBatchDates.length >= 2 ? { selectedDates: availableBatchDates } : {}),
@@ -962,16 +982,24 @@ export default function Backtest() {
   const storedSessionLimitError = source !== "simulated" && availableBatchDates.length > MAX_BACKTEST_SESSIONS
     ? `This range contains ${availableBatchDates.length} stored trading sessions. Select a range containing no more than ${MAX_BACKTEST_SESSIONS}.`
     : null;
-  const storedSessionAvailabilityMessage = source !== "simulated" && !historicalImport.isLoading
+const storedSessionAvailabilityMessage = source !== "simulated" && !historicalImport.isLoading
     ? source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state !== "ready"
       ? multiContractIndex.data?.state === "failed"
         ? `Historical session catalog indexing failed: ${multiContractIndex.data.error ?? "the catalog is unavailable."}`
         : multiContractIndex.data?.state === "indexing"
           ? "Historical session catalog is still indexing; date selection will update when it is ready."
           : "Historical session catalog is not initialized; no stored-session result is available yet."
-      : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "failed"
-        ? `Historical session catalog validation failed: ${multiContractIndex.data.error ?? "the catalog is unavailable."}`
-        : availableBatchDates.length === 0
+      : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "not_initialized"
+        ? "Historical session catalog needs initialization before stored sessions can be selected."
+        : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "indexing"
+          ? "Historical session catalog initialization is in progress; date selection will update when it is ready."
+          : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "failed"
+            ? `Historical session catalog initialization failed: ${multiContractIndex.data.error ?? "the catalog is unavailable."}`
+            : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "incomplete"
+              ? "The catalog is initialized, but some stored sessions have incomplete coverage and are excluded from replay admission."
+                : source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.sessionCatalogState === "ready"
+                  ? null
+                  : availableBatchDates.length === 0
           ? "No stored trading sessions are available in this range."
           : availableBatchDates.length === 1
             ? "This range contains 1 stored trading session; at least 2 are required for a qualification batch."
@@ -992,6 +1020,7 @@ export default function Backtest() {
   const batchActive = batchStatus.data?.status === "queued" || batchStatus.data?.status === "running";
   const historicalReadiness = getHistoricalBacktestReadiness(source, {
     indexState: multiContractIndex.data?.state,
+    sessionCatalogState: multiContractIndex.data?.sessionCatalogState,
     importLoading: historicalImport.isLoading,
     hasImport: Boolean(historicalImport.data),
   });
@@ -1006,7 +1035,7 @@ export default function Backtest() {
         <PageIntro eyebrow="Research room / causal only" title="Replay the tape honestly." description="Run the existing futures rules through a sequential historical cursor. Tick data wins when available; one-minute fallback stays conservative. Nothing here can place an order." action={<ShadowBadge />} />
          {source === MULTI_CONTRACT_SOURCE && <HistoricalDataUploadPanel onImported={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} />}
          {source !== "simulated" && <div className="mb-5 space-y-5"><HistoricalImportResults data={historicalImport.data} isLoading={historicalImport.isLoading || (source === MULTI_CONTRACT_SOURCE && multiContractIndex.data?.state === "indexing")} isError={historicalImport.isError || multiContractIndex.data?.state === "failed"} /><HistoricalEmaComparisonPanel report={emaComparison.data} isLoading={emaComparison.isLoading || emaComparison.isFetching} isError={emaComparison.isError} selectedTimestamps={selectedEmaTimestamps} onToggle={(timestamp) => setSelectedEmaTimestamps((current) => current.includes(timestamp) ? current.filter((item) => item !== timestamp) : current.length < 3 ? [...current, timestamp] : current)} /></div>}
-         {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div>{multiContractIndex.data && <div className="grid border-t border-border sm:grid-cols-2 lg:grid-cols-4" data-testid="historical-index-coverage"><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Requested coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.requestedStartDate} → {multiContractIndex.data.requestedEndDate}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Indexed coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.indexedStartDate ?? "—"} → {multiContractIndex.data.indexedEndDate ?? "—"}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Stored dates / schedule diagnostics</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.availableTradingDates.length.toLocaleString()} / {multiContractIndex.data.eligibleTradingDateCount.toLocaleString()}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Readiness</div><div className={`mt-1 font-semibold ${multiContractIndex.data.fullRangeReady ? "status-positive" : "status-negative"}`}>{multiContractIndex.data.fullRangeReady ? "Stored coverage available" : "Some dates lack scheduled coverage"}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Schedule / importer</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.scheduleVersion} · {multiContractIndex.data.importerVersion}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mt-1 text-[11px] text-muted-foreground">{multiContractIndex.data.acceptedContracts.length} accepted of {multiContractIndex.data.discoveredContracts.length} discovered · {multiContractIndex.data.missingScheduledContracts.length} missing scheduled</div></div><div className="px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Merged source fragments</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">{multiContractIndex.data.filesMergedPerContract.map((item) => <span key={item.contractSymbol} className="mono">{item.contractSymbol}: {item.fragmentCount}</span>)}{multiContractIndex.data.filesMergedPerContract.length === 0 && <span>—</span>}</div></div>{multiContractIndex.data.rejectedFiles.length > 0 && <div className="border-t border-border px-4 py-3 text-[11px] text-destructive sm:col-span-2 lg:col-span-4"><div className="eyebrow">Rejected source files</div><div className="mt-1">{multiContractIndex.data.rejectedFiles.map((file) => `${file.filename} (${file.reason})`).join(" · ")}</div></div>}</div>}</Panel>}
+         {source === MULTI_CONTRACT_SOURCE && <Panel className="mb-5" data-testid="panel-historical-index-status"><div className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs"><div><div className="eyebrow text-muted-foreground">Historical index lifecycle</div><div className="mt-1 font-semibold">{historicalIndexMessage ?? "Index ready"}</div>{multiContractIndex.data?.error && <div className="mt-1 text-destructive">{multiContractIndex.data.error}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="mono text-muted-foreground">{multiContractIndex.data?.state ?? "not_started"} · {multiContractIndex.data?.indexedFileCount ?? 0}/{multiContractIndex.data?.discoveredFileCount ?? 0} files · {multiContractIndex.data?.progress ?? 0}%</div><button type="button" onClick={() => { void multiContractIndex.refetch(); void historicalImport.refetch(); }} className="inline-flex items-center gap-2 border border-border px-3 py-2 text-[10px] font-bold uppercase" data-testid="button-refresh-historical-index"><RefreshCw size={12} />Refresh</button></div></div>{multiContractIndex.data && <div className="grid border-t border-border sm:grid-cols-2 lg:grid-cols-4" data-testid="historical-index-coverage"><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Requested coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.requestedStartDate} → {multiContractIndex.data.requestedEndDate}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Indexed coverage</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.indexedStartDate ?? "—"} → {multiContractIndex.data.indexedEndDate ?? "—"}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Stored dates / schedule diagnostics</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.availableTradingDates.length.toLocaleString()} / {multiContractIndex.data.eligibleTradingDateCount.toLocaleString()}</div></div><div className="border-b border-border px-4 py-3"><div className="eyebrow text-muted-foreground">Readiness</div><div className={`mt-1 font-semibold ${multiContractIndex.data.fullRangeReady ? "status-positive" : "status-negative"}`}>{multiContractIndex.data.fullRangeReady ? "Stored coverage available" : "Some dates lack scheduled coverage"}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Schedule / importer</div><div className="mono mt-1 text-[11px]">{multiContractIndex.data.scheduleVersion} · {multiContractIndex.data.importerVersion}</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2"><div className="eyebrow text-muted-foreground">Contracts</div><div className="mt-1 text-[11px] text-muted-foreground">{multiContractIndex.data.acceptedContracts.length} accepted of {multiContractIndex.data.discoveredContracts.length} discovered · {multiContractIndex.data.missingScheduledContracts.length} missing scheduled</div></div><div className="border-b border-border px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Session catalog</div><div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted-foreground"><span className="mono">{multiContractIndex.data.sessionCatalogState ?? "not_initialized"} · {multiContractIndex.data.sessionCatalogProcessed ?? 0}/{multiContractIndex.data.sessionCatalogTotal ?? 0} indexed session rows</span><span className="status-positive">{(multiContractIndex.data.sessionCatalogUsable ?? 0).toLocaleString()} usable</span><span>{(multiContractIndex.data.sessionCatalogIncomplete ?? 0).toLocaleString()} incomplete</span>{(multiContractIndex.data.sessionCatalogState === "not_initialized" || multiContractIndex.data.sessionCatalogState === "failed") && <button type="button" disabled={initializeCatalog.isPending} onClick={() => initializeCatalog.mutate()} className="inline-flex items-center gap-2 border border-border px-3 py-2 font-bold uppercase tracking-[.08em]" data-testid="button-initialize-session-catalog"><RefreshCw size={12} className={initializeCatalog.isPending ? "animate-spin" : undefined} />{initializeCatalog.isPending ? "Initializing…" : initializeCatalog.data ? "Retry migration" : "Initialize catalog"}</button>}</div>{initializeCatalog.isError && <div className="mt-2 text-destructive">{initializeCatalog.error instanceof Error ? initializeCatalog.error.message : "Session catalog initialization failed."}</div>}{(multiContractIndex.data.sessionCatalogReindexReasons ?? []).length > 0 && <div className="mt-2 text-destructive">Reindex required: {multiContractIndex.data.sessionCatalogReindexReasons.join(" · ")}</div>}</div><div className="px-4 py-3 sm:col-span-2 lg:col-span-4"><div className="eyebrow text-muted-foreground">Merged source fragments</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">{multiContractIndex.data.filesMergedPerContract.map((item) => <span key={item.contractSymbol} className="mono">{item.contractSymbol}: {item.fragmentCount}</span>)}{multiContractIndex.data.filesMergedPerContract.length === 0 && <span>—</span>}</div></div>{multiContractIndex.data.rejectedFiles.length > 0 && <div className="border-t border-border px-4 py-3 text-[11px] text-destructive sm:col-span-2 lg:col-span-4"><div className="eyebrow">Rejected source files</div><div className="mt-1">{multiContractIndex.data.rejectedFiles.map((file) => `${file.filename} (${file.reason})`).join(" · ")}</div></div>}</div>}</Panel>}
         <Panel className="mb-5" accent>
           <PanelTitle eyebrow="Configure a deterministic run" title="Backtest controls" right={<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><LockKeyhole size={12} /> Thresholds locked</span>} />
           <form onSubmit={submit} className="grid gap-4 border-t border-border p-5 sm:grid-cols-2 lg:grid-cols-4">

@@ -95,13 +95,19 @@ export function getHistoricalBacktestReadiness(
   source: "simulated" | "historical_databento" | "historical_databento_multicontract",
   options: {
     indexState?: HistoricalIndexState;
+    sessionCatalogState?: "not_initialized" | "indexing" | "ready" | "failed" | "incomplete";
     importLoading: boolean;
     hasImport: boolean;
   },
 ): HistoricalReadiness {
   if (source === "simulated") return { ready: true, label: "Ready" };
   if (options.indexState === "failed") return { ready: false, label: "Historical index failed" };
-  if (options.importLoading || (source === "historical_databento_multicontract" && options.indexState !== "ready")) {
+  if (
+    options.importLoading
+    || (source === "historical_databento_multicontract"
+      && (options.indexState !== "ready"
+        || (options.sessionCatalogState !== "ready" && options.sessionCatalogState !== "incomplete")))
+  ) {
     return { ready: false, label: "Waiting for history…" };
   }
   return options.hasImport

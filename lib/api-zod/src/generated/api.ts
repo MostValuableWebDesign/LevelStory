@@ -14353,6 +14353,16 @@ export const getHistoricalDataIndexStatusResponseIneligibleTradingDateCountMin =
 export const getHistoricalDataIndexStatusResponseMergedFileCountMin = 0;
 
 
+export const getHistoricalDataIndexStatusResponseSessionCatalogTotalMin = 0;
+
+export const getHistoricalDataIndexStatusResponseSessionCatalogProcessedMin = 0;
+
+export const getHistoricalDataIndexStatusResponseSessionCatalogRowsMin = 0;
+
+export const getHistoricalDataIndexStatusResponseSessionCatalogUsableMin = 0;
+
+export const getHistoricalDataIndexStatusResponseSessionCatalogIncompleteMin = 0;
+
 
 
 export const GetHistoricalDataIndexStatusResponse = zod.object({
@@ -14367,6 +14377,7 @@ export const GetHistoricalDataIndexStatusResponse = zod.object({
   "indexedStartDate": zod.string().nullable(),
   "indexedEndDate": zod.string().nullable(),
   "availableTradingDates": zod.array(zod.string()),
+  "sessionCatalogDates": zod.array(zod.string()),
   "scheduleVersion": zod.string(),
   "importerVersion": zod.string(),
   "discoveredContracts": zod.array(zod.string()),
@@ -14400,9 +14411,48 @@ export const GetHistoricalDataIndexStatusResponse = zod.object({
   "reason": zod.string()
 })),
   "fullRangeReady": zod.boolean(),
+  "sessionCatalogTotal": zod.number().min(getHistoricalDataIndexStatusResponseSessionCatalogTotalMin),
+  "sessionCatalogProcessed": zod.number().min(getHistoricalDataIndexStatusResponseSessionCatalogProcessedMin),
+  "sessionCatalogRows": zod.number().min(getHistoricalDataIndexStatusResponseSessionCatalogRowsMin),
+  "sessionCatalogUsable": zod.number().min(getHistoricalDataIndexStatusResponseSessionCatalogUsableMin),
+  "sessionCatalogIncomplete": zod.number().min(getHistoricalDataIndexStatusResponseSessionCatalogIncompleteMin),
+  "sessionCatalogReindexReasons": zod.array(zod.string()),
   "message": zod.string().nullable(),
   "error": zod.string().nullable(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Resumes the explicit one-time catalog migration from committed indexed partitions without rediscovering or reimporting source files.
+ * @summary Initialize the persisted historical session catalog
+ */
+export const initializeHistoricalSessionCatalogResponseTotalSessionsMin = 0;
+
+export const initializeHistoricalSessionCatalogResponseProcessedSessionsMin = 0;
+
+export const initializeHistoricalSessionCatalogResponseRowsCreatedMin = 0;
+
+export const initializeHistoricalSessionCatalogResponseUsableSessionsMin = 0;
+
+export const initializeHistoricalSessionCatalogResponseIncompleteSessionsMin = 0;
+
+export const initializeHistoricalSessionCatalogResponseFailedSessionsMin = 0;
+
+
+
+export const InitializeHistoricalSessionCatalogResponse = zod.object({
+  "state": zod.enum(['not_initialized', 'indexing', 'ready', 'failed', 'incomplete']),
+  "indexKey": zod.string(),
+  "sourceFingerprint": zod.string(),
+  "totalSessions": zod.number().min(initializeHistoricalSessionCatalogResponseTotalSessionsMin),
+  "processedSessions": zod.number().min(initializeHistoricalSessionCatalogResponseProcessedSessionsMin),
+  "rowsCreated": zod.number().min(initializeHistoricalSessionCatalogResponseRowsCreatedMin),
+  "usableSessions": zod.number().min(initializeHistoricalSessionCatalogResponseUsableSessionsMin),
+  "incompleteSessions": zod.number().min(initializeHistoricalSessionCatalogResponseIncompleteSessionsMin),
+  "failedSessions": zod.number().min(initializeHistoricalSessionCatalogResponseFailedSessionsMin),
+  "requiredReindexReasons": zod.array(zod.string()),
+  "error": zod.string().nullable()
 })
 
 
@@ -14509,6 +14559,16 @@ export const getHistoricalDataImportStatusResponseStatusOneIneligibleTradingDate
 export const getHistoricalDataImportStatusResponseStatusOneMergedFileCountMin = 0;
 
 
+export const getHistoricalDataImportStatusResponseStatusOneSessionCatalogTotalMin = 0;
+
+export const getHistoricalDataImportStatusResponseStatusOneSessionCatalogProcessedMin = 0;
+
+export const getHistoricalDataImportStatusResponseStatusOneSessionCatalogRowsMin = 0;
+
+export const getHistoricalDataImportStatusResponseStatusOneSessionCatalogUsableMin = 0;
+
+export const getHistoricalDataImportStatusResponseStatusOneSessionCatalogIncompleteMin = 0;
+
 
 
 export const GetHistoricalDataImportStatusResponse = zod.object({
@@ -14544,6 +14604,7 @@ export const GetHistoricalDataImportStatusResponse = zod.object({
   "indexedStartDate": zod.string().nullable(),
   "indexedEndDate": zod.string().nullable(),
   "availableTradingDates": zod.array(zod.string()),
+  "sessionCatalogDates": zod.array(zod.string()),
   "scheduleVersion": zod.string(),
   "importerVersion": zod.string(),
   "discoveredContracts": zod.array(zod.string()),
@@ -14577,6 +14638,12 @@ export const GetHistoricalDataImportStatusResponse = zod.object({
   "reason": zod.string()
 })),
   "fullRangeReady": zod.boolean(),
+  "sessionCatalogTotal": zod.number().min(getHistoricalDataImportStatusResponseStatusOneSessionCatalogTotalMin),
+  "sessionCatalogProcessed": zod.number().min(getHistoricalDataImportStatusResponseStatusOneSessionCatalogProcessedMin),
+  "sessionCatalogRows": zod.number().min(getHistoricalDataImportStatusResponseStatusOneSessionCatalogRowsMin),
+  "sessionCatalogUsable": zod.number().min(getHistoricalDataImportStatusResponseStatusOneSessionCatalogUsableMin),
+  "sessionCatalogIncomplete": zod.number().min(getHistoricalDataImportStatusResponseStatusOneSessionCatalogIncompleteMin),
+  "sessionCatalogReindexReasons": zod.array(zod.string()),
   "message": zod.string().nullable(),
   "error": zod.string().nullable(),
   "updatedAt": zod.coerce.date()
@@ -14619,6 +14686,16 @@ export const cancelHistoricalDataImportResponseStatusOneIneligibleTradingDateCou
 export const cancelHistoricalDataImportResponseStatusOneMergedFileCountMin = 0;
 
 
+export const cancelHistoricalDataImportResponseStatusOneSessionCatalogTotalMin = 0;
+
+export const cancelHistoricalDataImportResponseStatusOneSessionCatalogProcessedMin = 0;
+
+export const cancelHistoricalDataImportResponseStatusOneSessionCatalogRowsMin = 0;
+
+export const cancelHistoricalDataImportResponseStatusOneSessionCatalogUsableMin = 0;
+
+export const cancelHistoricalDataImportResponseStatusOneSessionCatalogIncompleteMin = 0;
+
 
 
 export const CancelHistoricalDataImportResponse = zod.object({
@@ -14654,6 +14731,7 @@ export const CancelHistoricalDataImportResponse = zod.object({
   "indexedStartDate": zod.string().nullable(),
   "indexedEndDate": zod.string().nullable(),
   "availableTradingDates": zod.array(zod.string()),
+  "sessionCatalogDates": zod.array(zod.string()),
   "scheduleVersion": zod.string(),
   "importerVersion": zod.string(),
   "discoveredContracts": zod.array(zod.string()),
@@ -14687,6 +14765,12 @@ export const CancelHistoricalDataImportResponse = zod.object({
   "reason": zod.string()
 })),
   "fullRangeReady": zod.boolean(),
+  "sessionCatalogTotal": zod.number().min(cancelHistoricalDataImportResponseStatusOneSessionCatalogTotalMin),
+  "sessionCatalogProcessed": zod.number().min(cancelHistoricalDataImportResponseStatusOneSessionCatalogProcessedMin),
+  "sessionCatalogRows": zod.number().min(cancelHistoricalDataImportResponseStatusOneSessionCatalogRowsMin),
+  "sessionCatalogUsable": zod.number().min(cancelHistoricalDataImportResponseStatusOneSessionCatalogUsableMin),
+  "sessionCatalogIncomplete": zod.number().min(cancelHistoricalDataImportResponseStatusOneSessionCatalogIncompleteMin),
+  "sessionCatalogReindexReasons": zod.array(zod.string()),
   "message": zod.string().nullable(),
   "error": zod.string().nullable(),
   "updatedAt": zod.coerce.date()

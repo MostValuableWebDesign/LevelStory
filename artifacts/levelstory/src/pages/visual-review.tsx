@@ -289,8 +289,8 @@ const INITIAL_REQUEST: VisualValidationRequest = {
 };
 
 function storedSessionsThroughDate(index: HistoricalDataIndexStatus | undefined, endDate: string): number | null {
-  if (!index || index.state !== "ready") return null;
-  return index.availableTradingDates.filter((date) => date <= endDate).length;
+  if (!index || index.state !== "ready" || (index.sessionCatalogState !== "ready" && index.sessionCatalogState !== "incomplete")) return null;
+  return index.sessionCatalogDates.filter((date) => date <= endDate).length;
 }
 
 const EARLY_ORB_MOMENTUM_STORAGE_KEY = "levelstory.visualReview.earlyOrbMomentumEnabled";
@@ -609,7 +609,8 @@ export default function VisualReview() {
     },
   });
   const latestSelectableDate = historicalIndex.data?.state === "ready"
-    ? historicalIndex.data.indexedEndDate ?? historicalIndex.data.availableTradingDates.at(-1) ?? null
+    && (historicalIndex.data.sessionCatalogState === "ready" || historicalIndex.data.sessionCatalogState === "incomplete")
+    ? historicalIndex.data.sessionCatalogDates.at(-1) ?? null
     : null;
   const storedSessions = storedSessionsThroughDate(historicalIndex.data, request.endDate);
   const pinnedReviewSetId = reviewSetRequested && !loadLatestReviewSet ? reviewSetId : "";
@@ -1752,7 +1753,10 @@ function GenerationPanel({ request, setRequest, onSubmit, onRegenerateFresh, pen
           onChange={(value) => update("endDate", value)}
            minDate={historicalIndex?.state === "ready" ? historicalIndex.indexedStartDate : null}
            maxDate={historicalIndex?.state === "ready" ? historicalIndex.indexedEndDate : null}
-           availableDates={historicalIndex?.state === "ready" ? historicalIndex.availableTradingDates : undefined}
+           availableDates={historicalIndex?.state === "ready"
+             && (historicalIndex.sessionCatalogState === "ready" || historicalIndex.sessionCatalogState === "incomplete")
+             ? historicalIndex.sessionCatalogDates
+             : undefined}
         />
       </Field>
        <Field label="Review days">

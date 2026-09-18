@@ -58,6 +58,7 @@ import type {
   HistoricalDataUploadUrl,
   HistoricalEmaComparisonReport,
   HistoricalImportSummary,
+  HistoricalSessionCatalogMigrationReport,
   JournalEntry,
   JournalEntryInput,
   ListJournalEntriesParams,
@@ -2170,6 +2171,78 @@ export function useGetHistoricalDataIndexStatus<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getInitializeHistoricalSessionCatalogUrl = () => {
+
+
+
+
+  return `/api/historical-data/session-catalog/initialize`
+}
+
+/**
+ * Resumes the explicit one-time catalog migration from committed indexed partitions without rediscovering or reimporting source files.
+ * @summary Initialize the persisted historical session catalog
+ */
+export const initializeHistoricalSessionCatalog = async ( options?: Parameters<typeof customFetch>[1]): Promise<HistoricalSessionCatalogMigrationReport> => {
+
+  return customFetch<HistoricalSessionCatalogMigrationReport>(getInitializeHistoricalSessionCatalogUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getInitializeHistoricalSessionCatalogMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>, TError,void, TContext> => {
+
+const mutationKey = ['initializeHistoricalSessionCatalog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>, void> = () => {
+
+
+          return  initializeHistoricalSessionCatalog(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InitializeHistoricalSessionCatalogMutationResult = NonNullable<Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>>
+
+    export type InitializeHistoricalSessionCatalogMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Initialize the persisted historical session catalog
+ */
+export const useInitializeHistoricalSessionCatalog = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof initializeHistoricalSessionCatalog>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getInitializeHistoricalSessionCatalogMutationOptions(options));
+    }
 
 export const getRequestHistoricalDataUploadUrlUrl = () => {
 

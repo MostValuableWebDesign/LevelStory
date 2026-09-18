@@ -239,6 +239,56 @@ test("session catalog distinguishes incomplete coverage from a missing stored da
   reopened.close();
 });
 
+test("session catalog migration resumes atomically and is idempotent", async () => {
+  const directory = await mkdtemp("/tmp/levelstory-session-catalog-migration-");
+  const path = join(directory, "history.sqlite");
+  const store = await HistoricalIndexStore.createAtomic(path);
+  store.initializeSessionCatalogMigration({
+    indexKey: "fixture-index:session-catalog-v2",
+    sourceFingerprint: "fixture-source",
+    totalSessions: 2,
+  });
+  const first = catalogEntry("2025-09-05", "MESU5", "fixture-source");
+  const second = {
+    ...catalogEntry("2025-09-08", "MESZ5", "fixture-source"),
+    completenessStatus: "incomplete" as const,
+    coverageStatus: "incomplete" as const,
+  };
+  store.writeSessionCatalogMigrationBatch({
+    entries: [first],
+    processedSessions: 1,
+    rowsCreated: 1,
+    nextCursor: { tradingDate: first.tradingDate, contractSymbol: first.contractSymbol },
+  });
+  await store.commitAtomic();
+
+  const resumed = HistoricalIndexStore.create(path);
+  assert.equal(resumed.getSessionCatalogMigration()?.state, "indexing");
+  assert.equal(resumed.getSessionCatalogMigration()?.processedSessions, 1);
+  assert.equal(resumed.getSessionCatalogEntries().length, 1);
+  resumed.writeSessionCatalogMigrationBatch({
+    entries: [second],
+    processedSessions: 2,
+    rowsCreated: 2,
+    nextCursor: null,
+    state: "incomplete",
+  });
+  const report = resumed.getSessionCatalogMigration();
+  assert.equal(report?.state, "incomplete");
+  assert.equal(report?.processedSessions, 2);
+  assert.equal(resumed.getSessionCatalogStatusCounts().usable, 1);
+  assert.equal(resumed.getSessionCatalogStatusCounts().incomplete, 1);
+  resumed.writeSessionCatalogMigrationBatch({
+    entries: [second],
+    processedSessions: 2,
+    rowsCreated: 2,
+    nextCursor: null,
+    state: "incomplete",
+  });
+  assert.equal(resumed.getSessionCatalogEntries().length, 2);
+  resumed.close();
+});
+
 test("reuses validated market data, retains prior-session context, and deduplicates concurrent loads", async () => {
   const directory = await mkdtemp("/tmp/levelstory-market-data-cache-");
   const path = join(directory, "history.sqlite");

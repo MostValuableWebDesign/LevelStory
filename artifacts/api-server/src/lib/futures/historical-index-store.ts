@@ -11,6 +11,33 @@ export const HISTORICAL_SESSION_CATALOG_VERSION = 1 as const;
 export const HISTORICAL_MARKET_DATA_NORMALIZATION_VERSION = "normalized-candle-v1" as const;
 const DEFAULT_MARKET_DATA_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 
+export type HistoricalSessionCatalogMigrationState =
+  | "not_initialized"
+  | "indexing"
+  | "ready"
+  | "failed"
+  | "incomplete";
+
+export type HistoricalSessionCatalogMigration = {
+  indexKey: string;
+  sourceFingerprint: string;
+  state: HistoricalSessionCatalogMigrationState;
+  totalSessions: number;
+  processedSessions: number;
+  rowsCreated: number;
+  nextTradingDate: string | null;
+  nextContractSymbol: string | null;
+  requiredReindexReasons: string[];
+  error: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+export type IndexedSessionPartition = {
+  tradingDate: string;
+  contractSymbol: string;
+};
+
 export type HistoricalSessionCatalogEntry = {
   tradingDate: string;
   contractSymbol: string;
@@ -331,6 +358,21 @@ export class HistoricalIndexStore {
         checkpoint_id INTEGER PRIMARY KEY CHECK (checkpoint_id = 1),
         checkpoint_json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS session_catalog_migration (
+        migration_id INTEGER PRIMARY KEY CHECK (migration_id = 1),
+        index_key TEXT NOT NULL,
+        source_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('not_initialized', 'indexing', 'ready', 'failed', 'incomplete')),
+        total_sessions INTEGER NOT NULL,
+        processed_sessions INTEGER NOT NULL,
+        rows_created INTEGER NOT NULL,
+        next_trading_date TEXT,
+        next_contract_symbol TEXT,
+        required_reindex_reasons_json TEXT NOT NULL,
+        error TEXT,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT
+      );
       CREATE INDEX IF NOT EXISTS candles_by_date
         ON candles (trading_date, contract_symbol, timeframe, open_time);
       CREATE INDEX IF NOT EXISTS candles_by_contract_time
@@ -630,7 +672,17 @@ export class HistoricalIndexStore {
     for (const entry of entries) this.invalidateMarketDataCacheForSession(entry.contractSymbol, entry.tradingDate);
     this.database.exec("BEGIN IMMEDIATE");
     try {
-      const statement = this.database.prepare(`
+      this.upsertSessionCatalogRows(entries, indexedAt);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private upsertSessionCatalogRows(entries: readonly HistoricalSessionCatalogEntry[], indexedAt: string): void {
+    if (!entries.length) return;
+    const statement = this.database.prepare(`
         INSERT INTO session_catalog
         (trading_date, contract_symbol, session_type, time_zone, calendar_identity,
          partition_identity, available_timeframes_json, one_minute_candle_count,
@@ -662,36 +714,31 @@ export class HistoricalIndexStore {
           schema_version = excluded.schema_version,
           indexed_at = excluded.indexed_at
       `);
-      for (const entry of entries) {
-        statement.run(
-          entry.tradingDate,
-          entry.contractSymbol,
-          entry.sessionType,
-          entry.timeZone,
-          entry.calendarIdentity,
-          entry.partitionIdentity,
-          JSON.stringify(entry.availableTimeframes),
-          entry.candleCounts.oneMinute,
-          entry.candleCounts.fiveMinute,
-          entry.candleCounts.fifteenMinute,
-          entry.candleCounts.oneHour,
-          entry.tickCoverage,
-          entry.earliestTimestamp,
-          entry.latestTimestamp,
-          entry.coverageStatus,
-          entry.completenessStatus,
-          entry.validationStatus,
-          entry.sourceFingerprint,
-          entry.ingestionVersion,
-          entry.normalizationVersion,
-          entry.schemaVersion,
-          indexedAt,
-        );
-      }
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
+    for (const entry of entries) {
+      statement.run(
+        entry.tradingDate,
+        entry.contractSymbol,
+        entry.sessionType,
+        entry.timeZone,
+        entry.calendarIdentity,
+        entry.partitionIdentity,
+        JSON.stringify(entry.availableTimeframes),
+        entry.candleCounts.oneMinute,
+        entry.candleCounts.fiveMinute,
+        entry.candleCounts.fifteenMinute,
+        entry.candleCounts.oneHour,
+        entry.tickCoverage,
+        entry.earliestTimestamp,
+        entry.latestTimestamp,
+        entry.coverageStatus,
+        entry.completenessStatus,
+        entry.validationStatus,
+        entry.sourceFingerprint,
+        entry.ingestionVersion,
+        entry.normalizationVersion,
+        entry.schemaVersion,
+        indexedAt,
+      );
     }
   }
 
@@ -743,7 +790,11 @@ export class HistoricalIndexStore {
       clauses.push("contract_symbol = ?");
       parameters.push(options.contractSymbol);
     }
-    if (options.includeIncomplete === false) clauses.push("coverage_status = 'complete'");
+    if (options.includeIncomplete === false) {
+      clauses.push("coverage_status = 'complete'");
+      clauses.push("completeness_status = 'complete'");
+      clauses.push("validation_status = 'validated'");
+    }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = this.database.prepare(`
       SELECT trading_date, contract_symbol, session_type, time_zone, calendar_identity,
@@ -805,35 +856,202 @@ export class HistoricalIndexStore {
     }));
   }
 
-  getSessionCatalogDates(options: { startDate?: string; endDate?: string } = {}): string[] {
+  getSessionCatalogMigration(): HistoricalSessionCatalogMigration | null {
+    const row = this.database.prepare(`
+      SELECT index_key, source_fingerprint, state, total_sessions, processed_sessions,
+             rows_created, next_trading_date, next_contract_symbol,
+             required_reindex_reasons_json, error, updated_at, completed_at
+      FROM session_catalog_migration
+      WHERE migration_id = 1
+    `).get() as {
+      index_key?: string;
+      source_fingerprint?: string;
+      state?: HistoricalSessionCatalogMigrationState;
+      total_sessions?: number;
+      processed_sessions?: number;
+      rows_created?: number;
+      next_trading_date?: string | null;
+      next_contract_symbol?: string | null;
+      required_reindex_reasons_json?: string;
+      error?: string | null;
+      updated_at?: string;
+      completed_at?: string | null;
+    } | undefined;
+    if (!row?.index_key || !row.source_fingerprint || !row.state || !row.updated_at) return null;
+    return {
+      indexKey: row.index_key,
+      sourceFingerprint: row.source_fingerprint,
+      state: row.state,
+      totalSessions: Number(row.total_sessions ?? 0),
+      processedSessions: Number(row.processed_sessions ?? 0),
+      rowsCreated: Number(row.rows_created ?? 0),
+      nextTradingDate: row.next_trading_date ?? null,
+      nextContractSymbol: row.next_contract_symbol ?? null,
+      requiredReindexReasons: row.required_reindex_reasons_json
+        ? JSON.parse(row.required_reindex_reasons_json) as string[]
+        : [],
+      error: row.error ?? null,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at ?? null,
+    };
+  }
+
+  initializeSessionCatalogMigration(options: {
+    indexKey: string;
+    sourceFingerprint: string;
+    totalSessions: number;
+    requiredReindexReasons?: readonly string[];
+  }): HistoricalSessionCatalogMigration {
+    const existing = this.getSessionCatalogMigration();
+    if (
+      existing
+      && existing.indexKey === options.indexKey
+      && existing.sourceFingerprint === options.sourceFingerprint
+      && (existing.state === "indexing" || existing.state === "ready" || existing.state === "incomplete")
+    ) {
+      return existing;
+    }
+    const now = new Date().toISOString();
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.prepare("DELETE FROM session_catalog").run();
+      this.database.prepare(`
+        INSERT INTO session_catalog_migration
+        (migration_id, index_key, source_fingerprint, state, total_sessions, processed_sessions,
+         rows_created, next_trading_date, next_contract_symbol, required_reindex_reasons_json,
+         error, updated_at, completed_at)
+        VALUES (1, ?, ?, 'indexing', ?, 0, 0, NULL, NULL, ?, NULL, ?, NULL)
+        ON CONFLICT(migration_id)
+        DO UPDATE SET
+          index_key = excluded.index_key,
+          source_fingerprint = excluded.source_fingerprint,
+          state = 'indexing',
+          total_sessions = excluded.total_sessions,
+          processed_sessions = 0,
+          rows_created = 0,
+          next_trading_date = NULL,
+          next_contract_symbol = NULL,
+          required_reindex_reasons_json = excluded.required_reindex_reasons_json,
+          error = NULL,
+          updated_at = excluded.updated_at,
+          completed_at = NULL
+      `).run(
+        options.indexKey,
+        options.sourceFingerprint,
+        Math.max(0, Math.floor(options.totalSessions)),
+        JSON.stringify([...new Set(options.requiredReindexReasons ?? [])].sort()),
+        now,
+      );
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+    return this.getSessionCatalogMigration()!;
+  }
+
+  listIndexedSessionPartitions(options: {
+    after?: { tradingDate: string; contractSymbol: string } | null;
+    limit: number;
+  }): IndexedSessionPartition[] {
+    const limit = Math.max(1, Math.min(2_000, Math.floor(options.limit)));
+    const after = options.after;
+    const predicate = after
+      ? "WHERE trading_date > ? OR (trading_date = ? AND contract_symbol > ?)"
+      : "";
+    const parameters = after
+      ? [after.tradingDate, after.tradingDate, after.contractSymbol, limit]
+      : [limit];
+    return (this.database.prepare(`
+      SELECT trading_date, contract_symbol
+      FROM candle_partitions
+      ${predicate}
+      GROUP BY trading_date, contract_symbol
+      ORDER BY trading_date, contract_symbol
+      LIMIT ?
+    `).all(...parameters) as Array<{ trading_date: string; contract_symbol: string }>)
+      .map((row) => ({ tradingDate: row.trading_date, contractSymbol: row.contract_symbol }));
+  }
+
+  writeSessionCatalogMigrationBatch(options: {
+    entries: readonly HistoricalSessionCatalogEntry[];
+    processedSessions: number;
+    rowsCreated: number;
+    nextCursor: { tradingDate: string; contractSymbol: string } | null;
+    state?: "indexing" | "ready" | "incomplete" | "failed";
+    error?: string | null;
+    requiredReindexReasons?: readonly string[];
+  }): HistoricalSessionCatalogMigration {
+    const migration = this.getSessionCatalogMigration();
+    if (!migration) throw new Error("Session catalog migration has not been initialized.");
+    const now = new Date().toISOString();
+    const nextState = options.state ?? "indexing";
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.upsertSessionCatalogRows(options.entries, now);
+      this.database.prepare(`
+        UPDATE session_catalog_migration
+        SET state = ?, processed_sessions = ?, rows_created = ?,
+            next_trading_date = ?, next_contract_symbol = ?,
+            required_reindex_reasons_json = ?, error = ?, updated_at = ?,
+            completed_at = ?
+        WHERE migration_id = 1
+      `).run(
+        nextState,
+        Math.max(0, Math.floor(options.processedSessions)),
+        Math.max(0, Math.floor(options.rowsCreated)),
+        options.nextCursor?.tradingDate ?? null,
+        options.nextCursor?.contractSymbol ?? null,
+        JSON.stringify([...new Set(options.requiredReindexReasons ?? migration.requiredReindexReasons)].sort()),
+        options.error ?? null,
+        now,
+        nextState === "ready" || nextState === "incomplete" ? now : null,
+      );
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+    return this.getSessionCatalogMigration()!;
+  }
+
+  markSessionCatalogMigrationFailed(error: string, requiredReindexReasons: readonly string[] = []): HistoricalSessionCatalogMigration {
+    const migration = this.getSessionCatalogMigration();
+    if (!migration) throw new Error("Session catalog migration has not been initialized.");
+    const now = new Date().toISOString();
+    this.database.prepare(`
+      UPDATE session_catalog_migration
+      SET state = 'failed', error = ?, required_reindex_reasons_json = ?, updated_at = ?
+      WHERE migration_id = 1
+    `).run(
+      error,
+      JSON.stringify([...new Set([...migration.requiredReindexReasons, ...requiredReindexReasons])].sort()),
+      now,
+    );
+    return this.getSessionCatalogMigration()!;
+  }
+
+  getSessionCatalogDates(options: { startDate?: string; endDate?: string; includeIncomplete?: boolean } = {}): string[] {
     const catalogExists = this.database.prepare(
       "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
     ).get() as { present?: number } | undefined;
-    if (!catalogExists?.present) {
-      const clauses: string[] = [];
-      const parameters: string[] = [];
-      if (options.startDate) {
-        clauses.push("trading_date >= ?");
-        parameters.push(options.startDate);
-      }
-      if (options.endDate) {
-        clauses.push("trading_date <= ?");
-        parameters.push(options.endDate);
-      }
-      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-      return (this.database.prepare(
-        `SELECT DISTINCT trading_date FROM candle_partitions ${where} ORDER BY trading_date`,
-      ).all(...parameters) as Array<{ trading_date: string }>).map((row) => row.trading_date);
-    }
+    if (!catalogExists?.present) return [];
     return [...new Set(this.getSessionCatalogEntries(options).map((entry) => entry.tradingDate))];
   }
 
-  getSessionCatalogContractSymbolsForDate(tradingDate: string): string[] {
+  getSessionCatalogContractSymbolsForDate(
+    tradingDate: string,
+    options: { includeIncomplete?: boolean } = {},
+  ): string[] {
     const catalogExists = this.database.prepare(
       "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'session_catalog' LIMIT 1",
     ).get() as { present?: number } | undefined;
-    if (!catalogExists?.present) return this.getContractSymbolsForDate(tradingDate, 1);
-    return this.getSessionCatalogEntries({ startDate: tradingDate, endDate: tradingDate })
+    if (!catalogExists?.present) return [];
+    return this.getSessionCatalogEntries({
+      startDate: tradingDate,
+      endDate: tradingDate,
+      includeIncomplete: options.includeIncomplete,
+    })
       .map((entry) => entry.contractSymbol);
   }
 
@@ -860,9 +1078,19 @@ export class HistoricalIndexStore {
     availableTimeframes: number[];
     earliestTimestamp: string | null;
     latestTimestamp: string | null;
+    actualCandleCounts: HistoricalSessionCatalogEntry["candleCounts"];
+    incompleteCandleCounts: HistoricalSessionCatalogEntry["candleCounts"];
+    invalidCandleCount: number;
   } {
     const rows = this.database.prepare(`
       SELECT p.timeframe, p.candle_count,
+             COUNT(c.open_time) AS actual_count,
+             COALESCE(SUM(CASE WHEN c.is_complete = 0 THEN 1 ELSE 0 END), 0) AS incomplete_count,
+             COALESCE(SUM(CASE WHEN EXISTS (
+               SELECT 1
+               FROM json_each(c.quality_codes)
+               WHERE json_each.value NOT IN ('MISSING_BID_ASK', 'INCOMPLETE_AGGREGATED_BUCKET')
+             ) THEN 1 ELSE 0 END), 0) AS invalid_count,
              MIN(c.open_time) AS earliest_timestamp,
              MAX(c.close_time) AS latest_timestamp
       FROM candle_partitions p
@@ -876,10 +1104,15 @@ export class HistoricalIndexStore {
     `).all(contractSymbol, tradingDate) as Array<{
       timeframe: number;
       candle_count: number;
+      actual_count: number;
+      incomplete_count: number;
+      invalid_count: number;
       earliest_timestamp: number | null;
       latest_timestamp: number | null;
     }>;
     const countFor = (timeframe: number): number => rows.find((row) => row.timeframe === timeframe)?.candle_count ?? 0;
+    const actualCountFor = (timeframe: number): number => rows.find((row) => row.timeframe === timeframe)?.actual_count ?? 0;
+    const incompleteCountFor = (timeframe: number): number => rows.find((row) => row.timeframe === timeframe)?.incomplete_count ?? 0;
     const timestamps = rows.flatMap((row) => [
       row.earliest_timestamp,
       row.latest_timestamp,
@@ -894,6 +1127,19 @@ export class HistoricalIndexStore {
       availableTimeframes: rows.filter((row) => row.candle_count > 0).map((row) => row.timeframe),
       earliestTimestamp: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
       latestTimestamp: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
+      actualCandleCounts: {
+        oneMinute: actualCountFor(1),
+        fiveMinute: actualCountFor(5),
+        fifteenMinute: actualCountFor(15),
+        oneHour: actualCountFor(60),
+      },
+      incompleteCandleCounts: {
+        oneMinute: incompleteCountFor(1),
+        fiveMinute: incompleteCountFor(5),
+        fifteenMinute: incompleteCountFor(15),
+        oneHour: incompleteCountFor(60),
+      },
+      invalidCandleCount: rows.reduce((sum, row) => sum + Number(row.invalid_count ?? 0), 0),
     };
   }
 
@@ -1428,6 +1674,39 @@ export class HistoricalIndexStore {
   getPartitionCount(): number {
     const row = this.database.prepare("SELECT COUNT(*) AS count FROM candle_partitions").get() as { count: number };
     return Number(row.count);
+  }
+
+  getIndexedSessionPartitionCount(): number {
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT trading_date, contract_symbol
+        FROM candle_partitions
+        GROUP BY trading_date, contract_symbol
+      )
+    `).get() as { count: number };
+    return Number(row.count);
+  }
+
+  getSessionCatalogStatusCounts(): { total: number; usable: number; incomplete: number; failed: number } {
+    const row = this.database.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(CASE
+          WHEN coverage_status = 'complete'
+           AND completeness_status = 'complete'
+           AND validation_status = 'validated'
+          THEN 1 ELSE 0 END), 0) AS usable,
+        COALESCE(SUM(CASE WHEN coverage_status = 'incomplete' OR completeness_status = 'incomplete' THEN 1 ELSE 0 END), 0) AS incomplete,
+        COALESCE(SUM(CASE WHEN validation_status = 'failed' THEN 1 ELSE 0 END), 0) AS failed
+      FROM session_catalog
+    `).get() as { total: number; usable: number; incomplete: number; failed: number };
+    return {
+      total: Number(row.total ?? 0),
+      usable: Number(row.usable ?? 0),
+      incomplete: Number(row.incomplete ?? 0),
+      failed: Number(row.failed ?? 0),
+    };
   }
 
   close(): void {

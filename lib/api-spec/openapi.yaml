@@ -793,6 +793,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoricalDataIndexStatus"
+  /historical-data/session-catalog/initialize:
+    post:
+      operationId: initializeHistoricalSessionCatalog
+      tags: [backtest]
+      summary: Initialize the persisted historical session catalog
+      description: Resumes the explicit one-time catalog migration from committed indexed partitions without rediscovering or reimporting source files.
+      responses:
+        "200":
+          description: Historical session catalog migration report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoricalSessionCatalogMigrationReport"
+        "503":
+          description: Session catalog migration failed or no committed index is available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /historical-data/uploads/request-url:
     post:
       operationId: requestHistoricalDataUploadUrl
@@ -3115,6 +3134,9 @@ components:
         availableTradingDates:
           type: array
           items: { type: string }
+        sessionCatalogDates:
+          type: array
+          items: { type: string }
         scheduleVersion: { type: string }
         importerVersion: { type: string }
         discoveredContracts:
@@ -3151,10 +3173,31 @@ components:
               reason: { type: string }
             required: [filename, reason]
         fullRangeReady: { type: boolean }
+        sessionCatalogTotal: { type: number, minimum: 0 }
+        sessionCatalogProcessed: { type: number, minimum: 0 }
+        sessionCatalogRows: { type: number, minimum: 0 }
+        sessionCatalogUsable: { type: number, minimum: 0 }
+        sessionCatalogIncomplete: { type: number, minimum: 0 }
+        sessionCatalogReindexReasons: { type: array, items: { type: string } }
         message: { type: ["string", "null"] }
         error: { type: ["string", "null"] }
         updatedAt: { type: string, format: date-time }
-      required: [state, sessionCatalogState, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, availableTradingDates, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, message, error, updatedAt]
+      required: [state, sessionCatalogState, indexKey, progress, discoveredFileCount, indexedFileCount, requestedStartDate, requestedEndDate, indexedStartDate, indexedEndDate, availableTradingDates, sessionCatalogDates, scheduleVersion, importerVersion, discoveredContracts, acceptedContracts, missingScheduledContracts, eligibleTradingDateCount, ineligibleTradingDateCount, eligibleTradingDates, ineligibleDates, mergedFileCount, filesMergedPerContract, rejectedFiles, fullRangeReady, sessionCatalogTotal, sessionCatalogProcessed, sessionCatalogRows, sessionCatalogUsable, sessionCatalogIncomplete, sessionCatalogReindexReasons, message, error, updatedAt]
+    HistoricalSessionCatalogMigrationReport:
+      type: object
+      properties:
+        state: { type: string, enum: [not_initialized, indexing, ready, failed, incomplete] }
+        indexKey: { type: string }
+        sourceFingerprint: { type: string }
+        totalSessions: { type: number, minimum: 0 }
+        processedSessions: { type: number, minimum: 0 }
+        rowsCreated: { type: number, minimum: 0 }
+        usableSessions: { type: number, minimum: 0 }
+        incompleteSessions: { type: number, minimum: 0 }
+        failedSessions: { type: number, minimum: 0 }
+        requiredReindexReasons: { type: array, items: { type: string } }
+        error: { type: ["string", "null"] }
+      required: [state, indexKey, sourceFingerprint, totalSessions, processedSessions, rowsCreated, usableSessions, incompleteSessions, failedSessions, requiredReindexReasons, error]
     HistoricalDataUploadRequest:
       type: object
       properties:

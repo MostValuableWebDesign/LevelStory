@@ -13,6 +13,7 @@ import {
 import {
   getHistoricalMultiContractIndexStatus,
   importHistoricalMultiContract,
+  initializeHistoricalSessionCatalog,
   validateHistoricalMultiContractIndexMaintenance,
   type HistoricalIndexSourceFile,
 } from "../lib/futures/multi-contract-replay.js";
@@ -505,6 +506,15 @@ router.post("/historical-data/maintenance/validate", requireRole("reviewer"), as
     res.json({ ...result, message: "Historical source, SQLite integrity, and partition validation completed." });
   } catch (error) {
     res.status(422).json({ error: error instanceof Error ? error.message : "Historical maintenance validation failed." });
+  }
+});
+
+router.post("/historical-data/session-catalog/initialize", requireRole("reviewer"), async (_req, res) => {
+  try {
+    const report = await initializeHistoricalSessionCatalog();
+    res.json(report);
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Historical session catalog initialization failed." });
   }
 });
 

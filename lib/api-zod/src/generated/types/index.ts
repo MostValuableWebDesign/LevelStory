@@ -244,6 +244,8 @@ export * from './historicalSessionCatalogEntryCompletenessStatus';
 export * from './historicalSessionCatalogEntryCoverageStatus';
 export * from './historicalSessionCatalogEntryTickCoverage';
 export * from './historicalSessionCatalogEntryValidationStatus';
+export * from './historicalSessionCatalogMigrationReport';
+export * from './historicalSessionCatalogMigrationReportState';
 export * from './idempotencyKeyParameter';
 export * from './indicatorReplayContext';
 export * from './indicatorReplayContextCandlesItem';
