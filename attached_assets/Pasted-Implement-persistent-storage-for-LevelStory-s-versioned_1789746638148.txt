@@ -1,0 +1,33 @@
+Implement persistent storage for LevelStory’s versioned session-analysis results.
+
+The current cataloged session-result cache is an in-memory cache with a one-hour inactivity expiry. Keep memory caching as an acceleration layer, but make completed compatible results reusable after a server restart.
+
+Inspect and reuse existing persistence infrastructure.
+
+Requirements:
+- Persist completed session-analysis results with their complete dependency identity.
+- Include source and lookback fingerprints, strategy/formula/configuration identity, calculation versions, execution settings, and relevant initial state.
+- Store successful zero-trade results as valid completed results.
+- Failed, cancelled, partial, or corrupted results must never become cache hits.
+- Write atomically and validate stored schema/provenance before reuse.
+- Deduplicate equivalent concurrent computation.
+- Memory eviction must not erase the persistent result.
+- Define bounded retention and safe cleanup for persistent artifacts.
+- Preserve old result versions for historical comparison according to retention policy.
+- Never silently transfer human reviews to incompatible regenerated results.
+
+Preserve chronological account arbitration across the selected range. Do not treat independently cached session trades as final combined-account executions.
+
+Connect Visual Review to compatible persisted results so opening a chart after restart does not unnecessarily rerun strategy analysis.
+
+Required tests:
+- Compute, restart in a separate process, and reuse the completed result with zero additional strategy executions.
+- A completed zero-trade result survives restart.
+- Formula/configuration/source changes prevent incompatible reuse.
+- Interrupted writes and corrupt artifacts cannot appear complete.
+- Concurrent equivalent requests publish one valid result.
+- Cached combined replay matches fresh chronological replay.
+
+Report storage location/schema, cache identity, retention policy, restart-test results, and tests passed/failed/not run.
+
+Stop after Part 2.
