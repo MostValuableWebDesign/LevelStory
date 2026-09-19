@@ -12,6 +12,7 @@ import type {
 export const SESSION_ANALYSIS_RESULT_SCHEMA_VERSION = "session-analysis-result-v2-integrity-reconciliation";
 export const SESSION_ANALYSIS_RESULT_RETENTION_MS = 180 * 24 * 60 * 60_000;
 export const SESSION_ANALYSIS_RESULT_MAX_ROWS = 10_000;
+const SESSION_ANALYSIS_RESULT_MAX_PERSISTED_BYTES = 4_000_000;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -48,6 +49,30 @@ function validDescriptor(descriptor: SessionResultCacheDescriptor): boolean {
     "cataloged-session-strategy-result",
     descriptor.dependencyIdentity,
   );
+}
+
+/**
+ * Session reports are also used as the in-process replay result. Their
+ * dataset can contain the entire partition candle/tick history, which is not
+ * needed by the cross-request aggregation path and can exceed the database
+ * driver's query-parameter string limit. Persist only the report evidence and
+ * the compact dataset metadata; the caller retains the full computed result.
+ */
+function persistableReport(result: BacktestReport): BacktestReport | null {
+  const dataset = { ...(result.dataset as unknown as JsonRecord) };
+  delete dataset.candles;
+  delete dataset.ticks;
+  delete dataset.oneMinute;
+  const compact = { ...result, dataset } as BacktestReport;
+  try {
+    const serialized = JSON.stringify(compact);
+    if (serialized === undefined || Buffer.byteLength(serialized, "utf8") > SESSION_ANALYSIS_RESULT_MAX_PERSISTED_BYTES) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return compact;
 }
 
 function staleBefore(now = Date.now()): Date {
@@ -123,6 +148,8 @@ export class PersistentSessionAnalysisStore {
       if (!isBacktestReport(result)) {
         throw new Error("SESSION_ANALYSIS_RESULT_SCHEMA_INVALID");
       }
+      const persistedResult = persistableReport(result);
+      if (!persistedResult) return structuredClone(result);
       const now = new Date();
       await tx.insert(sessionAnalysisResultsTable).values({
         cacheKey: descriptor.cacheKey,
@@ -136,7 +163,7 @@ export class PersistentSessionAnalysisStore {
         executionSettings: descriptor.executionSettings,
         initialState: descriptor.initialState,
         dependencyIdentity: descriptor.dependencyIdentity,
-        resultPayload: result,
+        resultPayload: persistedResult,
         createdAt: now,
         lastAccessedAt: now,
       }).onConflictDoUpdate({
@@ -152,7 +179,7 @@ export class PersistentSessionAnalysisStore {
           executionSettings: descriptor.executionSettings,
           initialState: descriptor.initialState,
           dependencyIdentity: descriptor.dependencyIdentity,
-          resultPayload: result,
+          resultPayload: persistedResult,
           lastAccessedAt: now,
         },
       });

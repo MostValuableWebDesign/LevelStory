@@ -123,6 +123,31 @@ test("completed zero-trade result survives a separate process restart", async ()
   }
 });
 
+test("large partition candle history is not persisted with the session result", async () => {
+  const store = new PersistentSessionAnalysisStore();
+  const identity = descriptor(randomUUID());
+  await deleteResult(identity.cacheKey);
+  try {
+    const completed = result();
+    completed.dataset = {
+      candles: [{ openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 2, volume: 1 }],
+      ticks: [{ timestamp: 1, price: 1, source: "tick" }],
+      oneMinute: [{ openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 2, volume: 1 }],
+      selectedDates: ["2026-08-26"],
+      activeContractByDate: [{ tradingDate: "2026-08-26", contractSymbol: "MESU6" }],
+    } as unknown as BacktestReport["dataset"];
+    await store.getOrCompute(identity, async () => completed);
+    const persisted = await store.get(identity.cacheKey, identity);
+    assert.ok(persisted);
+    assert.deepEqual(persisted.dataset, {
+      selectedDates: ["2026-08-26"],
+      activeContractByDate: [{ tradingDate: "2026-08-26", contractSymbol: "MESU6" }],
+    });
+  } finally {
+    await deleteResult(identity.cacheKey);
+  }
+});
+
 test("formula/configuration identity changes prevent persisted reuse", async () => {
   const store = new PersistentSessionAnalysisStore();
   const suffix = randomUUID();

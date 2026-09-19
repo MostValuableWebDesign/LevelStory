@@ -3201,7 +3201,7 @@ export function buildHistoricalVisualValidationSetFromReport(
     ...visualValidationCacheMetadata(
       request,
       cacheSourceFingerprint,
-      dataset.contractSchedule?.version,
+      sessionCalendarForContract(getFuturesContractSpecification(request.symbol)).calendarVersion,
       processedDatesForDataset(dataset),
     ),
     source: "historical_databento",
@@ -3240,7 +3240,7 @@ export function buildHistoricalVisualValidationPartialSet(
     ...visualValidationCacheMetadata(
       request,
       cacheSourceFingerprint,
-      dataset.contractSchedule?.version,
+      sessionCalendarForContract(getFuturesContractSpecification(request.symbol)).calendarVersion,
       processedDatesForDataset(dataset),
     ),
     source: "historical_databento",
