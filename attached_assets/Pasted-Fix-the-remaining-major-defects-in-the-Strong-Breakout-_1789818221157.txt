@@ -1,0 +1,356 @@
+Fix the remaining major defects in the Strong Breakout After Consolidation implementation.
+
+Work in the current LevelStory checkout. Inspect the current source before editing because filenames, generated packages, and version values may have changed.
+
+Do not merely make the tests pass. Correct the production execution path and prove the behavior through linked detection → audit → occurrence → candidate → execution → account arbitration → batch/replay → Visual Review output.
+
+OBJECTIVE
+
+Complete these three repairs:
+
+1. Evaluate valid stop events during the breakout/entry candle.
+2. Propagate an exact gap-open stop timestamp through the exit leg, trade, and account arbitration.
+3. Invalidate every incompatible persisted result after the identity and execution changes.
+
+AUTHORITATIVE STRATEGY RULES
+
+The midpoint reentry stop applies only to:
+
+- `STRONG_BREAKOUT_AFTER_CONSOLIDATION`
+
+It does not apply to:
+
+- Extended Breakout After Consolidation
+- Equivalent-Candle Reversal
+- ORB Pullback Continuation
+- Any other strategy
+
+Use the frozen causal consolidation zone that authorized the entry. Never recompute the zone from later candles.
+
+Given:
+
+- `zoneLow`
+- `zoneHigh`
+- `zoneMidpoint = (zoneLow + zoneHigh) / 2`
+
+Long Strong Breakout:
+
+- The breakout and entry are above `zoneHigh`.
+- After the modeled entry fill, execute the midpoint-reentry stop when price moves strictly below `zoneMidpoint`.
+- Merely touching the midpoint does not satisfy “more than half of the zone.”
+- With MES tick size 0.25, execute at the first legal tradable price strictly below the midpoint, according to the existing stop-fill model.
+
+Short Strong Breakout:
+
+- The breakout and entry are below `zoneLow`.
+- After the modeled entry fill, execute the midpoint-reentry stop when price moves strictly above `zoneMidpoint`.
+- Merely touching the midpoint does not trigger the stop.
+- Execute at the first legal tradable price strictly above the midpoint, according to the existing stop-fill model.
+
+The midpoint stop becomes active only after the entry is filled. Price movement before entry must never trigger a post-entry stop.
+
+Preserve the catastrophe stop. If both the midpoint stop and catastrophe stop are breached:
+
+- Use ordered intrabar evidence to determine which stop was reached first.
+- Execute the first valid post-fill stop.
+- Record every breached stop level in the audit evidence.
+- Keep the selected exit reason and selected exit level internally consistent.
+- Never select the more favorable exit by assumption.
+
+Extended Breakout After Consolidation must continue using its existing 8-tick stop outside the opposite side of the frozen zone:
+
+- Long Extended: 8 ticks below `zoneLow`
+- Short Extended: 8 ticks above `zoneHigh`
+
+Extended Breakout must not receive midpoint-stop evidence, midpoint annotations, or a midpoint exit reason.
+
+REPAIR 1 — ENTRY-CANDLE STOP EVALUATION
+
+Inspect at least:
+
+- `artifacts/api-server/src/lib/phase9.ts`
+- `artifacts/api-server/src/lib/strategy/ohlcv-execution.ts`
+- Relevant strategy and execution tests
+
+The current production path identifies Strong and Extended setups as `midpointManagedDirect` and passes:
+
+`evaluateEntryCandleForExit: false`
+
+This suppresses all stop evaluation during the breakout/entry candle. Remove this blanket exclusion.
+
+Required behavior:
+
+1. If the entry fill occurs during a candle and complete ordered intrabar evidence proves that a stop breach happened after the fill during that same candle, execute the stop.
+2. Do not treat a stop-level touch before entry as a post-entry exit.
+3. Entry and exit timestamps must follow the ordered evidence.
+4. Equal timestamps must follow one explicit, deterministic ordering rule already supported by the evidence model. If the order cannot be established, treat it as ambiguous.
+5. A nonempty tick array or global “intrabar data exists” flag is insufficient. Evidence must match the exact:
+   - contract
+   - source
+   - candle or interval
+   - coverage period
+   - ordering semantics
+6. If an OHLC candle shows both an entry and a possible stop but cannot prove which occurred first:
+   - Record an explicit ambiguity/incomplete-evidence diagnostic.
+   - Do not invent a favorable chronology.
+   - Do not silently convert it into a manual exit.
+   - Do not count it as an authoritative executed result unless an existing governed conservative fallback explicitly defines the outcome.
+7. Continue evaluating stops normally on every candle after the entry candle.
+
+Do not solve this by disabling entry-candle evaluation for all direct strategies.
+
+REPAIR 2 — GAP-OPEN EXIT TIMESTAMP
+
+Inspect the gap-open handling near the midpoint-stop execution and exit-leg construction in:
+
+- `artifacts/api-server/src/lib/strategy/ohlcv-execution.ts`
+- `artifacts/api-server/src/lib/phase9.ts`
+
+The current code can set:
+
+`consolidationMidpointStop.stopHitTimestamp = candle.openTime`
+
+while leaving the execution leg’s `exitTimestamp` undefined. That causes `modeledExitTimestamp` to remain null and Phase 9 to fall back to the candle close.
+
+Fix the authoritative exit chronology.
+
+For a stop already breached at candle open:
+
+- Use `candle.openTime` as the stop event timestamp.
+- Put that timestamp on the selected execution exit leg.
+- Propagate it to `modeledExitTimestamp`.
+- Propagate it to the final trade `exitTime`.
+- Make account-wide active-position arbitration release the position at that exact time.
+- Preserve the actual governed gap-fill price separately from the timestamp.
+- Do not fabricate an ordered tick merely to carry the time.
+
+Required invariant:
+
+`stop evidence timestamp == selected exit-leg timestamp == modeled exit timestamp == final trade exitTime`
+
+for an exact gap-open stop.
+
+Do not fall back to candle close when an exact candle-open exit time is known.
+
+REPAIR 3 — CACHE AND IDENTITY INVALIDATION
+
+The update changed:
+
+- Direct occurrence identity from v3 to v4
+- Strategy-specific audit identity
+- Direct crossing identity
+- Exit reasons
+- Exit timestamps
+- Breached-stop audit evidence
+- Visual Review projection behavior
+
+Inspect at least:
+
+- `artifacts/api-server/src/lib/formula-hash.ts`
+- `artifacts/api-server/src/lib/analysis-cache.ts`
+- Session-result cache keys
+- Batch-result cache keys
+- Visual Review projection/version constants
+- Replay provenance
+- Any persisted schema/version readers
+
+Advance every version that participates in reuse of an incompatible result. This must include the authoritative formula/result-cache identity used by persisted session and batch results.
+
+Requirements:
+
+- Old results produced with generic or v3 direct identities must not load as current.
+- Old results with candle-close fallback timestamps must not load as current.
+- Old Strong/Extended Visual Review projections must not load as current.
+- Identical requests under the new version must still reuse newly generated cached results.
+- Restart persistence must continue working for new-version results.
+- Do not delete source market data.
+- Do not globally clear unrelated data when versioned invalidation can reject only incompatible derived results.
+- Add a regression test proving that a previous-version cache entry is rejected and a current-version entry is reused.
+
+IDENTITY AND VISUAL REVIEW INVARIANTS
+
+Preserve the strategy-specific identity repairs already implemented.
+
+A Strong and Extended setup with the same contract, date, direction, frozen zone, arm time, and crossing candle must still have different:
+
+- audit IDs
+- crossing IDs
+- occurrence IDs
+- candidate IDs
+- trade ownership/linkage
+
+Strong Visual Review must show:
+
+- Frozen consolidation zone
+- Exact midpoint
+- Entry
+- Selected midpoint exit when triggered
+- Catastrophe stop where applicable
+- Correct exit reason and timestamps
+
+Extended Visual Review must show:
+
+- Frozen consolidation zone
+- Entry
+- Existing 8-tick outside stop
+- No midpoint-stop annotation
+- No midpoint-stop evidence
+- No midpoint exit reason
+
+Do not allow generic or missing direct strategy IDs to silently merge Strong and Extended results. Fail closed with an invariant diagnostic.
+
+TEST MATRIX
+
+Add focused tests for all of the following.
+
+1. Strong long, ordered same-candle sequence:
+   - breakout/entry fills above `zoneHigh`
+   - price later moves strictly below the midpoint
+   - midpoint stop executes during the entry candle
+   - timestamps and exit reason are exact
+
+2. Strong short mirror:
+   - entry fills below `zoneLow`
+   - price later moves strictly above the midpoint
+   - stop executes during the entry candle
+
+3. Pre-entry stop touch:
+   - price touches or crosses the midpoint before entry
+   - entry happens afterward
+   - the pre-entry movement cannot close the later trade
+
+4. Midpoint equality:
+   - long price touches exactly the midpoint but does not move below it
+   - short price touches exactly the midpoint but does not move above it
+   - no midpoint stop executes
+
+5. Ambiguous OHLC entry candle:
+   - candle contains both entry and midpoint-stop prices
+   - no interval-scoped ordered evidence establishes sequence
+   - result is explicitly ambiguous/fail-closed
+   - no fabricated manual exit or profitable chronology appears
+
+6. Same-candle catastrophe and midpoint breach:
+   - ordered evidence establishes which was reached first
+   - the first post-fill event controls the exit
+   - audit evidence records both breached levels
+
+7. Long gap-open midpoint stop:
+   - stop is breached at a later candle open
+   - evidence, exit leg, modeled exit, trade exit, and arbitration all use `candle.openTime`
+
+8. Short gap-open mirror.
+
+9. Account arbitration:
+   - a second eligible trade after the exact gap-open exit may proceed
+   - a trade before that timestamp remains blocked
+
+10. Extended long and short:
+    - preserve the 8-tick outside stop
+    - allow an ordered entry-candle breach of that stop to execute
+    - never attach midpoint evidence or midpoint exit reason
+
+11. Strong versus Extended collision fixture:
+    - same market geometry and timestamps
+    - IDs remain distinct through occurrence, candidate, trade, and Visual Review
+
+12. Cache migration:
+    - old formula/cache/projection version is rejected
+    - new version computes once
+    - identical repeat reuses it
+    - new result survives an actual API workflow restart
+
+13. End-to-end linked fixture:
+    - assert the exact strategy ID and direction
+    - assert audit ID → occurrence ID → candidate ID → trade ID linkage
+    - assert exit reason, price, and timestamp
+    - assert Visual Review references the same executed trade
+
+Do not weaken an existing assertion, convert a failure into a warning, skip a strategy assertion, or replace a production-path test with a helper-only test.
+
+GENERATED PACKAGE AND TYPECHECK REPAIR
+
+The API typecheck previously reported stale generated workspace exports, including missing database schema and API-Zod exports.
+
+Inspect the source definitions and normal repository generation/build process. Regenerate or rebuild the workspace packages using the repository’s documented commands. Do not hand-edit generated output unless that is the repository’s established workflow.
+
+The final API and LevelStory typechecks must pass from a clean state.
+
+VERIFICATION ORDER
+
+1. Run targeted unit tests for:
+   - OHLCV execution
+   - consolidation midpoint stop
+   - Phase 9
+   - Visual Review
+   - account arbitration/cache behavior
+
+2. Run Phase 9 integration, shadow replay, and batch tests.
+
+3. Run API and LevelStory typechecks.
+
+4. Run formatting or lint checks required by the repository.
+
+5. Run `git diff --check`.
+
+6. Only after focused tests pass, run one bounded real-data replay containing at least one executable Strong Breakout After Consolidation trade.
+
+REAL-DATA ACCEPTANCE PROOF
+
+An HTTP 200 response, completed batch, confirmed signal, candidate count, or zero-trade replay is not execution proof.
+
+Provide one nonzero Strong Breakout execution and report:
+
+- data source and contract
+- selected date/range
+- formula hash
+- source fingerprint
+- cache/result version
+- specific strategy ID
+- direction
+- frozen `zoneLow`, `zoneHigh`, and midpoint
+- entry price and exact entry timestamp
+- selected stop price
+- stop-hit timestamp
+- exit-leg timestamp
+- modeled exit timestamp
+- final trade exitTime
+- exit reason
+- audit ID
+- occurrence ID
+- candidate ID
+- trade ID
+- Visual Review/replay linkage
+- whether ordered intrabar evidence or a gap-open rule established chronology
+
+If the available real catalog contains no qualifying Strong Breakout trade, do not claim full real-data acceptance. Report that bounded limitation and provide the passing deterministic production-path fixture separately.
+
+SCOPE LIMITS
+
+Preserve:
+
+- Consolidation qualification rules, including the minimum four-candle requirement
+- Frozen-zone construction
+- Entry qualification and trend-direction rules
+- Existing Extended 8-tick outside stop
+- Existing catastrophe-stop protection
+- Fees, slippage, commissions, position sizing, and account gates
+- Unrelated strategies
+- Raw market/source data
+
+Do not change entry rules to manufacture a trade. Do not reinterpret the midpoint rule as four ticks inside the zone. The governed rule here is strictly more than half of the frozen consolidation zone.
+
+FINAL RESPONSE
+
+Return:
+
+1. Root cause for each of the three defects.
+2. Files and functions changed.
+3. Old behavior versus corrected behavior.
+4. Formula/cache/projection versions before and after.
+5. Tests added and exact commands run.
+6. Test and typecheck totals.
+7. Real-data linked execution evidence.
+8. Any remaining limitation.
+
+Do not report the task complete unless all deterministic acceptance cases pass, typechecks pass, incompatible caches are invalidated, and the linked execution result uses consistent timestamps across evidence, exit leg, modeled execution, final trade, arbitration, and Visual Review.
