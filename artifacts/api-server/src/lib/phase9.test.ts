@@ -2687,6 +2687,7 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
     specificStrategyId: "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
     eligibilityArmId: "identity-arm",
     activeConsolidationZoneId: "identity-zone",
+    canonicalFrozenZoneIdentity: "frozen-consolidation-identity-v2:34c9a3d4dbced964e8dc658e6c062c87e0e3af8bdec0e65632907f82df19bdf5",
     causalTrendDirection: "long",
     causalTrendSource: "BREAKOUT_DIRECTION",
     causalTrendTimestamp: "2026-08-25T14:55:00.000Z",

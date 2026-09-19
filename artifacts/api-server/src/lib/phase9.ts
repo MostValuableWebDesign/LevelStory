@@ -39,7 +39,10 @@ import type {
   OrderedIntrabarPoint,
   OrderedIntrabarEvidenceInterval,
   OrderedExecutionEvidence,
+  DeterministicExecutionEvidence,
+  ExecutionChronologyMode,
 } from "./strategy/ohlcv-execution.js";
+import { frozenConsolidationIdentity } from "./strategy/frozen-consolidation-identity.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
   isTerminalPullbackArmState,
@@ -112,6 +115,7 @@ import {
   structuralRiskTicks,
 } from "./strategy/execution-management.js";
 import {
+  CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION,
   consolidationMidpointStop,
 } from "./strategy/consolidation-midpoint-stop.js";
 
@@ -141,6 +145,8 @@ export type IntrabarPoint = {
   timestamp: number;
   price: number;
   source: "tick";
+  /** Optional source-provided order for observations sharing a timestamp. */
+  sequence?: number;
 };
 
 export type OrderedIntrabarEvidenceMetadata = {
@@ -231,7 +237,11 @@ function verifiedOrderedIntrabarEvidenceInterval(
       && point.timestamp <= metadata.coverageEnd,
     );
   let previousTimestamp = Number.NEGATIVE_INFINITY;
-  const points = rawPoints.map((point) => ({ timestamp: point.timestamp, price: point.price }));
+  const points = rawPoints.map((point) => ({
+    timestamp: point.timestamp,
+    price: point.price,
+    ...(Number.isFinite(point.sequence) ? { sequence: point.sequence } : {}),
+  }));
   for (const point of rawPoints) {
     if (point.source !== "tick" || !Number.isFinite(point.timestamp) || !Number.isFinite(point.price)) return null;
     if (point.timestamp < previousTimestamp) return null;
@@ -314,6 +324,7 @@ export type CandidateCausalIdentity = {
   specificStrategyId?: SpecificStrategyId | null;
   eligibilityArmId: string | null;
   activeConsolidationZoneId: string | null;
+  canonicalFrozenZoneIdentity?: string | null;
   causalTrendDirection?: Direction | null;
   causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
   causalTrendTimestamp?: string | null;
@@ -459,6 +470,8 @@ export type BacktestTrade = {
       effectiveTargetPrice?: number | null;
       targetUpdateLedger?: DynamicTargetUpdate[];
       orderedExecutionEvidence?: OrderedExecutionEvidence | null;
+      executionChronologyMode?: ExecutionChronologyMode;
+      executionChronology?: OrderedExecutionEvidence | DeterministicExecutionEvidence | null;
      originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -475,6 +488,7 @@ export type BacktestConsolidationGuardEvidence = {
   consolidationZoneHigh: number | null;
   consolidationZoneLow: number | null;
   activeConsolidationZoneId?: string | null;
+  canonicalFrozenZoneIdentity?: string | null;
   consolidationStartTime: string | null;
   consolidationDetectionTime: string | null;
   sourceCandleTimestamps: string[];
@@ -719,6 +733,7 @@ export type BacktestAuditRecord = {
   originalStopStillActive?: boolean;
   consolidationThresholds: ConsolidationThresholds;
   consolidationGuard?: BacktestConsolidationGuardEvidence | null;
+  canonicalFrozenZoneIdentity?: string | null;
   pullbackOccurrences?: Array<{
     eventId?: string;
     armId?: string;
@@ -1614,6 +1629,57 @@ export type HistoricalOccurrence = {
   causalEvidenceByAudit?: NonNullable<HistoricalOccurrence["causalEvidence"]>[];
 };
 
+function canonicalFrozenZoneIdentityForOccurrence(
+  occurrence: HistoricalOccurrence,
+  midpointStop?: Pick<NonNullable<CandidateManagementContext["consolidationMidpointStop"]>, "frozenZoneLow" | "frozenZoneHigh" | "calculationVersion"> | null,
+): string | null {
+  const guard = occurrence.consolidationGuard;
+  const numericValue = (values: readonly (number | null | undefined)[]): number | null => {
+    const defined = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return defined.length === 0 || defined.every((value) => value === defined[0]) ? defined[0] ?? null : null;
+  };
+  const stringValue = (values: readonly (string | null | undefined)[]): string | null => {
+    const defined = values.filter((value): value is string => typeof value === "string" && value.length > 0);
+    return defined.length === 0 || defined.every((value) => value === defined[0]) ? defined[0] ?? null : null;
+  };
+  const sourceCandleTimestamps = occurrence.directConsolidationSourceCandleTimestamps ?? guard?.sourceCandleTimestamps ?? [];
+  const midpointCalculationVersion = midpointStop?.calculationVersion
+    ?? ((occurrence.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+      || occurrence.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT")
+      ? CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION
+      : null);
+  const computed = frozenConsolidationIdentity({
+    specificStrategyId: occurrence.specificStrategyId ?? null,
+    direction: occurrence.direction,
+    contractSymbol: occurrence.contractSymbol,
+    tradingDate: occurrence.tradingDate,
+    frozenZoneId: guard?.activeConsolidationZoneId ?? null,
+    zoneLow: numericValue([
+      occurrence.directConsolidationZoneLow,
+      guard?.consolidationZoneLow,
+      midpointStop?.frozenZoneLow,
+    ]),
+    zoneHigh: numericValue([
+      occurrence.directConsolidationZoneHigh,
+      guard?.consolidationZoneHigh,
+      midpointStop?.frozenZoneHigh,
+    ]),
+    midpointCalculationVersion,
+    consolidationStart: stringValue([
+      occurrence.directConsolidationStartTimestamp,
+      guard?.consolidationStartTime,
+    ]),
+    consolidationEnd: stringValue([
+      occurrence.directConsolidationEndTimestamp,
+      guard?.consolidationDetectionTime,
+    ]),
+    constituentCandleTimestamps: sourceCandleTimestamps,
+  });
+  return guard?.canonicalFrozenZoneIdentity && computed !== guard.canonicalFrozenZoneIdentity
+    ? null
+    : computed;
+}
+
 function candidateCausalIdentityForOccurrence(
   occurrence: HistoricalOccurrence,
 ): CandidateCausalIdentity {
@@ -1622,6 +1688,7 @@ function candidateCausalIdentityForOccurrence(
     ...(occurrence.specificStrategyId ? { specificStrategyId: occurrence.specificStrategyId } : {}),
     eligibilityArmId: occurrence.eligibilityArmId ?? null,
     activeConsolidationZoneId: occurrence.consolidationGuard?.activeConsolidationZoneId ?? null,
+    canonicalFrozenZoneIdentity: canonicalFrozenZoneIdentityForOccurrence(occurrence),
     ...(occurrence.causalTrendDirection || occurrence.causalTrendSource || occurrence.causalTrendTimestamp
       ? {
         causalTrendDirection: occurrence.causalTrendDirection ?? null,
@@ -1659,7 +1726,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v7-entry-candle-gap-exit";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v8-execution-chronology-frozen-zone";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -6204,6 +6271,10 @@ function candidateDrivenEntryTrade(
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const contracts = config.executionManagementFixedContracts;
   const targetPlan = management.targetPlan;
+  const canonicalFrozenZoneIdentity = canonicalFrozenZoneIdentityForOccurrence(
+    occurrence,
+    management.consolidationMidpointStop,
+  );
   const primaryLossExitLevel = management.primaryLossExitLevel
     ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const targetPrice = targetPlan?.targetPrice ?? null;
@@ -6347,6 +6418,7 @@ function candidateDrivenEntryTrade(
   const orderedExecutionEvidence: OrderedExecutionEvidence | null = orderedEvidenceComplete
     ? {
       schemaVersion: ORDERED_EXECUTION_EVIDENCE_VERSION,
+      chronologyMode: "ORDERED_INTRABAR",
       source: "tick",
       sourceFingerprint: sourceFingerprint(context.dataset),
       contractSymbol: occurrence.contractSymbol,
@@ -6380,19 +6452,41 @@ function candidateDrivenEntryTrade(
         : orderedEvidencePoints.find((point) => point.timestamp === orderedStopTimestamp) ?? null,
       strategyId: occurrence.specificStrategyId ?? null,
       direction: occurrence.direction,
-      frozenZoneIdentity: occurrence.consolidationGuard?.activeConsolidationZoneId
-        ?? (management.consolidationMidpointStop
-          ? [
-            management.consolidationMidpointStop.frozenZoneLow,
-            management.consolidationMidpointStop.frozenZoneHigh,
-            management.consolidationMidpointStop.calculationVersion,
-          ].join("|")
-          : null),
+      frozenZoneIdentity: canonicalFrozenZoneIdentity,
       occurrenceId: occurrence.occurrenceId,
       candidateId,
       formulaVersion: FIXED_FORMULA_VERSION,
     }
     : null;
+  const modeledExitTimestamp = modeled.audit.modeledExitTimestamp ?? null;
+  const chronologyMode: ExecutionChronologyMode = orderedExecutionEvidence
+    ? "ORDERED_INTRABAR"
+    : modeled.ambiguityLabels.some(isExecutionAmbiguityLabel)
+      ? "AMBIGUOUS_OHLC"
+      : modeled.audit.stopHitTimestampSource === "CANDLE_OPEN"
+        ? "DETERMINISTIC_CANDLE_OPEN"
+        : "DETERMINISTIC_LATER_CANDLE";
+  const deterministicExecutionEvidence: DeterministicExecutionEvidence | null = orderedExecutionEvidence
+    ? null
+    : {
+      mode: chronologyMode as Exclude<ExecutionChronologyMode, "ORDERED_INTRABAR">,
+      sourceFingerprint: sourceFingerprint(context.dataset),
+      contractSymbol: occurrence.contractSymbol,
+      tradingDate,
+      entryCandleOpenTime: entryOpenTime,
+      entryCandleCloseTime: entryCloseTime,
+      entryFillTimestamp: modeled.modeledFillTimestamp,
+      exitCandleOpenTime: modeled.audit.exitCandle?.openTime ?? null,
+      exitCandleCloseTime: modeled.audit.exitCandle?.closeTime ?? null,
+      exitTimestamp: modeledExitTimestamp,
+      selectedStopPrice: modeled.audit.strategyStopPrice,
+      strategyId: occurrence.specificStrategyId ?? null,
+      direction: occurrence.direction,
+      frozenZoneIdentity: canonicalFrozenZoneIdentity,
+      occurrenceId: occurrence.occurrenceId,
+      candidateId,
+      formulaVersion: FIXED_FORMULA_VERSION,
+    };
   const modeledFillTimestamp = modeled?.modeledFillTimestamp ?? null;
   const entryTime = modeledFillTimestamp !== null
     ? new Date(modeledFillTimestamp).toISOString()
@@ -6432,8 +6526,8 @@ function candidateDrivenEntryTrade(
     entryTime,
     exitTime: isOpen
       ? null
-      : modeled?.audit.modeledExitTimestamp !== null && modeled?.audit.modeledExitTimestamp !== undefined
-        ? new Date(modeled.audit.modeledExitTimestamp).toISOString()
+      : modeledExitTimestamp !== null
+        ? new Date(modeledExitTimestamp).toISOString()
         : exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
     entryPrice: modeled.modeledFill,
     exitPrice: isOpen ? null : modeled?.exitPrice ?? null,
@@ -6546,6 +6640,8 @@ function candidateDrivenEntryTrade(
        initialTargetPrice: modeled?.audit.initialTargetPrice ?? targetPrice,
        effectiveTargetPrice: modeled?.audit.effectiveTargetPrice ?? modeled?.targetPrice ?? targetPrice,
        orderedExecutionEvidence,
+       executionChronologyMode: chronologyMode,
+       executionChronology: orderedExecutionEvidence ?? deterministicExecutionEvidence,
        targetUpdateLedger: modeled?.audit.targetUpdateLedger ?? [],
        noForwardLevelAtEntry: modeled?.audit.noForwardLevelAtEntry ?? false,
        postEntryCompletedBars: modeled?.audit.postEntryCompletedBars ?? 0,

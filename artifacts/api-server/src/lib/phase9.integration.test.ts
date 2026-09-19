@@ -361,14 +361,26 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
           && trade.primaryEdge === setupType),
         `${kind} ${direction} must emit candidate-owned execution evidence`,
       );
-      assert.ok(
-        report.trades.some((trade) =>
+       const authoritativeTrade = report.trades.find((trade) =>
           trade.candidateId === candidate?.candidateId
           && trade.signalOccurrenceId === occurrence?.occurrenceId
           && trade.primaryEdge === setupType
-          && trade.direction === direction),
-        `${kind} ${direction} must produce an authoritative trade`,
-      );
+           && trade.direction === direction);
+       assert.ok(authoritativeTrade, `${kind} ${direction} must produce an authoritative trade`);
+       assert.ok(
+         authoritativeTrade?.audit?.executionChronologyMode,
+         `${kind} ${direction} must persist its production execution chronology mode`,
+       );
+       assert.equal(
+         authoritativeTrade?.audit?.executionChronology?.candidateId,
+         authoritativeTrade?.candidateId,
+         `${kind} ${direction} chronology must retain candidate ownership`,
+       );
+       assert.equal(
+         authoritativeTrade?.audit?.causalIdentity?.canonicalFrozenZoneIdentity,
+         candidate?.causalIdentity.canonicalFrozenZoneIdentity,
+         `${kind} ${direction} must carry one frozen-zone identity into execution`,
+       );
       assert.ok(occurrence?.directSignalOpenTimestamp,
         `${kind} ${direction} must retain the direct signal candle identity`);
       if (kind === "reversal") {

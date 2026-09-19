@@ -34,6 +34,8 @@ import {
 import { causalEmaSeries } from "./strategy/indicators.js";
 import {
   validateIndicatorReplayContext,
+  type DeterministicExecutionEvidence,
+  type ExecutionChronologyMode,
   type IndicatorReplayContext,
   type OrderedExecutionEvidence,
 } from "./strategy/ohlcv-execution.js";
@@ -323,7 +325,7 @@ export type VisualValidationTradeCandidate = {
 };
 
 export type VisualValidationReplayExecutionInput = {
-  replaySchemaVersion?: "visual-review-replay-input-v3-immutable-ordered-execution-evidence";
+  replaySchemaVersion?: "visual-review-replay-input-v4-execution-chronology";
   sourceFingerprint?: string;
   formulaVersion?: string;
   entryPrice: number;
@@ -340,6 +342,8 @@ export type VisualValidationReplayExecutionInput = {
   primaryLossExitLevel: PrimaryLossExitReference | null;
   runnerBufferTicks: number;
   orderedExecutionEvidence?: OrderedExecutionEvidence;
+  executionChronologyMode?: ExecutionChronologyMode;
+  executionChronology?: OrderedExecutionEvidence | DeterministicExecutionEvidence;
 };
 
 export type VisualValidationAccountReplayTrade = {
@@ -612,7 +616,7 @@ function replayInputForSnapshot(
     && Date.parse(candle.closeTime) > Date.parse(immediateTriggerCandle.closeTime),
   );
   return {
-    replaySchemaVersion: "visual-review-replay-input-v3-immutable-ordered-execution-evidence",
+    replaySchemaVersion: "visual-review-replay-input-v4-execution-chronology",
     sourceFingerprint: snapshot.sourceFingerprint ?? "",
     formulaVersion: snapshot.formulaVersion,
     entryPrice: trade.entryPrice,
@@ -630,6 +634,12 @@ function replayInputForSnapshot(
     runnerBufferTicks: snapshot.machineEvidence.audit.runnerBufferTicks ?? 4,
     ...(audit.orderedExecutionEvidence
       ? { orderedExecutionEvidence: audit.orderedExecutionEvidence }
+      : {}),
+    ...(audit.executionChronologyMode
+      ? { executionChronologyMode: audit.executionChronologyMode }
+      : {}),
+    ...(audit.executionChronology
+      ? { executionChronology: audit.executionChronology }
       : {}),
   };
 }

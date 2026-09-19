@@ -11,6 +11,8 @@ import {
   ORDERED_EXECUTION_EVIDENCE_VERSION,
   simulateOhlcvExecution,
   validateIndicatorReplayContext,
+  type DeterministicExecutionEvidence,
+  type OrderedExecutionEvidence,
   type OhlcvCandle,
 } from "./strategy/ohlcv-execution.js";
 import type {
@@ -26,6 +28,76 @@ import {
   type KeyLevelTargetInput,
   type KeyLevelTargetPlan,
 } from "./strategy/key-level-targets.js";
+
+const REPLAY_INPUT_SCHEMA_VERSION = "visual-review-replay-input-v4-execution-chronology";
+
+function orderedPointKey(point: { timestamp: number; sequence?: number }): string {
+  return `${point.timestamp}:${Number.isFinite(point.sequence) ? point.sequence : ""}`;
+}
+
+function validOrderedEvidence(
+  evidence: OrderedExecutionEvidence,
+  trade: BacktestTrade,
+  triggerOpenTime: number,
+  triggerCloseTime: number,
+): boolean {
+  const allPoints = [
+    ...evidence.entryPoints,
+    ...evidence.laterIntervals.flatMap((interval) => interval.points),
+  ];
+  const sorted = [...allPoints].sort((left, right) =>
+    left.timestamp - right.timestamp
+    || ((left.sequence ?? Number.POSITIVE_INFINITY) - (right.sequence ?? Number.POSITIVE_INFINITY)));
+  const members = new Set(allPoints.map(orderedPointKey));
+  const pointsSorted = allPoints.every((point, index) => orderedPointKey(point) === orderedPointKey(sorted[index]!));
+  const entryMember = evidence.entryEvent === null
+    || members.has(orderedPointKey(evidence.entryEvent));
+  const stopMember = evidence.stopEvent === null
+    || members.has(orderedPointKey(evidence.stopEvent));
+  const sameEntryTimestamp = evidence.entryEvent === null
+    || evidence.entryFillTimestamp === evidence.entryEvent.timestamp;
+  const intervalsValid = evidence.laterIntervals.every((interval, index, intervals) =>
+    interval.startTime <= interval.endTime
+    && interval.points.every((point) =>
+      Number.isFinite(point.timestamp)
+      && Number.isFinite(point.price)
+      && point.timestamp >= interval.startTime
+      && point.timestamp <= interval.endTime)
+    && (index === 0 || intervals[index - 1]!.endTime <= interval.startTime));
+  return evidence.chronologyMode === "ORDERED_INTRABAR"
+    && evidence.entryPoints.length > 0
+    && pointsSorted
+    && entryMember
+    && stopMember
+    && sameEntryTimestamp
+    && intervalsValid
+    && evidence.entryCandleOpenTime === triggerOpenTime
+    && evidence.entryCandleCloseTime === triggerCloseTime
+    && evidence.coverageStart <= triggerOpenTime
+    && evidence.coverageEnd >= triggerCloseTime
+    && evidence.contractSymbol === trade.contractSymbol
+    && evidence.tradingDate === trade.tradingDate
+    && evidence.direction === trade.direction
+    && evidence.occurrenceId === trade.signalOccurrenceId
+    && evidence.candidateId === trade.candidateId
+    && evidence.strategyId === (trade.specificStrategyId ?? null);
+}
+
+function validDeterministicEvidence(
+  evidence: DeterministicExecutionEvidence,
+  trade: BacktestTrade,
+  triggerOpenTime: number,
+  triggerCloseTime: number,
+): boolean {
+  return evidence.entryCandleOpenTime === triggerOpenTime
+    && evidence.entryCandleCloseTime === triggerCloseTime
+    && evidence.contractSymbol === trade.contractSymbol
+    && evidence.tradingDate === trade.tradingDate
+    && evidence.direction === trade.direction
+    && evidence.occurrenceId === trade.signalOccurrenceId
+    && evidence.candidateId === trade.candidateId
+    && evidence.strategyId === (trade.specificStrategyId ?? null);
+}
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
 export const DEFAULT_SHADOW_ACCOUNT_CONTRACTS = SHADOW_CONTRACTS_PER_TRADE;
@@ -270,53 +342,34 @@ function replayTradeWithFixedContracts(
   if (directEntryCandleStrategy) {
     const triggerOpenTime = Date.parse(replayInput.immediateTriggerCandle.openTime);
     const triggerCloseTime = Date.parse(replayInput.immediateTriggerCandle.closeTime);
-    const evidenceMatchesTrade = orderedExecutionEvidence
-      && replayInput.replaySchemaVersion === "visual-review-replay-input-v3-immutable-ordered-execution-evidence"
-      && replayInput.sourceFingerprint === orderedExecutionEvidence.sourceFingerprint
-      && replayInput.formulaVersion === orderedExecutionEvidence.formulaVersion
+    const chronology = replayInput.executionChronology;
+    const evidenceMatchesCommon = chronology
+      && replayInput.replaySchemaVersion === REPLAY_INPUT_SCHEMA_VERSION
+      && replayInput.sourceFingerprint === chronology.sourceFingerprint
+      && replayInput.formulaVersion === chronology.formulaVersion
       && replayInput.sourceFingerprint === match.expectedSourceFingerprint
       && replayInput.formulaVersion === match.expectedFormulaVersion
-      && orderedExecutionEvidence.schemaVersion === ORDERED_EXECUTION_EVIDENCE_VERSION
-      && orderedExecutionEvidence.contractSymbol === trade.contractSymbol
-      && orderedExecutionEvidence.tradingDate === trade.tradingDate
-      && orderedExecutionEvidence.direction === trade.direction
-      && orderedExecutionEvidence.occurrenceId === trade.signalOccurrenceId
-      && orderedExecutionEvidence.candidateId === trade.candidateId
-      && orderedExecutionEvidence.strategyId === (trade.specificStrategyId ?? null)
-      && orderedExecutionEvidence.entryCandleOpenTime === triggerOpenTime
-      && orderedExecutionEvidence.entryCandleCloseTime === triggerCloseTime
-      && orderedExecutionEvidence.coverageStart <= triggerOpenTime
-      && orderedExecutionEvidence.coverageEnd >= triggerCloseTime
-      && orderedExecutionEvidence.entryEvent !== null
-      && Number.isFinite(orderedExecutionEvidence.entryFillTimestamp)
-      && (trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-        || orderedExecutionEvidence.frozenZoneIdentity === (
-          trade.audit?.consolidationMidpointStop
-            ? [
-              trade.audit.consolidationMidpointStop.frozenZoneLow,
-              trade.audit.consolidationMidpointStop.frozenZoneHigh,
-              trade.audit.consolidationMidpointStop.calculationVersion,
-            ].join("|")
-            : null
-        ))
-      && orderedExecutionEvidence.entryPoints.every((point) =>
-        Number.isFinite(point.timestamp)
-        && Number.isFinite(point.price)
-        && point.timestamp >= orderedExecutionEvidence!.entryCandleOpenTime
-        && point.timestamp <= orderedExecutionEvidence!.entryCandleCloseTime,
-      )
-      && orderedExecutionEvidence.laterIntervals.every((interval) =>
-        interval.startTime <= interval.endTime
-        && interval.points.every((point) =>
-          Number.isFinite(point.timestamp)
-          && Number.isFinite(point.price)
-          && point.timestamp >= interval.startTime
-          && point.timestamp <= interval.endTime,
-        ),
-      );
+      && chronology.contractSymbol === trade.contractSymbol
+      && chronology.tradingDate === trade.tradingDate
+      && chronology.direction === trade.direction
+      && chronology.occurrenceId === trade.signalOccurrenceId
+      && chronology.candidateId === trade.candidateId
+      && chronology.strategyId === (trade.specificStrategyId ?? null)
+      && chronology.frozenZoneIdentity === (trade.audit?.causalIdentity?.canonicalFrozenZoneIdentity ?? null);
+    const evidenceMatchesTrade = evidenceMatchesCommon
+      && (replayInput.executionChronologyMode === "ORDERED_INTRABAR"
+        ? orderedExecutionEvidence !== undefined
+          && orderedExecutionEvidence.schemaVersion === ORDERED_EXECUTION_EVIDENCE_VERSION
+          && validOrderedEvidence(orderedExecutionEvidence, trade, triggerOpenTime, triggerCloseTime)
+        : validDeterministicEvidence(
+          chronology as DeterministicExecutionEvidence,
+          trade,
+          triggerOpenTime,
+          triggerCloseTime,
+        ));
     if (!evidenceMatchesTrade) {
       throw new Error(
-        `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks complete immutable ordered execution evidence. Regenerate the review set.`,
+        `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks complete immutable ordered execution evidence or compatible deterministic execution chronology. Regenerate the review set.`,
       );
     }
   }
@@ -429,7 +482,7 @@ function replayTradeWithFixedContracts(
       || trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
     orderedIntrabarPoints: orderedExecutionEvidence?.entryPoints,
     orderedPostEntryEvidenceIntervals: orderedExecutionEvidence?.laterIntervals,
-    orderedIntrabarEvidenceComplete: orderedExecutionEvidence !== undefined,
+    orderedIntrabarEvidenceComplete: replayInput.executionChronologyMode === "ORDERED_INTRABAR",
     entryFillTimestamp: orderedExecutionEvidence?.entryFillTimestamp ?? null,
     subsequentCompletedCandles: replayInput.subsequentCompletedCandles.map(asOhlcvCandle),
     sessionCloseCandle: replayInput.sessionCloseCandle ? asOhlcvCandle(replayInput.sessionCloseCandle) : null,

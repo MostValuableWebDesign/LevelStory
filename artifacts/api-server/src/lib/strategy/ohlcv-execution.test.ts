@@ -118,6 +118,105 @@ test("Strong short executes a verified midpoint stop during the entry candle", (
   assert.equal(result.audit.modeledExitTimestamp, openTime + 120_000);
 });
 
+test("equal-timestamp Strong long entry and midpoint stop remain unresolved without sub-order", () => {
+  const timestamp = 11_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(104.5, 105, 101.5, 101.5, timestamp + 300_000),
+      openTime: timestamp,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    orderedIntrabarPoints: [
+      { timestamp, price: 105 },
+      { timestamp, price: 101.5 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+    evaluateEntryCandleForExit: true,
+  });
+  assert.equal(result.exitReason, "not filled");
+  assert.equal(result.modeledFill, null);
+  assert.equal(result.legs.length, 0);
+  assert.equal(result.accounting.netPnl, 0);
+  assert.ok(result.eventLabels.includes("ENTRY_EXIT_ORDER_UNRESOLVED"));
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL));
+});
+
+test("equal-timestamp Strong short entry and midpoint stop remain unresolved without sub-order", () => {
+  const timestamp = 12_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    entry: 95,
+    immediateTriggerCandle: {
+      ...timedCandle(95.5, 98.5, 95, 98, timestamp + 300_000),
+      openTime: timestamp,
+    },
+    strategyStop: 98.25,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    orderedIntrabarPoints: [
+      { timestamp, price: 95 },
+      { timestamp, price: 98.5 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+    evaluateEntryCandleForExit: true,
+  });
+  assert.equal(result.exitReason, "not filled");
+  assert.equal(result.modeledFill, null);
+  assert.equal(result.legs.length, 0);
+  assert.equal(result.accounting.netPnl, 0);
+  assert.ok(result.eventLabels.includes("ENTRY_EXIT_ORDER_UNRESOLVED"));
+  assert.ok(result.ambiguityLabels.includes(AMBIGUOUS_ENTRY_EXIT_ORDER_LABEL));
+});
+
+test("equal-timestamp ordered entry-before-stop sequence executes the Strong stop", () => {
+  const timestamp = 13_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(104.5, 105, 101.5, 101.5, timestamp + 300_000),
+      openTime: timestamp,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    orderedIntrabarPoints: [
+      { timestamp, price: 105, sequence: 1 },
+      { timestamp, price: 101.5, sequence: 2 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+    evaluateEntryCandleForExit: true,
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.audit.modeledExitTimestamp, timestamp);
+  assert.equal(result.legs[0]?.exitTimestamp, timestamp);
+});
+
+test("equal-timestamp ordered stop-before-entry sequence ignores the pre-entry stop", () => {
+  const timestamp = 14_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(104.5, 105, 101.5, 105, timestamp + 300_000),
+      openTime: timestamp,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    orderedIntrabarPoints: [
+      { timestamp, price: 101.5, sequence: 1 },
+      { timestamp, price: 105, sequence: 2 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+    evaluateEntryCandleForExit: true,
+  });
+  assert.equal(result.modeledFill, 105);
+  assert.equal(result.exitReason, "manual");
+  assert.equal(result.legs.length, 0);
+});
+
 test("entry-candle ordered exits are unchanged by empty or populated later intervals", () => {
   const run = (direction: "long" | "short", laterIntervals: readonly {
     startTime: number;

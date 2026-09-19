@@ -87,9 +87,9 @@ import {
   type Phase3PilotReport,
 } from "../lib/phase3-edge-pilot.js";
 
-const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v13-entry-candle-gap-exit";
-const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v18-entry-candle-gap-exit";
-const EXECUTION_MANAGEMENT_VERSION = "execution-management-v15-integrity-cache-boundary";
+const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v14-execution-chronology-frozen-zone";
+const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v19-execution-chronology-frozen-zone";
+const EXECUTION_MANAGEMENT_VERSION = "execution-management-v16-execution-chronology-frozen-zone";
 const ACCOUNT_STATE_VERSION = "account-position-state-v3-strict-exit-boundary";
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;
