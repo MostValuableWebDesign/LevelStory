@@ -1,0 +1,337 @@
+Fix the four remaining Strong Breakout midpoint-stop defects in the current LevelStory repository.
+
+Inspect the current checkout before editing. Preserve the midpoint formula and the corrections that are already working.
+
+DO NOT CHANGE
+
+Preserve these verified behaviors:
+
+- `STRONG_BREAKOUT_AFTER_CONSOLIDATION` uses the strict midpoint-reentry stop.
+- Midpoint touch alone does not exit.
+- Long stop is the first valid tick strictly below the midpoint.
+- Short stop is the first valid tick strictly above the midpoint.
+- `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT` retains its eight-tick outside-zone stop.
+- Missing specific strategy identity fails closed.
+- Catastrophe protection remains operational.
+- Initial R remains based on the ordinary strategy stop.
+- Target exits do not receive midpoint stop-hit evidence.
+- Strong Breakout does not use the legacy eight-tick stop-buffer metadata.
+- Existing entry qualification, four-candle consolidation requirement, targets, account arbitration, fees, and slippage remain unchanged.
+
+Implement the four repairs below.
+
+1. MAKE ALL DIRECT IDENTITIES STRATEGY-SPECIFIC
+
+Current defect:
+
+The code carries `specificStrategyId`, but the following identities still use only the canonical `CONSOLIDATION_BREAKOUT_CONTINUATION` family:
+
+- Audit ID
+- Direct crossing identity
+- Governed direct occurrence ID
+
+Therefore, Strong Breakout and Extended NTZ using the same contract, date, direction, consolidation candles, and crossing candle can receive the same identity and be merged.
+
+Required behavior:
+
+Include the explicit `specificStrategyId` in every direct consolidation identity:
+
+- Audit ID
+- Direct consolidation crossing identity
+- Governed occurrence identity
+- Candidate causal identity
+- Candidate ID where derived from the causal identity
+- Trade and execution provenance
+- Visual Review snapshot identity
+
+For example, identity inputs must distinguish:
+
+- `STRONG_BREAKOUT_AFTER_CONSOLIDATION`
+- `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT`
+
+A generic `CONSOLIDATION_BREAKOUT_CONTINUATION` family value is not sufficient.
+
+Required rules:
+
+- Increment the direct occurrence identity version.
+- Do not reuse the previous occurrence ID when the specific strategy differs.
+- Two otherwise identical Strong and Extended records must produce different audit, occurrence, crossing, candidate, and trade IDs.
+- If two records with the same governed identity contain different nonnull `specificStrategyId` values, classify that as an identity invariant violation.
+- Reject the merged occurrence, candidate, and trade fail-closed.
+- Do not silently select `primaryByEvidence.specificStrategyId`.
+- A missing specific identity on a direct consolidation occurrence must remain non-executable.
+- Preserve compatibility for unrelated non-direct strategies.
+
+Inspect and repair at least:
+
+- `auditForEvaluation`
+- `directConsolidationCrossingIdentity`
+- `directOccurrenceIdentityParts`
+- `governedOccurrenceId`
+- Historical occurrence merging
+- `candidateCausalIdentityForOccurrence`
+- Candidate ID construction
+- Batch duplicate-occurrence reconciliation
+- Visual Review trade matching
+
+2. KEEP EXTENDED NTZ OUT OF MIDPOINT VISUAL EVIDENCE
+
+Current defect:
+
+Execution gives Extended NTZ the correct eight-tick outside stop, but Visual Review still:
+
+- Draws the raw midpoint
+- Displays a Strong Breakout midpoint explanation
+- Creates `consolidationMidpointStop` evidence
+- Sets `stopBufferTicks` to null
+
+Required behavior:
+
+Only an explicit:
+
+`STRONG_BREAKOUT_AFTER_CONSOLIDATION`
+
+may receive:
+
+- `consolidationMidpointStop`
+- Raw midpoint annotation
+- Midpoint-reentry explanation
+- Midpoint calculation version
+- Midpoint stop-hit marker
+- Null/not-applicable stop-buffer metadata
+
+For `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT`:
+
+- Display the frozen consolidation high and low.
+- Display its eight-tick outside-zone strategy stop.
+- Preserve `stopBufferTicks = 8`.
+- Preserve the corresponding stop-buffer points.
+- Set `consolidationMidpointStop = null`.
+- Do not draw a midpoint line.
+- Do not use “Strong Breakout midpoint-reentry stop” text.
+- Do not emit `CONSOLIDATION_MIDPOINT_REENTRY_STOP`.
+- Use a truthful Extended NTZ stop explanation and calculation version.
+
+Refactor the Visual Review projection into an explicitly discriminated result, such as:
+
+- `kind: "strong_breakout_midpoint"`
+- `kind: "extended_ntz_outside_stop"`
+
+Do not infer the projection kind from the canonical family alone.
+
+A generic continuation record with no specific strategy ID must fail closed and produce no executable stop projection.
+
+3. RECORD KNOWN CANDLE-OPEN TIMESTAMPS
+
+Current defect:
+
+The implementation now avoids fabricated candle-close timestamps, but it also leaves timestamps null when the exact candle-open time is known.
+
+Required activation behavior:
+
+- Ordered entry point: use its exact timestamp.
+- Entry already reached at the entry candle’s open: use `trigger.openTime`.
+- Explicit authoritative entry-fill timestamp: use it when valid and causally within the entry candle.
+- Unordered intrabar entry after the candle opened: leave exact activation timestamp null.
+- Never substitute candle-close time.
+
+Required stop-hit behavior:
+
+Set `stopHitTimestamp` only when the actual exit reason is:
+
+`CONSOLIDATION_MIDPOINT_REENTRY_STOP`
+
+Then:
+
+- Ordered stop point: use the ordered point timestamp.
+- Candle opens through the midpoint stop: use the exit candle’s `openTime`.
+- Unordered intrabar OHLC stop touch: leave exact stop-hit timestamp null.
+- Target, runner, catastrophe, breakeven, session-close, manual, and open outcomes: midpoint `stopHitTimestamp` must be null.
+
+Add provenance fields if needed:
+
+- `activationTimestampSource: "ORDERED_POINT" | "CANDLE_OPEN" | "EXPLICIT_FILL" | "UNKNOWN"`
+- `stopHitTimestampSource: "ORDERED_POINT" | "GAP_OPEN" | "UNKNOWN"`
+
+Carry the values consistently through:
+
+- OHLC execution
+- Candidate-owned trade
+- Audit
+- Shadow replay
+- Batch aggregation
+- Visual Review
+
+Do not convert an unknown intrabar instant into candle-open or candle-close time.
+
+4. PRESERVE THE MIDPOINT EXIT REASON ON THE EXIT LEG
+
+Current defect:
+
+The top-level execution result reports:
+
+`CONSOLIDATION_MIDPOINT_REENTRY_STOP`
+
+but the authoritative execution leg reports only:
+
+`stop`
+
+Required behavior:
+
+Extend `ModeledExecutionLeg.exitReason` to support:
+
+`CONSOLIDATION_MIDPOINT_REENTRY_STOP`
+
+When the ordinary Strong Breakout midpoint stop causes the exit:
+
+- Top-level exit reason must be `CONSOLIDATION_MIDPOINT_REENTRY_STOP`.
+- Exit leg reason must also be `CONSOLIDATION_MIDPOINT_REENTRY_STOP`.
+- `stopLevel` must be `strategy`.
+- Event labels must include `STRATEGY_STOP_REACHED`.
+- The exit leg must retain the exact occurrence, candidate, trade, strategy, and audit linkage.
+
+Catastrophe exits must remain catastrophe exits and must not use the midpoint reason.
+
+DUAL-BARRIER EVIDENCE
+
+When one observable price crosses both the midpoint stop and catastrophe stop:
+
+- Apply the existing conservative catastrophe precedence.
+- Use the adverse gap/first-observed fill.
+- Set `stopLevel = "catastrophe"`.
+- Preserve the catastrophe outcome.
+- Record that both barriers were breached.
+
+Add explicit evidence such as:
+
+`breachedStopLevels: ["strategy", "catastrophe"]`
+
+Do not represent the midpoint barrier as the authoritative exit when catastrophe precedence applies.
+
+When ordered evidence crosses the midpoint stop first and catastrophe later:
+
+- Exit immediately at the midpoint stop.
+- Record only the midpoint strategy barrier as breached at the exit event.
+- Do not look forward and claim the later catastrophe level was reached.
+
+REQUIRED REGRESSION TESTS
+
+Add production-path tests, not helper-only tests.
+
+Identity tests:
+
+1. Strong and Extended with identical candles produce different audit IDs.
+2. They produce different crossing identities.
+3. They produce different occurrence IDs.
+4. They produce different candidate and trade IDs.
+5. Conflicting specific IDs under one forced identity fail closed.
+6. Missing specific direct identity remains non-executable.
+7. Reversing input order does not change identity or merge results.
+
+Visual Review tests:
+
+8. Strong Breakout displays midpoint, midpoint stop, and midpoint explanation.
+9. Extended NTZ displays its eight-tick outside stop.
+10. Extended NTZ does not contain a midpoint annotation.
+11. Extended NTZ has `consolidationMidpointStop === null`.
+12. Extended NTZ retains `stopBufferTicks === 8`.
+13. Generic continuation without a specific ID receives no direct execution projection.
+
+Timestamp tests:
+
+14. Ordered entry records the ordered timestamp.
+15. Entry known at candle open records the candle-open timestamp.
+16. Unordered intrabar entry leaves activation time null.
+17. Ordered midpoint stop records the ordered hit time.
+18. Gap through midpoint stop records the exit candle’s open time.
+19. Unordered intrabar stop touch leaves exact hit time null.
+20. Target exit leaves midpoint hit time null.
+21. Session-close exit leaves midpoint hit time null.
+22. Catastrophe exit leaves midpoint hit time null.
+23. Shadow replay preserves identical timestamp values and sources.
+
+Exit-leg tests:
+
+24. Midpoint stop appears on both the top-level execution and exit leg.
+25. Midpoint exit leg retains `stopLevel = "strategy"`.
+26. Catastrophe exit does not use the midpoint reason.
+27. Gap through both stops records both breached levels and catastrophe precedence.
+28. Ordered midpoint-first evidence exits as midpoint stop without claiming a later catastrophe breach.
+29. Long and short behavior is symmetric.
+
+Cache and linkage tests:
+
+30. New specific identities invalidate incompatible cached strategy results.
+31. Raw/base candle cache remains reusable.
+32. Candidate, trade, exit leg, audit, and Visual Review contain the same specific strategy ID.
+33. Fresh, repeated, and post-restart results match.
+
+VERIFICATION
+
+Run:
+
+node --import ./scripts/node_modules/tsx/dist/loader.mjs --test \
+  artifacts/api-server/src/lib/strategy/consolidation-midpoint-stop.test.ts \
+  artifacts/api-server/src/lib/strategy/ohlcv-execution.test.ts \
+  artifacts/api-server/src/lib/phase9.test.ts \
+  artifacts/api-server/src/lib/phase9.integration.test.ts \
+  artifacts/api-server/src/lib/visual-validation.test.ts \
+  artifacts/api-server/src/lib/shadow-account-replay.test.ts \
+  artifacts/api-server/src/lib/batch-backtest.test.ts
+
+Then regenerate the workspace DB and API-Zod packages using the repository’s normal build commands before running typecheck. The current source definitions exist, but generated package exports are stale.
+
+Run:
+
+- API server typecheck
+- LevelStory typecheck
+- `git diff --check`
+
+Do not suppress TypeScript errors, remove assertions, or add unsafe casts to bypass generated-package problems.
+
+REAL-DATA ACCEPTANCE
+
+Run at least one nonzero real-data Strong Breakout execution and report:
+
+- Specific strategy ID
+- Canonical family
+- Audit ID
+- Crossing identity
+- Occurrence ID
+- Candidate ID
+- Trade ID
+- Exit-leg reason
+- Frozen zone
+- Midpoint
+- Tick-aligned stop
+- Catastrophe stop
+- Activation timestamp and source
+- Stop-hit timestamp and source
+- Breached stop levels
+- Visual Review annotations
+- Formula and cache versions
+
+Also provide an Extended NTZ production-path fixture proving:
+
+- Its identity is separate.
+- It retains the eight-tick outside stop.
+- It has no midpoint evidence or annotation.
+
+A passing helper test, HTTP success, skipped assertion, or zero-trade replay is not proof.
+
+DELIVERABLE
+
+Return:
+
+1. Root causes
+2. Files and functions changed
+3. Identity version changes
+4. Strong versus Extended behavior
+5. Timestamp behavior
+6. Exit-leg and dual-barrier evidence
+7. Focused test results
+8. Typecheck results
+9. Real linked execution evidence
+10. Any remaining unverified path
+
+Do not claim completion until all four defects are resolved.
