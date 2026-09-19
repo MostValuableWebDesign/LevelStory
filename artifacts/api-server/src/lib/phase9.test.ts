@@ -884,6 +884,11 @@ function occurrenceAudit(
     criticalLevelEvidence: "",
     trendEvidence: "",
     patienceState: "ENTRY_TRIGGERED",
+    // Consolidation direct fixtures must identify which authorized direct
+    // strategy owns the frozen-zone geometry.
+    specificStrategyId: setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      ? "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
+      : null,
     patienceCandle: pCandle,
     triggerCandle: eCandle,
     patienceCandleOpenTime: new Date(pOpen).toISOString(),
@@ -2632,6 +2637,7 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
   }) as HistoricalOccurrence;
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.specificStrategyId = "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
   occurrence.causalTrendDirection = "long";
   occurrence.causalTrendSource = "BREAKOUT_DIRECTION";
   occurrence.causalTrendTimestamp = "2026-08-25T14:55:00.000Z";
@@ -2678,6 +2684,7 @@ test("Candidate, fill, stop, and target retain the same signal/arm/zone identity
   const trade = result.authoritativeTrades[0]!;
   const identity = {
     signalOccurrenceId: occurrence.occurrenceId,
+    specificStrategyId: "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
     eligibilityArmId: "identity-arm",
     activeConsolidationZoneId: "identity-zone",
     causalTrendDirection: "long",
@@ -3688,6 +3695,7 @@ test("candidate projection enforces the consolidation guard before candidate-own
   });
   occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
   occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.specificStrategyId = "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
   occurrence.causalTrendDirection = "long";
   occurrence.causalTrendSource = "BREAKOUT_DIRECTION";
   occurrence.causalTrendTimestamp = "2026-08-25T14:10:00.000Z";

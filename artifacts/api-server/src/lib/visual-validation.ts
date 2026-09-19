@@ -1812,6 +1812,7 @@ function annotation(
 }
 
 type DirectConsolidationProjection = {
+  kind: "strong" | "extended";
   zoneHigh: number;
   zoneLow: number;
   entryThreshold: number;
@@ -1822,16 +1823,30 @@ type DirectConsolidationProjection = {
   bufferPoints: number;
 };
 
+function directConsolidationStrategyId(
+  audit: Pick<BacktestAuditRecord, "setupType" | "specificStrategyId">,
+  occurrence?: HistoricalOccurrence,
+): "STRONG_BREAKOUT_AFTER_CONSOLIDATION" | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | null {
+  const ids = [
+    occurrence?.specificStrategyId,
+    audit.specificStrategyId,
+    audit.setupType === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+      ? audit.setupType
+      : audit.setupType === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
+        ? audit.setupType
+        : null,
+  ].filter((id): id is "STRONG_BREAKOUT_AFTER_CONSOLIDATION" | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" =>
+    id === "STRONG_BREAKOUT_AFTER_CONSOLIDATION" || id === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
+  );
+  if (new Set(ids).size > 1) return null;
+  return ids[0] ?? null;
+}
+
 function isDirectConsolidationStrategy(
   audit: Pick<BacktestAuditRecord, "setupType" | "specificStrategyId">,
   occurrence?: HistoricalOccurrence,
 ): boolean {
-  return occurrence?.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || occurrence?.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-    || audit.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || audit.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-    || audit.setupType === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || audit.setupType === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+  return directConsolidationStrategyId(audit, occurrence) !== null;
 }
 
 /**
@@ -1877,9 +1892,8 @@ function directConsolidationProjection(
   const entryThreshold = audit.direction === "long"
     ? zoneHigh + 8 * tickSize
     : zoneLow - 8 * tickSize;
-  const strong = occurrence?.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || audit.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || audit.setupType === "STRONG_BREAKOUT_AFTER_CONSOLIDATION";
+  const specificStrategyId = directConsolidationStrategyId(audit, occurrence);
+  const strong = specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION";
   const midpointStop = strong
     ? consolidationMidpointStop({
       high: zoneHigh,
@@ -1897,6 +1911,7 @@ function directConsolidationProjection(
     || !Number.isFinite(entryThreshold)
     || !Number.isFinite(strategyStop)) return null;
   return {
+    kind: strong ? "strong" : "extended",
     zoneHigh,
     zoneLow,
     entryThreshold: Number(entryThreshold.toFixed(10)),
@@ -2030,7 +2045,6 @@ function buildAnnotations(
   const directConsolidationCandidate = isDirectConsolidationStrategy(audit, occurrence);
   const directConsolidation = directConsolidationProjection(audit, occurrence);
   const directStrategy = directConsolidationCandidate
-    || occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence?.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence?.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
   const directEntryDetail = directConsolidationCandidate
@@ -2116,16 +2130,23 @@ function buildAnnotations(
   if (directConsolidation) {
     addLevel("consolidation-zone-high", "Frozen consolidation high", directConsolidation.zoneHigh, "Frozen causal consolidation boundary used for Strong Breakout qualification.", "muted");
     addLevel("consolidation-zone-low", "Frozen consolidation low", directConsolidation.zoneLow, "Frozen causal consolidation boundary used for Strong Breakout qualification.", "muted");
-    addLevel(
-      "consolidation-midpoint",
-      "Raw 50% midpoint",
-      directConsolidation.rawMidpoint,
-      `Raw midpoint of the frozen zone. The strategy stop is the first ${audit.direction === "long" ? "tick below" : "tick above"} this price.`,
-      "blue",
-    );
-    const midpointStopAnnotation = lines.find((line) => line.id === "strategy-stop");
-    if (midpointStopAnnotation) {
-      midpointStopAnnotation.detail = `Strong Breakout midpoint-reentry stop: price must enter more than 50% of the frozen zone. Tick-aligned threshold ${directConsolidation.strategyStop}; calculation ${directConsolidation.calculationVersion}.`;
+    if (directConsolidation.kind === "strong") {
+      addLevel(
+        "consolidation-midpoint",
+        "Raw 50% midpoint",
+        directConsolidation.rawMidpoint,
+        `Raw midpoint of the frozen zone. The strategy stop is the first ${audit.direction === "long" ? "tick below" : "tick above"} this price.`,
+        "blue",
+      );
+      const midpointStopAnnotation = lines.find((line) => line.id === "strategy-stop");
+      if (midpointStopAnnotation) {
+        midpointStopAnnotation.detail = `Strong Breakout midpoint-reentry stop: price must enter more than 50% of the frozen zone. Tick-aligned threshold ${directConsolidation.strategyStop}; calculation ${directConsolidation.calculationVersion}.`;
+      }
+    } else {
+      const extendedStopAnnotation = lines.find((line) => line.id === "strategy-stop");
+      if (extendedStopAnnotation) {
+        extendedStopAnnotation.detail = `Extended NTZ consolidation stop: eight ticks outside the frozen consolidation zone at ${directConsolidation.strategyStop}. Midpoint re-entry is not applicable.`;
+      }
     }
   }
   // Candidate-owned plans are authoritative. Audit target fields are legacy
@@ -2828,22 +2849,22 @@ function buildMachineSnapshot(
       strategyStopPrice: directProjection.strategyStop,
       finalStrategyStopBoundary: directProjection.strategyStop,
       stopDirection: displayedAuditBeforeGeometry.direction,
-       // Strong Breakout uses midpoint evidence, not the legacy fixed
-       // eight-tick stop-buffer metadata.
-       stopBufferTicks: null,
+        stopBufferTicks: directProjection.kind === "strong" ? null : 8,
       stopBufferPoints: directProjection.bufferPoints,
-       consolidationMidpointStop: {
-         frozenZoneHigh: directProjection.zoneHigh,
-         frozenZoneLow: directProjection.zoneLow,
-         rawMidpoint: directProjection.rawMidpoint,
-         tickAlignedStop: directProjection.strategyStop,
-         direction: displayedAuditBeforeGeometry.direction!,
-         calculationVersion: directProjection.calculationVersion,
-         activationTimestamp: displayedAuditBeforeGeometry.consolidationMidpointStop?.activationTimestamp ?? null,
-         stopHitTimestamp: displayedAuditBeforeGeometry.consolidationMidpointStop?.stopHitTimestamp ?? null,
-         sourceOccurrenceId: occurrence?.occurrenceId ?? displayedAuditBeforeGeometry.consolidationMidpointStop?.sourceOccurrenceId ?? null,
-         sourceAuditId: displayedAuditBeforeGeometry.consolidationMidpointStop?.sourceAuditId ?? displayedAuditBeforeGeometry.id,
-       },
+        consolidationMidpointStop: directProjection.kind === "strong"
+          ? {
+            frozenZoneHigh: directProjection.zoneHigh,
+            frozenZoneLow: directProjection.zoneLow,
+            rawMidpoint: directProjection.rawMidpoint,
+            tickAlignedStop: directProjection.strategyStop,
+            direction: displayedAuditBeforeGeometry.direction!,
+            calculationVersion: directProjection.calculationVersion,
+            activationTimestamp: displayedAuditBeforeGeometry.consolidationMidpointStop?.activationTimestamp ?? null,
+            stopHitTimestamp: displayedAuditBeforeGeometry.consolidationMidpointStop?.stopHitTimestamp ?? null,
+            sourceOccurrenceId: occurrence?.occurrenceId ?? displayedAuditBeforeGeometry.consolidationMidpointStop?.sourceOccurrenceId ?? null,
+            sourceAuditId: displayedAuditBeforeGeometry.consolidationMidpointStop?.sourceAuditId ?? displayedAuditBeforeGeometry.id,
+          }
+          : null,
       directConsolidationZoneHigh: directProjection.zoneHigh,
       directConsolidationZoneLow: directProjection.zoneLow,
       directConsolidationStartTimestamp: occurrence?.directConsolidationStartTimestamp

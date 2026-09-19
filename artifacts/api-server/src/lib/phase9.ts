@@ -407,6 +407,9 @@ export type BacktestTrade = {
     modeledFillObservationTime: string | null;
      modeledFillTimestamp?: string | null;
      modeledExitTimestamp?: string | null;
+      activationTimestampSource?: "ORDERED_INTRABAR_POINT" | "EXPLICIT_THRESHOLD" | "CANDLE_OPEN" | null;
+      stopHitTimestampSource?: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null;
+      breachedStopLevels?: Array<"strategy" | "catastrophe">;
     exitCandleOpenTime: string | null;
     exitCandleCloseTime: string | null;
     assumptions: string[];
@@ -628,6 +631,9 @@ export type BacktestAuditRecord = {
   triggerCandleOpenTime: string | null;
   triggerCandleCloseTime: string | null;
   modeledFillObservationTime: string | null;
+  activationTimestampSource?: "ORDERED_INTRABAR_POINT" | "EXPLICIT_THRESHOLD" | "CANDLE_OPEN" | null;
+  stopHitTimestampSource?: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null;
+  breachedStopLevels?: Array<"strategy" | "catastrophe">;
   exitCandleOpenTime: string | null;
   exitCandleCloseTime: string | null;
   entryTriggerPrice: number | null;
@@ -1075,9 +1081,12 @@ function isAuthorizedDirectStrategyOccurrence(occurrence: HistoricalOccurrence):
   if (occurrence.directSignalOpenTimestamp === undefined) return false;
   const strategy = canonicalStrategyId(occurrence.strategyCandidate) ?? occurrence.strategyCandidate;
   const edge = canonicalStrategyId(occurrence.primaryEdge ?? "") ?? occurrence.primaryEdge;
-  return strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-    || strategy === "EQUIVALENT_CANDLE_REVERSAL"
-    || edge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+  if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || edge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+    return occurrence.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+      || occurrence.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+  }
+  return strategy === "EQUIVALENT_CANDLE_REVERSAL"
     || edge === "EQUIVALENT_CANDLE_REVERSAL";
 }
 
@@ -1132,6 +1141,16 @@ function sameCandleConsolidationEvidence(input: {
 
 function candidateIdentityViolations(occurrence: HistoricalOccurrence): string[] {
   const violations = [...(occurrence.identityInvariantViolations ?? [])];
+  const canonicalStrategy = canonicalStrategyId(occurrence.strategyCandidate) ?? occurrence.strategyCandidate;
+  const canonicalEdge = canonicalStrategyId(occurrence.primaryEdge ?? "") ?? occurrence.primaryEdge;
+  const isConsolidationDirect =
+    canonicalStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    || canonicalEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  if (isConsolidationDirect
+    && occurrence.specificStrategyId !== "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    && occurrence.specificStrategyId !== "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT") {
+    violations.push("MISSING_OR_INVALID_SPECIFIC_DIRECT_STRATEGY_ID");
+  }
   const direct = isAuthorizedDirectStrategyOccurrence(occurrence);
   const requiredText = [
     ["sourceFingerprint", occurrence.sourceFingerprint],
@@ -3180,7 +3199,7 @@ function auditForEvaluation(
     } as HistoricalOccurrence).evidence ?? null
     : null;
   return {
-    id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
+    id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}-${evaluation.specificStrategyId ?? "generic"}`,
     tradingDate,
     contractSymbol,
     contractMonth,
@@ -3271,7 +3290,7 @@ function auditForEvaluation(
     ).runnerBufferTicks,
      finalStrategyStopBoundary: strategyStopForAudit,
     stopDirection: evaluation.direction ?? null,
-    stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
+    stopSourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}-${evaluation.specificStrategyId ?? "generic"}`,
     triggerCandleOpenTime: effectiveSignalPatience.triggerCandle?.openTime ?? null,
     triggerCandleCloseTime: effectiveSignalPatience.triggerCandle?.closeTime ?? null,
     modeledFillObservationTime: null,
@@ -3692,7 +3711,7 @@ function directOccurrenceIdentityParts(value: HistoricalOccurrence): {
     ?? value.strategyCandidate;
   const missing: string[] = [];
   const shared = [
-     "historical-direct-occurrence-v3",
+     "historical-direct-occurrence-v4-strategy-specific",
     value.sourceFingerprint,
     value.formulaHash,
     value.formulaVersion,
@@ -3701,6 +3720,9 @@ function directOccurrenceIdentityParts(value: HistoricalOccurrence): {
     value.tradingDate,
     value.direction ?? "missing-direction",
     value.directSignalOpenTimestamp ?? "missing-signal",
+     ...(strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+       ? [value.specificStrategyId ?? "missing-specific-strategy"]
+       : []),
   ];
 
   if (strategy === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
@@ -4051,6 +4073,14 @@ export function buildHistoricalOccurrenceLedger(
       byIdentity.set(identity, { ...value, occurrenceId: governedOccurrenceId(value) });
       return;
     }
+    const existingDirectStrategy = canonicalStrategyId(existing.strategyCandidate) ?? existing.strategyCandidate;
+    const valueDirectStrategy = canonicalStrategyId(value.strategyCandidate) ?? value.strategyCandidate;
+    const conflictingSpecificStrategy =
+      existingDirectStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      && valueDirectStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+      && existing.specificStrategyId !== null
+      && value.specificStrategyId !== null
+      && existing.specificStrategyId !== value.specificStrategyId;
     const edgePrecedence = (setupType: string): number => [
       "ORB_PULLBACK_CONTINUATION",
       "EARLY_ORB_MOMENTUM_CONTINUATION",
@@ -4148,6 +4178,7 @@ export function buildHistoricalOccurrenceLedger(
       identityInvariantViolations: [...new Set([
         ...existing.identityInvariantViolations,
         ...value.identityInvariantViolations,
+        ...(conflictingSpecificStrategy ? ["CONFLICTING_DIRECT_SPECIFIC_STRATEGY_ID"] : []),
         ...directThresholdEvidenceViolations,
       ])].sort(),
       ...(isAuthorizedDirectStrategyOccurrence(existing) || isAuthorizedDirectStrategyOccurrence(value)
@@ -4310,9 +4341,12 @@ export function buildHistoricalOccurrenceLedger(
         const directPatternTrend = directStrategy === "EQUIVALENT_CANDLE_REVERSAL"
           ? record.direction === "short" ? "bullish" : "bearish"
           : null;
-         const directConsolidationCrossingIdentity = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-           ? [
-             directStrategy,
+          const directConsolidationCrossingIdentity = directStrategy === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+            ? [
+              "direct-crossing-v2-strategy-specific",
+              directStrategy,
+              record.specificStrategyId
+                ?? (isSpecificStrategyId(record.setupType) ? record.setupType : "missing-specific-strategy"),
              record.direction,
              record.contractSymbol,
              record.directConsolidationStartTimestamp ?? "",
@@ -6155,6 +6189,8 @@ function candidateDrivenEntryTrade(
     || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
+  const midpointManagedDirect = occurrence.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || occurrence.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
   if (disposition.status !== "MODELED_TRADE_CREATED" || (!direct && !occurrence.patienceCandle) || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
@@ -6221,7 +6257,10 @@ function candidateDrivenEntryTrade(
     entry: entryPrice,
     patienceCandle: patience as any,
     immediateTriggerCandle: entryCandle as any,
-    evaluateEntryCandleForExit: direct,
+    // Direct strategies qualify on completed setup evidence and manage from
+    // the following completed candle. Patience candidates retain their
+    // established entry-candle ambiguity behavior.
+    evaluateEntryCandleForExit: midpointManagedDirect ? false : true,
     orderedIntrabarPoints,
     orderedPostEntryPoints: orderedEvidenceComplete
       ? orderedPostEntryEvidenceIntervals.flatMap((interval) => interval.points)
@@ -6411,6 +6450,9 @@ function candidateDrivenEntryTrade(
        modeledExitTimestamp: modeled?.audit.modeledExitTimestamp === null || modeled?.audit.modeledExitTimestamp === undefined
          ? null
          : new Date(modeled.audit.modeledExitTimestamp).toISOString(),
+      activationTimestampSource: modeled?.audit.activationTimestampSource ?? null,
+      stopHitTimestampSource: modeled?.audit.stopHitTimestampSource ?? null,
+      breachedStopLevels: modeled?.audit.breachedStopLevels ?? [],
       exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,
       exitCandleCloseTime: exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
       assumptions: [
@@ -7124,6 +7166,9 @@ export function runCausalBacktest(
            triggerCandleOpenTime: trigger.openTime === undefined ? null : new Date(trigger.openTime).toISOString(),
            triggerCandleCloseTime: trigger.closeTime === undefined ? null : new Date(trigger.closeTime).toISOString(),
            modeledFillObservationTime: trigger.closeTime === undefined ? null : new Date(trigger.closeTime).toISOString(),
+            activationTimestampSource: modeled.audit.activationTimestampSource ?? null,
+            stopHitTimestampSource: modeled.audit.stopHitTimestampSource ?? null,
+            breachedStopLevels: modeled.audit.breachedStopLevels ?? [],
            modeledExitTimestamp: modeled.audit.modeledExitTimestamp === null || modeled.audit.modeledExitTimestamp === undefined
              ? null
              : new Date(modeled.audit.modeledExitTimestamp).toISOString(),

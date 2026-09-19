@@ -209,7 +209,7 @@ export type ModeledExecutionLeg = {
   slippage: number;
   fees: number;
   netPnl: number;
-  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close";
+  exitReason: "target" | "runner" | "stop" | typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON | "breakeven" | "breakeven_recovery" | "manual" | "session_close";
   /** Exact ordered intrabar exit time when the source provides it. */
   exitTimestamp?: number;
   exitCandleOpenTime?: string;
@@ -233,6 +233,9 @@ export type OhlcvExecutionAudit = {
   exitCandle: OhlcvCandle | null;
   /** Exact ordered intrabar exit time; null means candle-close timing remains the policy. */
   modeledExitTimestamp?: number | null;
+  activationTimestampSource?: "ORDERED_INTRABAR_POINT" | "EXPLICIT_THRESHOLD" | "CANDLE_OPEN" | null;
+  stopHitTimestampSource?: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null;
+  breachedStopLevels?: Array<"strategy" | "catastrophe">;
   targetHit: boolean;
   runnerActivated: boolean;
   runnerExited: boolean;
@@ -301,7 +304,7 @@ export type ModeledOhlcvExecution = {
   stopPrice: number | null;
   targetPrice: number | null;
   exitPrice: number | null;
-  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close" | "not filled" | typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON;
+  exitReason: "target" | "runner" | "stop" | typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON | "breakeven" | "breakeven_recovery" | "manual" | "session_close" | "not filled";
   legs: ModeledExecutionLeg[];
   accounting: ModeledExecutionAccounting;
   audit: OhlcvExecutionAudit;
@@ -491,7 +494,8 @@ function emptyResult(
     audit: {
       eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, modeledExitTimestamp: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
-      strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
+       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
+       breachedStopLevels: [],
       consolidationMidpointStop: input.consolidationMidpointStop
         ? { ...input.consolidationMidpointStop, activationTimestamp: null, stopHitTimestamp: null }
         : null,
@@ -647,15 +651,20 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       input.direction === "long" ? point.price >= entryReference : point.price <= entryReference,
     ) ?? null
     : null;
-  const entryTimestamp = orderedEntryPoint?.timestamp
-    ?? (entryOrderedEvidenceComplete
-      && typeof input.entryFillTimestamp === "number"
-      && Number.isFinite(input.entryFillTimestamp)
-      ? input.entryFillTimestamp
-      : null);
   const entryKnownAtOpen = input.direction === "long"
     ? trigger.open >= entryReference
     : trigger.open <= entryReference;
+  const explicitEntryTimestamp = typeof input.entryFillTimestamp === "number"
+    && Number.isFinite(input.entryFillTimestamp)
+    && input.entryFillTimestamp >= (trigger?.openTime ?? Number.NEGATIVE_INFINITY)
+    && input.entryFillTimestamp <= (trigger?.closeTime ?? Number.POSITIVE_INFINITY)
+    ? input.entryFillTimestamp
+    : null;
+  const entryTimestamp = orderedEntryPoint?.timestamp
+    ?? explicitEntryTimestamp
+    ?? (entryKnownAtOpen && typeof trigger?.openTime === "number" && Number.isFinite(trigger.openTime)
+      ? trigger.openTime
+      : null);
   const triggerExitTouched = (initialStop !== null
     && (input.direction === "long" ? trigger.low <= initialStop : trigger.high >= initialStop))
     || (initialTarget !== null
@@ -679,7 +688,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     size,
   );
   let triggerForExecution = trigger;
-  let modeledFillTimestamp: number | null = null;
+  let modeledFillTimestamp: number | null = entryTimestamp;
   if (orderedEntryPoint !== null) {
     modeledFill = tick(
       input.direction === "long"
@@ -782,6 +791,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   if (noForwardLevelAtEntry) eventLabels.push(NO_FORWARD_LEVEL_1R_PLAN_LABEL);
   const legs: ModeledExecutionLeg[] = [];
   let resolvedStopLevel: "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null = null;
+  let midpointStopHitTimestamp: number | null = null;
+  let midpointStopHitTimestampSource: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null = null;
+  let breachedStopLevels: Array<"strategy" | "catastrophe"> = [];
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
   const feePerSide = Object.values(input.fees ?? input.feeComponents ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
@@ -952,6 +964,20 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         : trailingHit
           ? { price: activeTrailingStop!, level: "structure_trailing" as const }
           : fallbackStop!;
+      if (candleOrderedEvidenceComplete && orderedEvent?.kind === "stop") {
+        const point = orderedEvent.point.price;
+        if (strategyStop !== null
+          && (input.direction === "long" ? point <= strategyStop : point >= strategyStop)) {
+          breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "strategy"])];
+        }
+        if (catastropheStop !== null
+          && (input.direction === "long" ? point <= catastropheStop : point >= catastropheStop)) {
+          breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "catastrophe"])];
+        }
+      } else {
+        if (strategyHit) breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "strategy"])];
+        if (catastropheHit) breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "catastrophe"])];
+      }
       resolvedStopPrice = tick(level.price, size);
       resolvedStopLevel = level.level;
        if (level.level === "structure_trailing") eventLabels.push("STRUCTURE_TRAILING_STOP_REACHED");
@@ -969,12 +995,29 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       const reference = gapThrough ? candle.open : resolvedStopPrice!;
       if (gapThrough) eventLabels.push("GAP_THROUGH_STOP");
       const fill = tick(input.direction === "long" ? reference - (input.exitSlippageTicks ?? 0) * size : reference + (input.exitSlippageTicks ?? 0) * size, size);
+      if (level.level === "strategy"
+        && input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON) {
+        midpointStopHitTimestamp = orderedEvent?.kind === "stop"
+          ? orderedEvent.point.timestamp
+          : gapThrough && typeof candle.openTime === "number" && Number.isFinite(candle.openTime)
+            ? candle.openTime
+            : null;
+        midpointStopHitTimestampSource = orderedEvent?.kind === "stop"
+          ? "ORDERED_INTRABAR_POINT"
+          : midpointStopHitTimestamp !== null
+            ? "CANDLE_OPEN"
+            : null;
+      }
       legs.push(makeLeg(
         targetHit || oneRReached ? "runner" : "full",
         targetHit || oneRReached ? runnerQuantity : remaining,
         reference,
         fill,
-        level.level === "breakeven" ? "breakeven" : "stop",
+         level.level === "breakeven"
+           ? "breakeven"
+           : level.level === "strategy" && input.strategyStopExitReason
+             ? input.strategyStopExitReason
+             : "stop",
         candle,
         orderedEvent?.kind === "stop" ? orderedEvent.point : null,
       ));
@@ -1100,6 +1143,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           : trailing
             ? { price: trailingStopPrice!, level: "structure_trailing" as const }
             : { price: strategyStop!, level: "strategy" as const };
+        if (catastrophe) breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "catastrophe"])];
+        else if (level.level === "strategy") breachedStopLevels = [...new Set<"strategy" | "catastrophe">([...breachedStopLevels, "strategy"])];
         resolvedStopPrice = tick(level.price, size);
         resolvedStopLevel = level.level;
         eventLabels.push(level.level === "catastrophe"
@@ -1113,7 +1158,27 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
             : resolvedStopPrice + (input.exitSlippageTicks ?? 0) * size,
           size,
         );
-        legs.push(makeLeg("runner", remaining, resolvedStopPrice, fill, "stop", candle, runnerStopPoint));
+        if (level.level === "strategy"
+          && input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON) {
+          midpointStopHitTimestamp = runnerStopPoint?.timestamp
+            ?? (typeof candle.openTime === "number" && Number.isFinite(candle.openTime) ? candle.openTime : null);
+          midpointStopHitTimestampSource = runnerStopPoint
+            ? "ORDERED_INTRABAR_POINT"
+            : midpointStopHitTimestamp !== null
+              ? "CANDLE_OPEN"
+              : null;
+        }
+        legs.push(makeLeg(
+          "runner",
+          remaining,
+          resolvedStopPrice,
+          fill,
+          level.level === "strategy" && input.strategyStopExitReason
+            ? input.strategyStopExitReason
+            : "stop",
+          candle,
+          runnerStopPoint,
+        ));
         remaining = 0;
         runnerExited = true;
         originalStopStillActive = level.level !== "structure_trailing";
@@ -1359,18 +1424,29 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
            ...input.consolidationMidpointStop,
             // OHLC-only fills establish a candle/bar, not an exact instant.
             // Only ordered threshold evidence may populate these timestamps.
-            activationTimestamp: modeledFillTimestamp,
+             activationTimestamp: modeledFillTimestamp,
             stopHitTimestamp: input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
               && resolvedStopLevel === "strategy"
-              ? modeledExitTimestamp
+               ? midpointStopHitTimestamp
               : null,
          }
          : null,
-        stopLevel: exitReason === "stop"
+         stopLevel: exitReason === "stop"
           || exitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
           || exitReason === "breakeven"
-          ? resolvedStopLevel
+         ? resolvedStopLevel
           : null,
+        activationTimestampSource: modeledFillTimestamp === null
+          ? null
+          : orderedEntryPoint
+            ? "ORDERED_INTRABAR_POINT"
+            : explicitEntryTimestamp !== null
+              ? "EXPLICIT_THRESHOLD"
+              : entryKnownAtOpen
+                ? "CANDLE_OPEN"
+                : null,
+        stopHitTimestampSource: midpointStopHitTimestampSource,
+        breachedStopLevels,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
        initialRiskPoints,
        oneRPrice,
