@@ -1,0 +1,529 @@
+Fix the remaining major defects in Strong Breakout After Consolidation execution and Visual Review replay.
+
+Work from the current LevelStory checkout. Inspect the current implementation before editing. Repair the production paths and add tests that use production-generated objects. Do not satisfy this request only with isolated helper tests or fabricated replay evidence.
+
+CURRENT VERIFIED DEFECTS
+
+1. Equal-timestamp entry and stop evidence is silently discarded.
+
+The executor filters post-entry points with:
+
+`point.timestamp > modeledFillTimestamp`
+
+When entry and stop observations have the same timestamp and no sub-order information, the stop point disappears. The result becomes an open/manual trade with no ambiguity.
+
+Verified reproduction:
+
+- Modeled fill: 105
+- Exit reason: manual
+- Ambiguity labels: empty
+- Stop-hit timestamp: null
+- Modeled exit timestamp: null
+- Remaining quantity: 1
+
+This must be an unresolved entry/exit sequence, not an authoritative open trade.
+
+2. Strong replay writes and validates different frozen-zone identity formats.
+
+Phase 9 currently stores:
+
+`activeConsolidationZoneId`
+
+when one exists, but replay validates against:
+
+`zoneLow|zoneHigh|calculationVersion`
+
+A valid production-generated Strong trade can therefore fail replay compatibility.
+
+3. Production cache versions were not advanced after adding ordered replay evidence.
+
+Authoritative trade output now contains `orderedExecutionEvidence`, but these production versions remain unchanged from the preceding implementation:
+
+- Fixed formula: v23.19
+- Strategy-result cache: v7
+- Batch aggregation: v3
+- Qualification funnel: v7
+- Route execution management: v15
+
+Old persisted trades without the new replay evidence can therefore load as current.
+
+4. Ordered tick evidence is required too broadly.
+
+The replay validator currently requires `orderedExecutionEvidence` for every Strong or Extended trade. Valid direct trades based entirely on deterministic OHLC behavior or an exact later gap-open exit may have no ordered tick evidence. Those trades become permanently unreplayable even after regeneration.
+
+OBJECTIVE
+
+Implement four coordinated repairs:
+
+1. Treat unresolved equal-timestamp entry and exit evidence as explicit ambiguity.
+2. Use one canonical frozen consolidation identity everywhere.
+3. Invalidate incompatible strategy, batch, and Visual Review caches.
+4. Require ordered replay evidence only when the original execution depended on ordered chronology.
+
+Preserve the existing strategy rules and previously corrected gap-open behavior.
+
+PART 1 — EQUAL-TIMESTAMP ENTRY AND EXIT SEMANTICS
+
+Inspect at least:
+
+- `artifacts/api-server/src/lib/strategy/ohlcv-execution.ts`
+- `artifacts/api-server/src/lib/strategy/ohlcv-execution.test.ts`
+- `artifacts/api-server/src/lib/phase9.ts`
+- `artifacts/api-server/src/lib/phase9.test.ts`
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+
+Do not simply change `>` to `>=`. That could incorrectly declare the stop to be after the entry.
+
+Required behavior:
+
+1. Identify the governed entry observation.
+2. Partition entry-candle evidence into:
+   - observations strictly before entry
+   - observations at the entry timestamp
+   - observations strictly after entry
+3. Price movement strictly before entry cannot stop the later trade.
+4. Price movement strictly after entry can trigger the stop normally.
+5. If the entry timestamp also contains an adverse exit observation and the evidence has no trustworthy sub-order:
+   - set the canonical entry/exit-order ambiguity
+   - include `ENTRY_EXIT_ORDER_UNRESOLVED`
+   - include the applicable OHLC/sequence ambiguity label
+   - produce no authoritative executed trade
+   - produce no realized P/L
+   - do not release or occupy the account based on a fabricated exit
+   - do not convert the result to `manual`
+6. If explicit sequence metadata establishes entry before stop at the same timestamp, use that sequence.
+7. If explicit sequence metadata establishes stop observation before entry, ignore it as a pre-entry stop.
+8. Preserve the evidence metadata used to make the decision.
+
+The existing `equalTimestampSemantics: "conservative"` contract must have real behavior. It cannot be a label that is ignored by the executor.
+
+Add symmetric long and short tests.
+
+Required long test:
+
+- Entry threshold: 105
+- Midpoint stop: 101.75
+- One observation at time T reaches entry.
+- Another observation at time T reaches the midpoint stop.
+- No sub-order exists.
+- Result is unresolved ambiguity.
+- No `manual` outcome.
+- No authoritative P/L.
+
+Add the short mirror.
+
+Also test:
+
+- Stop at T−1, entry at T → pre-entry stop ignored.
+- Entry at T, stop at T+1 → stop executes at T+1.
+- Equal timestamp with valid sub-order entry then stop → stop executes.
+- Equal timestamp with valid sub-order stop then entry → pre-entry stop does not close the later trade.
+
+If the current evidence type cannot represent sub-order, extend it with a deterministic sequence field. Validate that sequence field and include it in the evidence schema version.
+
+PART 2 — CANONICAL FROZEN-ZONE IDENTITY
+
+Create or reuse one canonical helper for the frozen consolidation identity.
+
+Do not construct the identity independently in Phase 9 and shadow replay.
+
+The canonical identity must bind at least:
+
+- specific strategy ID
+- direction
+- contract symbol
+- trading date
+- frozen zone ID, when available
+- frozen zone low
+- frozen zone high
+- midpoint calculation version
+- causal consolidation start
+- causal consolidation end
+- constituent candle timestamps or their deterministic fingerprint
+
+Use a stable serializer or deterministic hash. Do not depend on object property insertion order.
+
+Use the same helper when:
+
+- creating the audit
+- creating the occurrence
+- creating the candidate
+- creating `orderedExecutionEvidence`
+- creating Visual Review replay input
+- validating shadow-account replay
+- comparing cached/replayed results
+
+Do not compare a stored zone ID with a separately generated geometry string.
+
+Fail closed when authoritative zone fields conflict.
+
+Add tests proving:
+
+1. A production-generated Strong trade passes replay validation.
+2. A production-generated Extended trade passes replay validation.
+3. Changing only the frozen-zone ID fails validation.
+4. Changing zone low or high fails validation.
+5. Changing direction fails validation.
+6. Changing the contract fails validation.
+7. Changing a constituent candle fails validation.
+8. Strong and Extended remain distinct even with identical geometry and timestamps.
+
+The successful replay tests must generate the trade through Phase 9 or the real candidate projection and then pass that exact output into Visual Review/shadow replay. Do not manually construct both sides with matching strings.
+
+PART 3 — SUPPORT ORDERED AND DETERMINISTIC OHLC REPLAY MODES
+
+Replace the current blanket rule that every Strong or Extended trade requires ordered tick evidence.
+
+Store an explicit execution chronology mode, such as:
+
+- `ORDERED_INTRABAR`
+- `DETERMINISTIC_CANDLE_OPEN`
+- `DETERMINISTIC_LATER_CANDLE`
+- `AMBIGUOUS_OHLC`
+
+Use repository naming conventions if equivalent types already exist.
+
+Required rules:
+
+### ORDERED_INTRABAR
+
+Use when the original outcome or exact timestamp depends on interval-scoped ordered evidence.
+
+Require:
+
+- evidence schema version
+- source fingerprint
+- contract
+- trading date
+- exact entry interval
+- interval coverage
+- sorted points
+- ordering rule
+- equal-timestamp rule
+- entry event
+- entry-fill timestamp
+- selected exit event, when applicable
+- occurrence ID
+- candidate ID
+- strategy ID
+- canonical frozen-zone identity
+- formula version
+
+Replay must reject missing, incomplete, unsorted, mismatched, or stale evidence.
+
+### DETERMINISTIC_CANDLE_OPEN
+
+Use when entry or stop chronology is established exactly at candle open without ordered ticks.
+
+Examples:
+
+- Entry is already triggered at the entry candle open.
+- A later candle opens through an active stop.
+
+Store and validate:
+
+- candle identity
+- exact `openTime`
+- open price
+- selected stop
+- governed gap-fill price
+- occurrence, candidate, strategy, contract, and frozen-zone identity
+
+Do not require tick evidence for this mode.
+
+### DETERMINISTIC_LATER_CANDLE
+
+Use when later completed-candle processing is governed by existing conservative OHLC rules and does not claim an exact intrabar timestamp.
+
+Store:
+
+- candle open and close identity
+- governed conservative resolution
+- exit time source
+- ambiguity labels
+- occurrence and candidate linkage
+
+Do not fabricate an intrabar timestamp.
+
+### AMBIGUOUS_OHLC
+
+Preserve the ambiguity as unscored. Fixed-contract replay must reproduce the same ambiguity instead of turning it into a trade.
+
+Replay must reproduce the original mode. It must not upgrade OHLC evidence into ordered evidence or downgrade an ordered result into OHLC.
+
+PART 4 — STRICT REPLAY-EVIDENCE VALIDATION
+
+Inspect:
+
+- `artifacts/api-server/src/lib/shadow-account-replay.ts`
+- `artifacts/api-server/src/lib/visual-validation.ts`
+- replay schemas
+- generated API types
+- persistence and compatibility checks
+
+For ordered evidence, validate all internal relationships:
+
+- `entryPoints` is nonempty when ordered entry chronology is claimed.
+- Points are sorted by timestamp and sequence.
+- Every point belongs to the declared contract and coverage interval.
+- `entryEvent` is a member of the stored evidence.
+- `entryFillTimestamp` agrees with `entryEvent`.
+- Entry event actually satisfies the direction-specific entry threshold.
+- `stopEvent`, when present, is a member of the evidence.
+- Stop event actually satisfies the selected stop.
+- Stop event timestamp agrees with the original trade’s stop timestamp.
+- Stop event and exit leg agree.
+- Evidence exit timestamp agrees with `modeledExitTimestamp`.
+- `modeledExitTimestamp` agrees with final `trade.exitTime`.
+- Strategy, direction, occurrence, candidate, contract, date, formula, source fingerprint, and canonical frozen-zone identity all match.
+- Later intervals are individually valid and do not contain gaps presented as continuous coverage.
+- Empty arrays cannot prove chronology that requires observed points.
+
+Do not use one global `coverageStart` and `coverageEnd` to imply continuous coverage across missing intervals.
+
+When validation fails, reject the replay set as stale/incompatible and require regeneration.
+
+PART 5 — PRESERVE THE FIXED ENTRY-INTERVAL BEHAVIOR
+
+Keep the correction that now makes these two executor calls equivalent:
+
+1. Entry ordered evidence without `orderedPostEntryEvidenceIntervals`
+2. The same entry evidence with `orderedPostEntryEvidenceIntervals: []`
+
+Both must retain:
+
+- midpoint-stop exit reason
+- selected stop price
+- stop-hit timestamp
+- exit-leg timestamp
+- modeled exit timestamp
+- timestamp source
+- ambiguity status
+
+Keep entry-candle evidence separate from later-candle evidence.
+
+Entry-candle coverage must not authorize a later candle. One covered later candle must not authorize the next uncovered candle.
+
+PART 6 — CACHE AND VERSION INVALIDATION
+
+Inspect and advance every production version affected by this repair:
+
+- `artifacts/api-server/src/lib/formula-hash.ts`
+- `artifacts/api-server/src/lib/analysis-cache.ts`
+- `artifacts/api-server/src/lib/phase9.ts`
+- `artifacts/api-server/src/lib/visual-validation-cache.ts`
+- `artifacts/api-server/src/routes/backtest.ts`
+- persisted session-analysis metadata
+- batch aggregation metadata
+- replay schema/evidence version
+
+Advance at least:
+
+- `FIXED_FORMULA_VERSION`
+- `STRATEGY_RESULT_CACHE_KEY_VERSION`
+- `BATCH_AGGREGATION_CACHE_KEY_VERSION`
+- `QUALIFICATION_FUNNEL_VERSION`
+- route `STRATEGY_ENGINE_VERSION`
+- route `CANDIDATE_PROJECTION_VERSION`
+- route `EXECUTION_MANAGEMENT_VERSION`
+- Visual Review cache version
+- Visual Review strategy-engine version
+- Visual Review candidate-projection version
+- Visual Review execution-management version
+- Visual Review snapshot-projection version
+- Visual Review chart-projection version
+- ordered-execution-evidence schema version
+- Visual Review replay-input schema version
+
+Use internally consistent version names describing canonical chronology evidence.
+
+Add tests using the real exported constants and production cache-key builders.
+
+Prove:
+
+1. A persisted result from v23.19/v7 cannot load as current.
+2. A cached trade without the new chronology mode cannot load as current.
+3. A previous Visual Review replay schema is rejected.
+4. A current request computes once.
+5. An identical current request reuses the result.
+6. Current persisted session evidence survives a real API workflow restart.
+7. Regenerated current results include the required chronology mode.
+
+Do not delete raw market data.
+
+PART 7 — REQUIRED REGRESSION MATRIX
+
+Add tests for:
+
+1. Strong long, entry then midpoint stop at later timestamps.
+2. Strong short mirror.
+3. Strong long equal-timestamp unresolved entry/stop.
+4. Strong short equal-timestamp unresolved entry/stop.
+5. Equal timestamp resolved by valid entry-before-stop sequence.
+6. Equal timestamp resolved by valid stop-before-entry sequence.
+7. Pre-entry midpoint movement cannot stop the later trade.
+8. Exact midpoint touch does not trigger the stop.
+9. Midpoint and catastrophe breach preserves both breached levels.
+10. Entry evidence remains active with an empty later-interval array.
+11. Entry evidence remains active with populated later intervals.
+12. A later uncovered candle cannot inherit completeness.
+13. Long gap-open stop retains candle-open time.
+14. Short gap-open stop retains candle-open time.
+15. Extended long retains its 8-tick outside stop.
+16. Extended short mirror.
+17. Extended has no midpoint evidence or midpoint exit reason.
+18. Production-generated Strong trade successfully replays.
+19. Production-generated Extended trade successfully replays.
+20. Ordered original and fixed-contract replay have identical price chronology.
+21. Deterministic gap-open original and replay have identical chronology without ticks.
+22. Valid OHLC-only later-candle direct trade can replay without fabricated ticks.
+23. Ambiguous OHLC result remains ambiguous and unscored during replay.
+24. Canonical zone identity mismatch is rejected.
+25. Source fingerprint mismatch is rejected.
+26. Contract mismatch is rejected.
+27. Unsorted ordered evidence is rejected.
+28. Empty points cannot claim ordered chronology.
+29. Entry event not present in evidence is rejected.
+30. Stop event not present in evidence is rejected.
+31. Stop timestamp mismatch is rejected.
+32. Old session, batch, and Visual Review cache versions are rejected.
+33. Account arbitration releases at the exact governed exit boundary.
+34. Strong and Extended IDs remain separate throughout the production chain.
+
+Do not weaken existing assertions or replace production integration tests with manually assembled helper inputs.
+
+PART 8 — TYPECHECK AND GENERATED PACKAGES
+
+The current checkout still fails both typechecks because generated workspace packages are stale.
+
+API failures include missing:
+
+- `visualValidationReviewsTable`
+- `sessionAnalysisResultsTable`
+- `GetVisualValidationSnapshotParams`
+- `GetVisualValidationSnapshotResponse`
+- `expectedRevision`
+
+LevelStory failures include stale types for:
+
+- historical session catalog fields
+- Visual Review snapshot hooks
+- review compatibility
+- generated request and response types
+- API-client hooks
+
+Use the repository’s normal generation and build commands.
+
+Do not hand-edit generated output unless that is the documented repository workflow.
+
+Required results:
+
+- API server typecheck passes.
+- LevelStory typecheck passes.
+- Database workspace exports are current.
+- API-Zod exports are current.
+- Generated API client is current.
+- `git diff --check` passes.
+
+PART 9 — VERIFICATION ORDER
+
+Run:
+
+1. Consolidation midpoint tests.
+2. OHLCV execution tests.
+3. Phase 9 tests.
+4. Phase 9 integration tests.
+5. Shadow-account replay tests.
+6. Visual Review tests.
+7. Analysis-cache tests.
+8. Batch and persisted-session tests.
+9. API typecheck.
+10. LevelStory typecheck.
+11. Repository lint/format checks.
+12. `git diff --check`.
+13. One bounded real-data Strong replay.
+
+Report database or sandbox failures separately. Do not report a suite as fully passing when a required database-backed test did not run.
+
+PART 10 — REAL-DATA ACCEPTANCE
+
+Run a bounded real-data replay producing at least one executed:
+
+`STRONG_BREAKOUT_AFTER_CONSOLIDATION`
+
+A completed HTTP request, candidate, signal, or zero-trade replay is not execution proof.
+
+Report:
+
+- data source
+- contract
+- date
+- strategy ID
+- direction
+- formula hash and version
+- source fingerprint
+- cache versions
+- replay schema version
+- chronology mode
+- canonical frozen-zone identity
+- zone high, low, and midpoint
+- occurrence ID
+- candidate ID
+- trade ID
+- entry price and timestamp
+- stop price and timestamp
+- exit-leg timestamp
+- modeled exit timestamp
+- final trade exitTime
+- exit reason
+- account release time
+- Visual Review snapshot ID
+- fixed-contract replay comparison
+
+The original execution and replay must agree on direction, occurrence, candidate, entry, exit reason, price chronology, and timestamps. Contract count may change quantity, fees, and total P/L only.
+
+If the available catalog has no qualifying Strong trade, report real-data acceptance as unproven. Provide the deterministic production-path result separately.
+
+SCOPE LIMITS
+
+Preserve:
+
+- Minimum four-candle consolidation rule
+- Frozen consolidation-zone construction
+- Trend-direction entry rules
+- Entry outside the frozen zone
+- Strict midpoint crossing
+- Extended 8-tick outside stop
+- Catastrophe-stop behavior
+- Fees and slippage
+- Position sizing
+- Account-wide active-position arbitration
+- Unrelated strategies
+- Raw source data
+
+Do not alter qualification rules to manufacture a replay or trade.
+
+FINAL RESPONSE
+
+Return:
+
+1. Root cause of each defect.
+2. Files and functions changed.
+3. Exact equal-timestamp policy implemented.
+4. Canonical frozen-zone identity definition.
+5. Replay chronology modes and validation rules.
+6. Version values before and after.
+7. Tests added and exact commands run.
+8. Test totals.
+9. Typecheck results.
+10. Real-data execution and replay evidence.
+11. Any remaining limitation.
+
+Do not call the repair complete unless:
+
+- Equal-timestamp entry/stop evidence becomes explicit ambiguity unless valid sequence metadata resolves it.
+- A production-generated Strong trade passes its own replay validator.
+- Deterministic OHLC and gap-open direct trades remain replayable without fabricated ticks.
+- Old cached trades without chronology evidence are invalidated.
+- Both typechecks pass.
+- The linked real-data result is provided, or its absence is explicitly reported as unproven acceptance.
