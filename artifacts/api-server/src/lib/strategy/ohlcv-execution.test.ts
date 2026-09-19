@@ -118,6 +118,86 @@ test("Strong short executes a verified midpoint stop during the entry candle", (
   assert.equal(result.audit.modeledExitTimestamp, openTime + 120_000);
 });
 
+test("entry-candle ordered exits are unchanged by empty or populated later intervals", () => {
+  const run = (direction: "long" | "short", laterIntervals: readonly {
+    startTime: number;
+    endTime: number;
+    points: readonly { timestamp: number; price: number }[];
+  }[]) => {
+    const openTime = direction === "long" ? 9_500_000 : 9_700_000;
+    const entry = direction === "long" ? 105 : 95;
+    const strategyStop = direction === "long" ? 101.75 : 98.25;
+    const trigger = direction === "long"
+      ? { ...timedCandle(104.5, 105, 101.5, 101.5, openTime + 300_000), openTime }
+      : { ...timedCandle(95.5, 98.5, 95, 98.5, openTime + 300_000), openTime };
+    return simulateOhlcvExecution({
+      ...base,
+      direction,
+      entry,
+      immediateTriggerCandle: trigger,
+      strategyStop,
+      strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+      consolidationMidpointStop: direction === "long"
+        ? {
+          frozenZoneHigh: 104,
+          frozenZoneLow: 100,
+          rawMidpoint: 102,
+          tickAlignedStop: 101.75,
+          direction,
+          calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+        }
+        : {
+          frozenZoneHigh: 100,
+          frozenZoneLow: 96,
+          rawMidpoint: 98,
+          tickAlignedStop: 98.25,
+          direction,
+          calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+        },
+      orderedIntrabarPoints: direction === "long"
+        ? [
+          { timestamp: openTime + 60_000, price: 105 },
+          { timestamp: openTime + 120_000, price: 101.5 },
+        ]
+        : [
+          { timestamp: openTime + 60_000, price: 95 },
+          { timestamp: openTime + 120_000, price: 98.5 },
+        ],
+      orderedIntrabarEvidenceComplete: true,
+      orderedPostEntryEvidenceIntervals: laterIntervals,
+      subsequentCompletedCandles: [
+        direction === "long"
+          ? timedCandle(105, 105.25, 104.5, 105, openTime + 600_000)
+          : timedCandle(95, 95.5, 94.5, 95, openTime + 600_000),
+      ],
+    });
+  };
+  const longLaterInterval = [{
+    startTime: 9_800_000,
+    endTime: 10_100_000,
+    points: [{ timestamp: 9_860_000, price: 105.25 }],
+  }];
+  const shortLaterInterval = [{
+    startTime: 10_000_000,
+    endTime: 10_300_000,
+    points: [{ timestamp: 10_060_000, price: 94.75 }],
+  }];
+  for (const [direction, laterIntervals] of [
+    ["long", longLaterInterval],
+    ["short", shortLaterInterval],
+  ] as const) {
+    const empty = run(direction, []);
+    const populated = run(direction, laterIntervals);
+    assert.equal(empty.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+    assert.equal(populated.exitReason, empty.exitReason);
+    assert.equal(populated.stopPrice, empty.stopPrice);
+    assert.equal(populated.audit.consolidationMidpointStop?.stopHitTimestamp, empty.audit.consolidationMidpointStop?.stopHitTimestamp);
+    assert.equal(populated.legs[0]?.exitTimestamp, empty.legs[0]?.exitTimestamp);
+    assert.equal(populated.audit.modeledExitTimestamp, empty.audit.modeledExitTimestamp);
+    assert.deepEqual(populated.ambiguityLabels, empty.ambiguityLabels);
+  }
+});
+
 test("verified pre-entry midpoint movement cannot close a later Strong long entry", () => {
   const openTime = 11_000_000;
   const result = simulateOhlcvExecution({

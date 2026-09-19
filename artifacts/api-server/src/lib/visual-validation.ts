@@ -32,7 +32,11 @@ import {
   wallClockMinutesForTimestamp,
 } from "./futures/session-calendar.js";
 import { causalEmaSeries } from "./strategy/indicators.js";
-import { validateIndicatorReplayContext, type IndicatorReplayContext } from "./strategy/ohlcv-execution.js";
+import {
+  validateIndicatorReplayContext,
+  type IndicatorReplayContext,
+  type OrderedExecutionEvidence,
+} from "./strategy/ohlcv-execution.js";
 import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/phase4.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
@@ -319,6 +323,9 @@ export type VisualValidationTradeCandidate = {
 };
 
 export type VisualValidationReplayExecutionInput = {
+  replaySchemaVersion?: "visual-review-replay-input-v3-immutable-ordered-execution-evidence";
+  sourceFingerprint?: string;
+  formulaVersion?: string;
   entryPrice: number;
   patienceCandle: VisualValidationCandle;
   immediateTriggerCandle: VisualValidationCandle;
@@ -332,6 +339,7 @@ export type VisualValidationReplayExecutionInput = {
   targetPrice: number | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
   runnerBufferTicks: number;
+  orderedExecutionEvidence?: OrderedExecutionEvidence;
 };
 
 export type VisualValidationAccountReplayTrade = {
@@ -604,6 +612,9 @@ function replayInputForSnapshot(
     && Date.parse(candle.closeTime) > Date.parse(immediateTriggerCandle.closeTime),
   );
   return {
+    replaySchemaVersion: "visual-review-replay-input-v3-immutable-ordered-execution-evidence",
+    sourceFingerprint: snapshot.sourceFingerprint ?? "",
+    formulaVersion: snapshot.formulaVersion,
     entryPrice: trade.entryPrice,
     patienceCandle,
     immediateTriggerCandle,
@@ -617,6 +628,9 @@ function replayInputForSnapshot(
     targetPrice: audit.targetPrice,
     primaryLossExitLevel: audit.primaryLossExitLevel ?? null,
     runnerBufferTicks: snapshot.machineEvidence.audit.runnerBufferTicks ?? 4,
+    ...(audit.orderedExecutionEvidence
+      ? { orderedExecutionEvidence: audit.orderedExecutionEvidence }
+      : {}),
   };
 }
 

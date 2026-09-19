@@ -8,6 +8,7 @@ import {
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import {
   CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON,
+  ORDERED_EXECUTION_EVIDENCE_VERSION,
   simulateOhlcvExecution,
   validateIndicatorReplayContext,
   type OhlcvCandle,
@@ -159,6 +160,8 @@ type MatchedTrade = {
   snapshotId: string;
   trade: BacktestTrade;
   replayInput?: VisualValidationReplayExecutionInput;
+  expectedSourceFingerprint?: string;
+  expectedFormulaVersion?: string;
 };
 
 function safePositive(value: number | undefined, fallback: number): number {
@@ -260,6 +263,62 @@ function replayTradeWithFixedContracts(
     throw new Error(
       `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks frozen execution evidence for a ${contractsPerTrade}-contract replay. Regenerate the review set.`,
     );
+  }
+  const directEntryCandleStrategy = trade.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+  const orderedExecutionEvidence = replayInput.orderedExecutionEvidence;
+  if (directEntryCandleStrategy) {
+    const triggerOpenTime = Date.parse(replayInput.immediateTriggerCandle.openTime);
+    const triggerCloseTime = Date.parse(replayInput.immediateTriggerCandle.closeTime);
+    const evidenceMatchesTrade = orderedExecutionEvidence
+      && replayInput.replaySchemaVersion === "visual-review-replay-input-v3-immutable-ordered-execution-evidence"
+      && replayInput.sourceFingerprint === orderedExecutionEvidence.sourceFingerprint
+      && replayInput.formulaVersion === orderedExecutionEvidence.formulaVersion
+      && replayInput.sourceFingerprint === match.expectedSourceFingerprint
+      && replayInput.formulaVersion === match.expectedFormulaVersion
+      && orderedExecutionEvidence.schemaVersion === ORDERED_EXECUTION_EVIDENCE_VERSION
+      && orderedExecutionEvidence.contractSymbol === trade.contractSymbol
+      && orderedExecutionEvidence.tradingDate === trade.tradingDate
+      && orderedExecutionEvidence.direction === trade.direction
+      && orderedExecutionEvidence.occurrenceId === trade.signalOccurrenceId
+      && orderedExecutionEvidence.candidateId === trade.candidateId
+      && orderedExecutionEvidence.strategyId === (trade.specificStrategyId ?? null)
+      && orderedExecutionEvidence.entryCandleOpenTime === triggerOpenTime
+      && orderedExecutionEvidence.entryCandleCloseTime === triggerCloseTime
+      && orderedExecutionEvidence.coverageStart <= triggerOpenTime
+      && orderedExecutionEvidence.coverageEnd >= triggerCloseTime
+      && orderedExecutionEvidence.entryEvent !== null
+      && Number.isFinite(orderedExecutionEvidence.entryFillTimestamp)
+      && (trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
+        || orderedExecutionEvidence.frozenZoneIdentity === (
+          trade.audit?.consolidationMidpointStop
+            ? [
+              trade.audit.consolidationMidpointStop.frozenZoneLow,
+              trade.audit.consolidationMidpointStop.frozenZoneHigh,
+              trade.audit.consolidationMidpointStop.calculationVersion,
+            ].join("|")
+            : null
+        ))
+      && orderedExecutionEvidence.entryPoints.every((point) =>
+        Number.isFinite(point.timestamp)
+        && Number.isFinite(point.price)
+        && point.timestamp >= orderedExecutionEvidence!.entryCandleOpenTime
+        && point.timestamp <= orderedExecutionEvidence!.entryCandleCloseTime,
+      )
+      && orderedExecutionEvidence.laterIntervals.every((interval) =>
+        interval.startTime <= interval.endTime
+        && interval.points.every((point) =>
+          Number.isFinite(point.timestamp)
+          && Number.isFinite(point.price)
+          && point.timestamp >= interval.startTime
+          && point.timestamp <= interval.endTime,
+        ),
+      );
+    if (!evidenceMatchesTrade) {
+      throw new Error(
+        `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks complete immutable ordered execution evidence. Regenerate the review set.`,
+      );
+    }
   }
   if (!Number.isInteger(replayInput.runnerBufferTicks)
     || replayInput.runnerBufferTicks < 4
@@ -368,6 +427,10 @@ function replayTradeWithFixedContracts(
     // policy. Generic replay fixtures retain the established deferred policy.
     evaluateEntryCandleForExit: trade.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
       || trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
+    orderedIntrabarPoints: orderedExecutionEvidence?.entryPoints,
+    orderedPostEntryEvidenceIntervals: orderedExecutionEvidence?.laterIntervals,
+    orderedIntrabarEvidenceComplete: orderedExecutionEvidence !== undefined,
+    entryFillTimestamp: orderedExecutionEvidence?.entryFillTimestamp ?? null,
     subsequentCompletedCandles: replayInput.subsequentCompletedCandles.map(asOhlcvCandle),
     sessionCloseCandle: replayInput.sessionCloseCandle ? asOhlcvCandle(replayInput.sessionCloseCandle) : null,
     contracts: contractsPerTrade,
@@ -410,12 +473,17 @@ function replayTradeWithFixedContracts(
   });
   const exitCandle = execution.audit.exitCandle;
   const closed = execution.exitPrice !== null && execution.exitReason !== "not filled";
+  const modeledExitTimestamp = execution.audit.modeledExitTimestamp
+    ?? execution.legs.at(-1)?.exitTimestamp
+    ?? (closed ? exitCandle?.closeTime ?? null : null);
   const baseAudit = trade.audit;
   return {
     ...trade,
     contracts: contractsPerTrade,
     targetPlan: rebuiltTargetPlan ?? trade.targetPlan,
-    exitTime: closed && exitCandle?.closeTime ? new Date(exitCandle.closeTime).toISOString() : null,
+    exitTime: closed && modeledExitTimestamp !== null
+      ? new Date(modeledExitTimestamp).toISOString()
+      : null,
     exitPrice: closed ? execution.exitPrice : null,
     grossPnl: execution.accounting.grossPnl,
     fees: execution.accounting.fees,
@@ -565,6 +633,8 @@ export function buildShadowAccountReplay(
       snapshotId: source.snapshotId ?? candidate.snapshotId,
       trade,
       replayInput: "replayInput" in source ? source.replayInput : undefined,
+        expectedSourceFingerprint: set.sourceFingerprint,
+        expectedFormulaVersion: set.formulaVersion,
     });
   }
 

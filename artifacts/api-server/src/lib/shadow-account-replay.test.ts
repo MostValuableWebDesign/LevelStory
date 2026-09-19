@@ -395,6 +395,104 @@ test("rebuilds a target plan and uses the explicit 1R fallback for both contract
   assert.equal(one.rejectedCandidates.length, 0);
 });
 
+test("rejects legacy and mismatched Strong replay chronology instead of changing execution semantics", () => {
+  const replayCandidate = candidate("strong-replay-contract");
+  replayCandidate.primaryEdge = "STRONG_BREAKOUT_AFTER_CONSOLIDATION";
+  const sourceTrade = trade("strong-replay-contract-trade", -10, "strong-replay-contract", {
+    specificStrategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    audit: {
+      strategyStopPrice: 99,
+      triggerCandleOpenTime: "2026-08-25T13:35:00.000Z",
+      triggerCandleCloseTime: "2026-08-25T13:40:00.000Z",
+      consolidationMidpointStop: {
+        frozenZoneHigh: 101,
+        frozenZoneLow: 99,
+        rawMidpoint: 100,
+        tickAlignedStop: 98.75,
+        direction: "long",
+        calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+      },
+    } as NonNullable<BacktestTrade["audit"]>,
+  });
+  const replayInput = {
+    entryPrice: 100,
+    patienceCandle: {
+      openTime: "2026-08-25T13:30:00.000Z",
+      closeTime: "2026-08-25T13:35:00.000Z",
+      timestamp: "2026-08-25T13:35:00.000Z",
+      open: 100, high: 101, low: 99, close: 100, volume: 1_000,
+      bid: 100, ask: 100, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    immediateTriggerCandle: {
+      openTime: "2026-08-25T13:35:00.000Z",
+      closeTime: "2026-08-25T13:40:00.000Z",
+      timestamp: "2026-08-25T13:40:00.000Z",
+      open: 100, high: 101, low: 98, close: 100, volume: 1_000,
+      bid: 100, ask: 100, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    subsequentCompletedCandles: [],
+    sessionCloseCandle: null,
+    strategyStopPrice: 99,
+    targetPrice: null,
+    primaryLossExitLevel: null,
+    runnerBufferTicks: 4,
+  } satisfies VisualValidationReplayExecutionInput;
+  const staleSet = {
+    ...replaySet([replayCandidate], []),
+    sourceFingerprint: "source-fingerprint",
+    formulaVersion: "phase9-fixed-formula-v2",
+    accountReplayTrades: [{ candidate: replayCandidate, trade: sourceTrade, snapshotId: replayCandidate.snapshotId, replayInput }],
+  } as unknown as VisualValidationSet;
+  assert.throws(
+    () => buildShadowAccountReplay(staleSet),
+    /complete immutable ordered execution evidence/i,
+  );
+
+  const mismatchedEvidence = {
+    schemaVersion: "ordered-execution-evidence-v1-entry-and-interval-scoped" as const,
+    source: "tick" as const,
+    sourceFingerprint: "source-fingerprint",
+    contractSymbol: "MESU26",
+    tradingDate: "2026-08-25",
+    entryCandleOpenTime: Date.parse("2026-08-25T13:35:00.000Z"),
+    entryCandleCloseTime: Date.parse("2026-08-25T13:40:00.000Z"),
+    coverageStart: Date.parse("2026-08-25T13:35:00.000Z"),
+    coverageEnd: Date.parse("2026-08-25T13:40:00.000Z"),
+    ordering: "timestamp_ascending" as const,
+    equalTimestampSemantics: "conservative" as const,
+    entryPoints: [{ timestamp: Date.parse("2026-08-25T13:36:00.000Z"), price: 100 }],
+    laterIntervals: [],
+    entryEvent: { timestamp: Date.parse("2026-08-25T13:36:00.000Z"), price: 100 },
+    entryFillTimestamp: Date.parse("2026-08-25T13:36:00.000Z"),
+    stopEvent: null,
+    strategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    direction: "long" as const,
+    frozenZoneIdentity: "99|101|strong-breakout-midpoint-reentry-v1-integer-ticks",
+    occurrenceId: "wrong-occurrence",
+    candidateId: "strong-replay-contract",
+    formulaVersion: "phase9-fixed-formula-v2",
+  };
+  const mismatchedSet = {
+    ...staleSet,
+    accountReplayTrades: [{
+      candidate: replayCandidate,
+      trade: sourceTrade,
+      snapshotId: replayCandidate.snapshotId,
+      replayInput: {
+        ...replayInput,
+        replaySchemaVersion: "visual-review-replay-input-v3-immutable-ordered-execution-evidence" as const,
+        sourceFingerprint: "source-fingerprint",
+        formulaVersion: "phase9-fixed-formula-v2",
+        orderedExecutionEvidence: mismatchedEvidence,
+      },
+    }],
+  } as unknown as VisualValidationSet;
+  assert.throws(
+    () => buildShadowAccountReplay(mismatchedSet),
+    /complete immutable ordered execution evidence/i,
+  );
+});
+
 test("rejects a stale candidate whose long stop is above entry", () => {
   const sourceTrade = trade("invalid-stop-trade", 100, "invalid-stop", {
     audit: { strategyStopPrice: 101 } as NonNullable<BacktestTrade["audit"]>,

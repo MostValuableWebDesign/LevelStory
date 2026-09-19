@@ -29,6 +29,7 @@ import {
   PRIMARY_LEVEL_EXIT_REACHED_LABEL,
   buildIndicatorReplayContext,
   simulateOhlcvExecution,
+  ORDERED_EXECUTION_EVIDENCE_VERSION,
 } from "./strategy/ohlcv-execution.js";
 import type {
   DynamicTargetUpdate,
@@ -37,6 +38,7 @@ import type {
   DynamicTargetSource,
   OrderedIntrabarPoint,
   OrderedIntrabarEvidenceInterval,
+  OrderedExecutionEvidence,
 } from "./strategy/ohlcv-execution.js";
 import { causalEmaSeries, regularSessionVwap } from "./strategy/indicators.js";
 import {
@@ -456,6 +458,7 @@ export type BacktestTrade = {
       initialTargetPrice?: number | null;
       effectiveTargetPrice?: number | null;
       targetUpdateLedger?: DynamicTargetUpdate[];
+      orderedExecutionEvidence?: OrderedExecutionEvidence | null;
      originalStopStillActive?: boolean;
     exitReason: string;
     legs: ModeledExecutionLeg[];
@@ -6331,6 +6334,65 @@ function candidateDrivenEntryTrade(
       executionAmbiguityLabel,
     };
   }
+  const orderedEvidencePoints = [
+    ...(orderedEntryEvidence?.points ?? []),
+    ...orderedPostEntryEvidenceIntervals.flatMap((interval) => interval.points),
+  ];
+  const governedEntryEvent = orderedEntryEvidence?.points.find((point) =>
+    occurrence.direction === "long" ? point.price >= entryPrice : point.price <= entryPrice,
+  ) ?? null;
+  const orderedStopTimestamp = modeled.audit.stopHitTimestampSource === "ORDERED_INTRABAR_POINT"
+    ? modeled.audit.modeledExitTimestamp ?? null
+    : null;
+  const orderedExecutionEvidence: OrderedExecutionEvidence | null = orderedEvidenceComplete
+    ? {
+      schemaVersion: ORDERED_EXECUTION_EVIDENCE_VERSION,
+      source: "tick",
+      sourceFingerprint: sourceFingerprint(context.dataset),
+      contractSymbol: occurrence.contractSymbol,
+      tradingDate,
+      entryCandleOpenTime: entryOpenTime,
+      entryCandleCloseTime: entryCloseTime,
+      coverageStart: Math.min(
+        entryOpenTime,
+        ...orderedPostEntryEvidenceIntervals.map((interval) => interval.startTime),
+      ),
+      coverageEnd: Math.max(
+        entryCloseTime,
+        ...orderedPostEntryEvidenceIntervals.map((interval) => interval.endTime),
+      ),
+      ordering: "timestamp_ascending",
+      equalTimestampSemantics: "conservative",
+      entryPoints: [...(orderedEntryEvidence?.points ?? [])],
+      laterIntervals: orderedPostEntryEvidenceIntervals.map((interval) => ({
+        startTime: interval.startTime,
+        endTime: interval.endTime,
+        points: [...interval.points],
+      })),
+      entryEvent: governedEntryEvent
+        ? { ...governedEntryEvent }
+        : typeof explicitEntryFillTimestamp === "number" && Number.isFinite(explicitEntryFillTimestamp)
+          ? { timestamp: explicitEntryFillTimestamp, price: entryPrice }
+          : null,
+      entryFillTimestamp: modeled.modeledFillTimestamp,
+      stopEvent: orderedStopTimestamp === null
+        ? null
+        : orderedEvidencePoints.find((point) => point.timestamp === orderedStopTimestamp) ?? null,
+      strategyId: occurrence.specificStrategyId ?? null,
+      direction: occurrence.direction,
+      frozenZoneIdentity: occurrence.consolidationGuard?.activeConsolidationZoneId
+        ?? (management.consolidationMidpointStop
+          ? [
+            management.consolidationMidpointStop.frozenZoneLow,
+            management.consolidationMidpointStop.frozenZoneHigh,
+            management.consolidationMidpointStop.calculationVersion,
+          ].join("|")
+          : null),
+      occurrenceId: occurrence.occurrenceId,
+      candidateId,
+      formulaVersion: FIXED_FORMULA_VERSION,
+    }
+    : null;
   const modeledFillTimestamp = modeled?.modeledFillTimestamp ?? null;
   const entryTime = modeledFillTimestamp !== null
     ? new Date(modeledFillTimestamp).toISOString()
@@ -6483,6 +6545,7 @@ function candidateDrivenEntryTrade(
         dynamicTargetReplayContext: modeled?.audit.dynamicTargetReplayContext ?? null,
        initialTargetPrice: modeled?.audit.initialTargetPrice ?? targetPrice,
        effectiveTargetPrice: modeled?.audit.effectiveTargetPrice ?? modeled?.targetPrice ?? targetPrice,
+       orderedExecutionEvidence,
        targetUpdateLedger: modeled?.audit.targetUpdateLedger ?? [],
        noForwardLevelAtEntry: modeled?.audit.noForwardLevelAtEntry ?? false,
        postEntryCompletedBars: modeled?.audit.postEntryCompletedBars ?? 0,

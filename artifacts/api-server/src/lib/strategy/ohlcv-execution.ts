@@ -114,6 +114,33 @@ export type OrderedIntrabarEvidenceInterval = {
   points: readonly OrderedIntrabarPoint[];
 };
 
+export const ORDERED_EXECUTION_EVIDENCE_VERSION = "ordered-execution-evidence-v1-entry-and-interval-scoped";
+
+export type OrderedExecutionEvidence = {
+  schemaVersion: typeof ORDERED_EXECUTION_EVIDENCE_VERSION;
+  source: "tick";
+  sourceFingerprint: string;
+  contractSymbol: string;
+  tradingDate: string;
+  entryCandleOpenTime: number;
+  entryCandleCloseTime: number;
+  coverageStart: number;
+  coverageEnd: number;
+  ordering: "timestamp_ascending";
+  equalTimestampSemantics: "conservative";
+  entryPoints: readonly OrderedIntrabarPoint[];
+  laterIntervals: readonly OrderedIntrabarEvidenceInterval[];
+  entryEvent: OrderedIntrabarPoint | null;
+  entryFillTimestamp: number | null;
+  stopEvent: OrderedIntrabarPoint | null;
+  strategyId: string | null;
+  direction: Direction;
+  frozenZoneIdentity: string | null;
+  occurrenceId: string;
+  candidateId: string;
+  formulaVersion: string;
+};
+
 export function buildIndicatorReplayContext(input: {
   source: DynamicTargetSource;
   candles: readonly OhlcvCandle[];
@@ -294,6 +321,7 @@ export type OhlcvExecutionAudit = {
   initialTargetPrice: number | null;
   effectiveTargetPrice: number | null;
   targetUpdateLedger: DynamicTargetUpdate[];
+  orderedExecutionEvidence?: OrderedExecutionEvidence | null;
 };
 
 export type ModeledOhlcvExecution = {
@@ -566,16 +594,21 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     : [];
   const intervalEvidence = input.orderedPostEntryEvidenceIntervals;
   const orderedPostEntryPoints = intervalEvidence !== undefined
-    ? intervalEvidence.flatMap((interval) => interval.points)
+    ? intervalEvidence
+      .flatMap((interval) => interval.points)
+      .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
+      .sort((first, second) => first.timestamp - second.timestamp)
     : [...(input.orderedPostEntryPoints ?? [])]
-    .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
-    .sort((first, second) => first.timestamp - second.timestamp);
+      .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
+      .sort((first, second) => first.timestamp - second.timestamp);
   const orderedEvidenceComplete = input.orderedIntrabarEvidenceComplete === true;
   const entryOrderedEvidenceComplete = orderedEvidenceComplete;
-  const orderedExitPoints = intervalEvidence !== undefined
-    ? orderedPostEntryPoints
-    : orderedEvidenceComplete
-    ? (orderedPostEntryPoints.length > 0 ? orderedPostEntryPoints : orderedPoints)
+  // Keep entry-candle points independent from later-candle interval points.
+  // An empty later-interval array means no later candle has verified ordered
+  // coverage; it must not discard the entry candle's verified sequence.
+  const orderedExitPoints = orderedEvidenceComplete
+    ? [...orderedPoints, ...orderedPostEntryPoints]
+      .sort((first, second) => first.timestamp - second.timestamp)
     : [];
   const subsequentCandles = [
     ...(input.subsequentCompletedCandles ?? []),
@@ -849,25 +882,35 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     const activeTrailingStop = trailingStopActive && trailingStopPrice !== null ? trailingStopPrice : null;
     const breakevenStopArmed = breakevenMode === "stop";
     const recoveryExitArmed = breakevenMode === "recovery";
-    const candleEvidenceInterval = intervalEvidence?.find((interval) =>
-      (typeof candle.openTime !== "number" || interval.startTime <= candle.openTime)
-      && (typeof candle.closeTime !== "number" || interval.endTime >= candle.closeTime),
-    );
-    const candleOrderedPoints = intervalEvidence !== undefined
-      ? candleEvidenceInterval?.points.filter((point) =>
-        point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
-        && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
-        && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
-      ) ?? []
-      : orderedExecutionPoints.length > 0
-      ? orderedExecutionPoints.filter((point) =>
-        point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
-        && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
-        && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+    const entryCandleForExecution = input.evaluateEntryCandleForExit !== false && candleIndex === 0;
+    const candleEvidenceInterval = !entryCandleForExecution && intervalEvidence !== undefined
+      ? intervalEvidence.find((interval) =>
+        (typeof candle.openTime !== "number" || interval.startTime <= candle.openTime)
+        && (typeof candle.closeTime !== "number" || interval.endTime >= candle.closeTime)
+        && interval.points.every((point) =>
+          Number.isFinite(point.timestamp)
+          && Number.isFinite(point.price)
+          && point.timestamp >= interval.startTime
+          && point.timestamp <= interval.endTime,
+        ),
       )
-      : [];
+      : undefined;
+    const candleEvidencePoints = entryCandleForExecution
+      ? (entryOrderedEvidenceComplete ? orderedPoints : [])
+      : intervalEvidence !== undefined
+        ? candleEvidenceInterval?.points ?? []
+        : (orderedEvidenceComplete ? orderedPostEntryPoints : []);
+    const candleOrderedPoints = candleEvidencePoints.filter((point) =>
+      point.timestamp > (modeledFillTimestamp ?? Number.NEGATIVE_INFINITY)
+      && (typeof candle.openTime !== "number" || point.timestamp >= candle.openTime)
+      && (typeof candle.closeTime !== "number" || point.timestamp <= candle.closeTime),
+    );
     const candleOrderedEvidenceComplete = candleOrderedPoints.length > 0
-      && (intervalEvidence !== undefined ? candleEvidenceInterval !== undefined : orderedEvidenceComplete);
+      && (entryCandleForExecution
+        ? entryOrderedEvidenceComplete
+        : intervalEvidence !== undefined
+          ? candleEvidenceInterval !== undefined
+          : orderedEvidenceComplete);
     const orderedEvent = (() => {
       type OrderedEvent = {
         kind: "target" | "oneR" | "recovery" | "stop";
