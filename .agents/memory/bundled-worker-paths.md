@@ -7,4 +7,4 @@ Worker-thread entrypoints must be resolved relative to the emitted bundle layout
 
 **Why:** In this workspace the API entrypoint is emitted at `dist/index.mjs`, while nested workers are emitted below `dist/lib/...`; a source-relative URL can leave the parent waiting on an unusable worker and a stale indexing lifecycle.
 
-**How to apply:** Match the `new URL()` path to the built `dist` tree, remove deleted workers from build entrypoints, add startup error handling that transitions the parent operation to a failed state, and verify the actual child process and lifecycle status after restarting the workflow.
+**How to apply:** Match the `new URL()` path to the built `dist` tree, remove deleted workers from build entrypoints, add startup error handling that transitions the parent operation to a failed state, and verify the actual child process and lifecycle status after restarting the workflow. Source-level worker tests need a sibling TypeScript entrypoint and only the test runner's loader flags; passing the full parent `execArgv` can make worker threads reject Node flags.

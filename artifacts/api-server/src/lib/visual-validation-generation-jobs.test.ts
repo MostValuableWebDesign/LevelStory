@@ -7,6 +7,7 @@ import {
   VisualValidationGenerationBusyError,
 } from "./visual-validation-generation-jobs.js";
 import { getVisualValidationSet } from "./visual-validation-store.js";
+import { DEFAULT_FUTURES_SESSION_CALENDAR } from "./futures/session-calendar.js";
 
 const request = {
   symbol: "MES" as const,
@@ -29,6 +30,18 @@ async function waitForCompletion(jobId: string) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("Generation job did not finish within the test timeout.");
+}
+
+async function waitForHistoricalCompletion(jobId: string) {
+  const updates = [];
+  for (let attempt = 0; attempt < 1_200; attempt += 1) {
+    const current = getVisualValidationGenerationJob(jobId);
+    assert.ok(current);
+    updates.push(current);
+    if (current.status === "completed" || current.status === "failed") return { current, updates };
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("Historical generation job did not finish within the test timeout.");
 }
 
 test("visual-validation generation jobs reuse active work and publish completion after storage", async () => {
@@ -57,6 +70,45 @@ test("visual-validation generation jobs reuse active work and publish completion
   assert.equal(cached.jobId, first.jobId);
   assert.equal(cached.status, "completed");
   assert.equal(cached.percent, 100);
+});
+
+test("historical default review generation stays current and retains end-date charts", async () => {
+  const request = {
+    symbol: "MES" as const,
+    endDate: "2026-05-04",
+    inSampleDays: 5,
+    outOfSampleDays: 2,
+    premarketAvailable: true,
+    source: "historical_databento" as const,
+    reviewMode: "confirmed_signals" as const,
+    earlyOrbMomentum: {
+      enabled: true,
+      eligibilityCutoffMinutes: 630,
+      minimumCloseDistanceTicks: 1,
+    },
+    enabledStrategies: {
+      ORB_PULLBACK_CONTINUATION: true,
+      EARLY_ORB_MOMENTUM_CONTINUATION: true,
+      CONSOLIDATION_BREAKOUT_CONTINUATION: true,
+      PATIENCE_CANDLE_CONTINUATION: true,
+      EQUIVALENT_CANDLE_REVERSAL: true,
+      PEAK_RETRACEMENT_REVERSAL: true,
+    },
+  };
+  const started = await startVisualValidationGenerationJob(request);
+  const { current } = await waitForHistoricalCompletion(started.jobId);
+
+  assert.equal(current.status, "completed", current.error ?? undefined);
+  assert.equal(current.error, null);
+  assert.ok(current.result);
+  assert.equal(current.result?.stale, false);
+  assert.equal(current.result?.freshness?.status, "current");
+  assert.equal(current.result?.sessionCalendarVersion, DEFAULT_FUTURES_SESSION_CALENDAR.calendarVersion);
+  assert.equal(current.result?.request.endDate, request.endDate);
+  assert.equal(
+    current.result?.snapshots.some((snapshot) => snapshot.tradingDate === request.endDate),
+    true,
+  );
 });
 
 test("elapsed time is zero before start and freezes at completion", () => {

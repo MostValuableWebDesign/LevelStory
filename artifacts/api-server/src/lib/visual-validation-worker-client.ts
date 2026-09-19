@@ -1,4 +1,6 @@
 import { Worker } from "node:worker_threads";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { VisualValidationRequest, VisualValidationSet } from "./visual-validation.js";
 import type { CausalReplayProgress } from "./phase9.js";
 import { getReadyHistoricalMultiContractIndex } from "./futures/multi-contract-replay.js";
@@ -32,7 +34,26 @@ type WorkerLike = {
   terminate(): Promise<number>;
 };
 
-const workerUrl = new URL("./lib/visual-validation-worker.mjs", import.meta.url);
+const bundledWorkerUrl = new URL("./lib/visual-validation-worker.mjs", import.meta.url);
+const sourceWorkerUrl = new URL("./visual-validation-worker.ts", import.meta.url);
+const workerUrl = existsSync(fileURLToPath(bundledWorkerUrl)) ? bundledWorkerUrl : sourceWorkerUrl;
+const workerExecArgv = workerUrl === sourceWorkerUrl ? (() => {
+  const loaderArgs: string[] = [];
+  for (let index = 0; index < process.execArgv.length; index += 1) {
+    const argument = process.execArgv[index]!;
+    if (argument === "--require" || argument === "--import") {
+      const value = process.execArgv[index + 1];
+      if (value?.includes("tsx")) {
+        loaderArgs.push(argument, value);
+        index += 1;
+      }
+    } else if ((argument.startsWith("--require=") || argument.startsWith("--import=")) && argument.includes("tsx")) {
+      loaderArgs.push(argument);
+    }
+  }
+  return loaderArgs;
+})()
+  : undefined;
 
 export class VisualValidationWorkerError extends Error {
   readonly partialSet?: Omit<VisualValidationSet, "reviewSetId" | "createdAt">;
@@ -88,7 +109,10 @@ export async function buildHistoricalVisualValidationSetInWorker(
     }, timeoutMs);
 
     try {
-      worker = new Worker(workerUrl, { workerData: request }) as unknown as WorkerLike;
+      worker = new Worker(workerUrl, {
+        ...(workerExecArgv ? { execArgv: workerExecArgv } : {}),
+        workerData: request,
+      }) as unknown as WorkerLike;
       worker.on("message", (message) => {
         if (message.type === "result") {
           messageReceived = true;
