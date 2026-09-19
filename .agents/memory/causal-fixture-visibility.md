@@ -8,3 +8,9 @@ Replay snapshots expose completed candles through the current candle's close, bu
 **Why:** Including the next candle while constructing a fixture can make an equivalent-candle pattern appear qualified through future evidence, while the real replay correctly sees only the setup pair.
 
 **How to apply:** Build fixture prefixes using the same completed-candle visibility rule as replay, keep the trigger candle adjacent to the setup pair, and validate audit plus occurrence timestamps before asserting candidate projection.
+
+Entry-candle ordered evidence must be scoped to the actual occurrence `eOpenTimestamp` candle after fixture transformations, not the candle originally intended as the signal index.
+
+**Why:** Direct consolidation detection can advance the executable entry to the next completed candle; stale coverage metadata then silently disables valid entry-candle stop evidence.
+
+**How to apply:** Derive fixture coverage and ordered points from the transformed candle that the occurrence reports, and assert the occurrence/audit candle interval before testing execution.

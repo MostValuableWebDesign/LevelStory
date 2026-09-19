@@ -3754,6 +3754,70 @@ test("candidate projection enforces the consolidation guard before candidate-own
    assert.equal(accepted.authoritativeTrades[0]?.entryPrice, 103);
 });
 
+test("candidate-owned gap exits retain the exact timestamp through trade projection", () => {
+  const occurrence = confirmedCandidateOccurrence({
+    pOpen: "2026-08-25T15:00:00.000Z",
+    eOpen: "2026-08-25T15:05:00.000Z",
+    eClose: "2026-08-25T15:10:00.000Z",
+    entryHigh: 104,
+    entryLow: 101.5,
+    management: {
+      strategyStopPrice: 97,
+      catastropheStopPrice: null,
+      targetPrice: null,
+      contracts: 1,
+      runnerActivationPrice: null,
+      runnerExitRule: null,
+      sessionCloseTime: "2026-08-25T20:00:00.000Z",
+      sourceAuditId: "gap-exit-management",
+      missingEvidenceReasons: [],
+    },
+  }) as HistoricalOccurrence;
+  occurrence.primaryEdge = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.strategyCandidate = "CONSOLIDATION_BREAKOUT_CONTINUATION";
+  occurrence.specificStrategyId = "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+  occurrence.causalTrendDirection = "long";
+  occurrence.causalTrendSource = "BREAKOUT_DIRECTION";
+  occurrence.causalTrendTimestamp = "2026-08-25T14:55:00.000Z";
+  occurrence.consolidationGuard = consolidationGuard({
+    activeZone: true,
+    activeConsolidationZoneId: "gap-exit-zone",
+    lifecycleState: "CONSOLIDATION_BREAKOUT_CONFIRMED",
+    lifecycleStates: ["CONSOLIDATION_ZONE_FROZEN", "CONSOLIDATION_BREAKOUT_CONFIRMED"],
+    executionEligible: true,
+    direction: "long",
+    effectiveEntryThreshold: 103,
+    entryClose: 104,
+    entryReachedConfirmation: true,
+    effectiveEntryThresholdReached: true,
+    entryCloseOutsideZone: true,
+    entryClosedOutsideZone: true,
+    entryFillOutsideZone: true,
+    entryOutsideFinalizedNtz: true,
+    entryBeforeCutoff: true,
+    consolidationEntryDisposition: "CONSOLIDATION_ENTRY_CONFIRMED_OUTSIDE_ZONE",
+    rejectionReason: null,
+    detail: "Gap exit identity fixture passed the frozen consolidation-entry guard.",
+  });
+  const dataset = candidateProjectionDataset(occurrence, {
+    open: 96,
+    high: 96.5,
+    low: 95,
+    close: 96.25,
+  });
+  const result = projectHistoricalTradeCandidates([occurrence], [], {
+    dataset,
+    specification: getFuturesContractSpecification("MES"),
+    executionMode: "ohlcv_modeled",
+  });
+  const trade = result.authoritativeTrades[0]!;
+  assert.equal(result.candidates[0]?.executionStatus, "MODELED_TRADE_CREATED");
+  assert.equal(trade.outcome, "strategy stop");
+  assert.equal(trade.exitTime, occurrence.entryObservationTimestamp);
+  assert.equal(trade.audit?.modeledExitTimestamp, occurrence.entryObservationTimestamp);
+  assert.equal(trade.audit?.exitCandleOpenTime, occurrence.entryObservationTimestamp);
+});
+
 test("a causal consolidation guard blocks an ORB candidate inside the zone", () => {
   const occurrence = confirmedCandidateOccurrence({
     pOpen: "2026-08-25T14:15:00.000Z",

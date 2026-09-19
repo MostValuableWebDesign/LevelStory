@@ -31,6 +31,30 @@ test("versioned analysis keys separate source, lookback, strategy, and execution
   }));
 });
 
+test("previous result versions are rejected while the current version reuses its result", async () => {
+  const cache = new VersionedAnalysisCache<{ version: string }>();
+  const request = { source: "same-source", formula: "same-formula", projection: "same-projection" };
+  const previousKey = buildVersionedAnalysisCacheKey("strategy-result", {
+    ...request,
+    resultVersion: "entry-candle-gap-exit-v1",
+  });
+  const currentKey = buildVersionedAnalysisCacheKey("strategy-result", {
+    ...request,
+    resultVersion: "entry-candle-gap-exit-v2",
+  });
+  cache.setComplete(previousKey, { version: "previous" });
+  let computations = 0;
+  const compute = async () => {
+    computations += 1;
+    return { version: "current" };
+  };
+  assert.equal(cache.get(currentKey), null);
+  assert.deepEqual(await cache.getOrCompute(currentKey, compute), { version: "current" });
+  assert.deepEqual(await cache.getOrCompute(currentKey, compute), { version: "current" });
+  assert.equal(computations, 1);
+  assert.deepEqual(cache.get(previousKey), { version: "previous" });
+});
+
 test("complete empty results are valid hits while failed and incomplete records are not", async () => {
   const cache = new VersionedAnalysisCache<{ trades: unknown[] }>({ maxEntries: 4 });
   const emptyKey = "empty-result";

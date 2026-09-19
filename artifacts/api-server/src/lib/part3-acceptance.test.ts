@@ -55,7 +55,7 @@ function controlledConsolidationFixture(): ControlledFixture {
   if (!regularWindow) throw new Error("Controlled fixture has no regular session.");
   const regular = source.filter((item) =>
     item.openTime >= regularWindow.openTime && item.openTime < regularWindow.closeTime);
-  const signalIndex = 29;
+  const signalIndex = 30;
   const base = regular[25]!.close;
   const orbHigh = Math.max(...regular.slice(0, 3).map((item) => item.high));
   const candles = source.map((item) => {
@@ -70,7 +70,7 @@ function controlledConsolidationFixture(): ControlledFixture {
         volume: 2_000,
       };
     }
-    if (index >= 25 && index < signalIndex) {
+    if (index >= 26 && index < signalIndex) {
       return {
         ...item,
         open: base,

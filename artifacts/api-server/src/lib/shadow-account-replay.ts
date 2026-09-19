@@ -364,7 +364,10 @@ function replayTradeWithFixedContracts(
     entry: replayInput.entryPrice,
     patienceCandle: asOhlcvCandle(replayInput.patienceCandle),
     immediateTriggerCandle: asOhlcvCandle(replayInput.immediateTriggerCandle),
-    evaluateEntryCandleForExit: false,
+    // Strong and Extended direct candidates own their entry-candle barrier
+    // policy. Generic replay fixtures retain the established deferred policy.
+    evaluateEntryCandleForExit: trade.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+      || trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
     subsequentCompletedCandles: replayInput.subsequentCompletedCandles.map(asOhlcvCandle),
     sessionCloseCandle: replayInput.sessionCloseCandle ? asOhlcvCandle(replayInput.sessionCloseCandle) : null,
     contracts: contractsPerTrade,

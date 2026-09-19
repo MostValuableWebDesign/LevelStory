@@ -210,7 +210,7 @@ export type ModeledExecutionLeg = {
   fees: number;
   netPnl: number;
   exitReason: "target" | "runner" | "stop" | typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON | "breakeven" | "breakeven_recovery" | "manual" | "session_close";
-  /** Exact ordered intrabar exit time when the source provides it. */
+  /** Exact exit time from ordered evidence or a verified candle-open gap. */
   exitTimestamp?: number;
   exitCandleOpenTime?: string;
   exitCandleCloseTime?: string;
@@ -797,7 +797,16 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
   const feePerSide = Object.values(input.fees ?? input.feeComponents ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
-  const makeLeg = (kind: ModeledExecutionLeg["kind"], qty: number, reference: number, fill: number, reason: ModeledExecutionLeg["exitReason"], candle: OhlcvCandle, orderedExitPoint: OrderedIntrabarPoint | null = null): ModeledExecutionLeg => {
+  const makeLeg = (
+    kind: ModeledExecutionLeg["kind"],
+    qty: number,
+    reference: number,
+    fill: number,
+    reason: ModeledExecutionLeg["exitReason"],
+    candle: OhlcvCandle,
+    orderedExitPoint: OrderedIntrabarPoint | null = null,
+    exactExitTimestamp: number | null = null,
+  ): ModeledExecutionLeg => {
     const sign = input.direction === "long" ? 1 : -1;
     const gross = (reference - entryReference) * qty * multiplier * sign;
     const entrySlip = Math.abs(modeledFill - entryReference) * qty * multiplier;
@@ -816,7 +825,11 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       fees: money(fees),
       netPnl: money(gross - slip - fees),
       exitReason: reason,
-      ...(orderedExitPoint ? { exitTimestamp: orderedExitPoint.timestamp } : {}),
+      ...(orderedExitPoint
+        ? { exitTimestamp: orderedExitPoint.timestamp }
+        : exactExitTimestamp !== null && Number.isFinite(exactExitTimestamp)
+          ? { exitTimestamp: exactExitTimestamp }
+          : {}),
       ...(exitCandleOpenTime ? { exitCandleOpenTime } : {}),
       ...(exitCandleCloseTime ? { exitCandleCloseTime } : {}),
     };
@@ -1013,13 +1026,18 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         targetHit || oneRReached ? runnerQuantity : remaining,
         reference,
         fill,
-         level.level === "breakeven"
-           ? "breakeven"
-           : level.level === "strategy" && input.strategyStopExitReason
-             ? input.strategyStopExitReason
-             : "stop",
+        level.level === "breakeven"
+          ? "breakeven"
+          : level.level === "strategy" && input.strategyStopExitReason
+            ? input.strategyStopExitReason
+            : "stop",
         candle,
         orderedEvent?.kind === "stop" ? orderedEvent.point : null,
+        orderedEvent?.kind === "stop"
+          ? null
+          : gapThrough && typeof candle.openTime === "number" && Number.isFinite(candle.openTime)
+            ? candle.openTime
+            : null,
       ));
       if ((targetHit || oneRReached) && runnerQuantity > 0) runnerExited = true;
       originalStopStillActive = level.level !== "breakeven";

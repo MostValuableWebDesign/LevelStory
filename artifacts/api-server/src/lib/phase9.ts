@@ -1656,7 +1656,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v6-filtered-canonical-evidence";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v7-entry-candle-gap-exit";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -6189,8 +6189,6 @@ function candidateDrivenEntryTrade(
     || occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
     || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
     || occurrence.primaryEdge === "EQUIVALENT_CANDLE_REVERSAL";
-  const midpointManagedDirect = occurrence.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || occurrence.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
   if (disposition.status !== "MODELED_TRADE_CREATED" || (!direct && !occurrence.patienceCandle) || !entryCandle || entryPrice === null || occurrence.direction === null) return undefined;
   const tradingDate = occurrence.tradingDate;
   const contractMonth = parseMesContractSymbol(occurrence.contractSymbol)?.contractMonth ?? context.dataset.contractMonth;
@@ -6260,7 +6258,7 @@ function candidateDrivenEntryTrade(
     // Direct strategies qualify on completed setup evidence and manage from
     // the following completed candle. Patience candidates retain their
     // established entry-candle ambiguity behavior.
-    evaluateEntryCandleForExit: midpointManagedDirect ? false : true,
+    evaluateEntryCandleForExit: true,
     orderedIntrabarPoints,
     orderedPostEntryPoints: orderedEvidenceComplete
       ? orderedPostEntryEvidenceIntervals.flatMap((interval) => interval.points)

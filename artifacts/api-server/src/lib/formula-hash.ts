@@ -5,7 +5,7 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION } from "./strategy/consolidation-midpoint-stop.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.18-strong-breakout-midpoint-stop";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.19-strong-breakout-entry-candle-gap-exit";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -47,7 +47,7 @@ export function formulaConfiguration(
       reversalDirectionRule: "reversal direction and target must oppose the confirmed trend",
       patienceContinuationAttribution: "PATIENCE_CANDLE_CONTINUATION is classified under ORB_PULLBACK_CONTINUATION",
       ohlcvAmbiguityRule: "complete ordered evidence selects the first timestamped executable event; otherwise adverse-first stop",
-      ohlcvIntrabarExitTimestamp: "ordered tick crossing when complete source coverage is verified; otherwise candle-close observation time",
+      ohlcvIntrabarExitTimestamp: "ordered tick crossing when complete source coverage is verified; verified gap-open stop otherwise uses candle-open time; unresolved OHLC remains conservative",
       candidateInvalidManagement: "reject before execution and account arbitration",
       candidateSlippage: "use effective replay entry and exit slippage ticks exactly once",
       runnerRetracementRatio: null,

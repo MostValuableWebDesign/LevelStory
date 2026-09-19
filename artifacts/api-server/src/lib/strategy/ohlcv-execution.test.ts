@@ -55,6 +55,216 @@ test("Strong Breakout midpoint stop ignores midpoint touches and exits at the st
   assert.equal(result.audit.consolidationMidpointStop?.tickAlignedStop, 101.75);
 });
 
+test("Strong long executes a verified midpoint stop during the entry candle", () => {
+  const openTime = 9_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(104.5, 105, 101.5, 101.5, openTime + 300_000),
+      openTime,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 104,
+      frozenZoneLow: 100,
+      rawMidpoint: 102,
+      tickAlignedStop: 101.75,
+      direction: "long",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    orderedIntrabarPoints: [
+      { timestamp: openTime + 60_000, price: 105 },
+      { timestamp: openTime + 120_000, price: 101.5 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.audit.consolidationMidpointStop?.stopHitTimestamp, openTime + 120_000);
+  assert.equal(result.legs[0]?.exitTimestamp, openTime + 120_000);
+  assert.equal(result.audit.modeledExitTimestamp, openTime + 120_000);
+});
+
+test("Strong short executes a verified midpoint stop during the entry candle", () => {
+  const openTime = 10_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    entry: 95,
+    immediateTriggerCandle: {
+      ...timedCandle(95.5, 98.5, 95, 98.5, openTime + 300_000),
+      openTime,
+    },
+    strategyStop: 98.25,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 100,
+      frozenZoneLow: 96,
+      rawMidpoint: 98,
+      tickAlignedStop: 98.25,
+      direction: "short",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    orderedIntrabarPoints: [
+      { timestamp: openTime + 60_000, price: 95 },
+      { timestamp: openTime + 120_000, price: 98.5 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.audit.consolidationMidpointStop?.stopHitTimestamp, openTime + 120_000);
+  assert.equal(result.legs[0]?.exitTimestamp, openTime + 120_000);
+  assert.equal(result.audit.modeledExitTimestamp, openTime + 120_000);
+});
+
+test("verified pre-entry midpoint movement cannot close a later Strong long entry", () => {
+  const openTime = 11_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(104.5, 105, 101.5, 105, openTime + 300_000),
+      openTime,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 104,
+      frozenZoneLow: 100,
+      rawMidpoint: 102,
+      tickAlignedStop: 101.75,
+      direction: "long",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    orderedIntrabarPoints: [
+      { timestamp: openTime + 30_000, price: 101.5 },
+      { timestamp: openTime + 60_000, price: 105 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.modeledFill, 105);
+  assert.equal(result.exitReason, "manual");
+  assert.equal(result.audit.consolidationMidpointStop?.stopHitTimestamp, null);
+});
+
+test("a verified Strong gap-open stop carries candle-open time through the exit leg", () => {
+  const entryOpenTime = 12_000_000;
+  const gapOpenTime = entryOpenTime + 600_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(105, 105.5, 104.5, 105, entryOpenTime + 300_000),
+      openTime: entryOpenTime,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 104,
+      frozenZoneLow: 100,
+      rawMidpoint: 102,
+      tickAlignedStop: 101.75,
+      direction: "long",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    subsequentCompletedCandles: [
+      timedCandle(101.5, 102, 101, 101.25, gapOpenTime + 300_000),
+    ],
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.exitPrice, 101.5);
+  assert.equal(result.audit.consolidationMidpointStop?.stopHitTimestamp, gapOpenTime);
+  assert.equal(result.legs[0]?.exitTimestamp, gapOpenTime);
+  assert.equal(result.audit.modeledExitTimestamp, gapOpenTime);
+  assert.equal(result.legs[0]?.exitCandleOpenTime, new Date(gapOpenTime).toISOString());
+});
+
+test("a verified short gap-open stop carries candle-open time through the exit leg", () => {
+  const entryOpenTime = 12_500_000;
+  const gapOpenTime = entryOpenTime + 600_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    direction: "short",
+    entry: 95,
+    immediateTriggerCandle: {
+      ...timedCandle(95, 95.5, 94.5, 95, entryOpenTime + 300_000),
+      openTime: entryOpenTime,
+    },
+    strategyStop: 98.25,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 100,
+      frozenZoneLow: 96,
+      rawMidpoint: 98,
+      tickAlignedStop: 98.25,
+      direction: "short",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    subsequentCompletedCandles: [
+      timedCandle(98.5, 99, 98, 98.75, gapOpenTime + 300_000),
+    ],
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.exitPrice, 98.5);
+  assert.equal(result.audit.consolidationMidpointStop?.stopHitTimestamp, gapOpenTime);
+  assert.equal(result.legs[0]?.exitTimestamp, gapOpenTime);
+  assert.equal(result.audit.modeledExitTimestamp, gapOpenTime);
+});
+
+test("a same-timestamp Strong catastrophe collision records both breached barriers", () => {
+  const openTime = 12_750_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(105, 105.5, 98.5, 98.5, openTime + 300_000),
+      openTime,
+    },
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 104,
+      frozenZoneLow: 100,
+      rawMidpoint: 102,
+      tickAlignedStop: 101.75,
+      direction: "long",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    catastropheStop: 99,
+    orderedIntrabarPoints: [
+      { timestamp: openTime + 60_000, price: 105 },
+      { timestamp: openTime + 120_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.stopLevel, "catastrophe");
+  assert.deepEqual(result.audit.breachedStopLevels, ["strategy", "catastrophe"]);
+  assert.equal(result.audit.modeledExitTimestamp, openTime + 120_000);
+});
+
+test("a verified Extended entry-candle stop has no midpoint evidence", () => {
+  const openTime = 13_000_000;
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: {
+      ...timedCandle(105, 105.5, 99, 100, openTime + 300_000),
+      openTime,
+    },
+    strategyStop: 99,
+    orderedIntrabarPoints: [
+      { timestamp: openTime + 60_000, price: 105 },
+      { timestamp: openTime + 120_000, price: 99 },
+    ],
+    orderedIntrabarEvidenceComplete: true,
+  });
+  assert.equal(result.exitReason, "stop");
+  assert.equal(result.audit.consolidationMidpointStop, null);
+  assert.equal(result.audit.stopHitTimestampSource, null);
+});
+
 test("expires when the immediate trigger does not reach entry", () => {
   const result = simulateOhlcvExecution({ ...base, immediateTriggerCandle: candle(99, 99.5, 98, 99), subsequentCompletedCandles: [candle(99, 100, 98, 99)] });
   assert.equal(result.audit.entryCandle, null);

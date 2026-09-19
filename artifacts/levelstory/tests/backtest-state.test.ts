@@ -25,6 +25,7 @@ test("historical backtest readiness stays gated through indexing and failures", 
   }).label, "Historical index failed");
   assert.equal(getHistoricalBacktestReadiness("historical_databento_multicontract", {
     indexState: "ready",
+    sessionCatalogState: "ready",
     importLoading: false,
     hasImport: true,
   }).ready, true);
