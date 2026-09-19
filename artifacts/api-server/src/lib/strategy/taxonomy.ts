@@ -10,6 +10,15 @@ export const STRATEGY_IDS = [
 ] as const;
 
 export type StrategyId = typeof STRATEGY_IDS[number];
+/** Non-canonical direct strategy identities that must survive execution/projection. */
+export type SpecificStrategyId =
+  | "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+  | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+
+export function isSpecificStrategyId(value: string | null | undefined): value is SpecificStrategyId {
+  return value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || value === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+}
 export type StrategyComponent =
   | "ORB_BREAKOUT"
   | "PULLBACK_INTERACTION"
@@ -122,6 +131,10 @@ export function canonicalStrategyId(value: string): StrategyId | null {
   if (value === "STRONG_BREAKOUT_AFTER_CONSOLIDATION" || value === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT") return "CONSOLIDATION_BREAKOUT_CONTINUATION";
   if (value === "BONUS_REVERSAL") return "EQUIVALENT_CANDLE_REVERSAL";
   return null;
+}
+
+export function specificStrategyIdFor(value: string | null | undefined): SpecificStrategyId | null {
+  return isSpecificStrategyId(value) ? value : null;
 }
 
 export function setupTypeForStrategy(strategyKey: StrategyId): SetupType {

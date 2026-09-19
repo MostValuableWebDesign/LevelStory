@@ -1357,14 +1357,13 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        consolidationMidpointStop: input.consolidationMidpointStop
          ? {
            ...input.consolidationMidpointStop,
-           activationTimestamp: modeledFillTimestamp
-             ?? (typeof trigger.closeTime === "number" && Number.isFinite(trigger.closeTime) ? trigger.closeTime : null),
-           stopHitTimestamp: input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
-             ? modeledExitTimestamp
-               ?? (typeof exitCandle?.closeTime === "number" && Number.isFinite(exitCandle.closeTime)
-                 ? exitCandle.closeTime
-                 : null)
-             : null,
+            // OHLC-only fills establish a candle/bar, not an exact instant.
+            // Only ordered threshold evidence may populate these timestamps.
+            activationTimestamp: modeledFillTimestamp,
+            stopHitTimestamp: input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
+              && resolvedStopLevel === "strategy"
+              ? modeledExitTimestamp
+              : null,
          }
          : null,
         stopLevel: exitReason === "stop"

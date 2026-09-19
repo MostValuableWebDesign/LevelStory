@@ -375,6 +375,7 @@ export type MarketSnapshot = {
     explanation: string;
     evaluations: Array<{
       setupType: SetupType;
+      specificStrategyId?: "STRONG_BREAKOUT_AFTER_CONSOLIDATION" | "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT" | null;
       direction: Direction | null;
       decision: Phase6Decision;
       mandatoryPassed: boolean;
@@ -1376,6 +1377,7 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
     explanation: analysis.explanation,
     evaluations: analysis.evaluations.map((evaluation) => ({
       setupType: canonicalStrategyId(evaluation.setupType) ?? "ORB_PULLBACK_CONTINUATION",
+      specificStrategyId: evaluation.specificStrategyId ?? null,
       direction: evaluation.direction,
       decision: evaluation.decision,
       mandatoryPassed: evaluation.mandatoryPassed,

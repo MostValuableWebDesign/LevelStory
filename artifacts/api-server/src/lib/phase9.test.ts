@@ -1402,6 +1402,8 @@ test("Strong Breakout uses the strict midpoint-reentry stop from the frozen zone
     const threshold = long ? 103 : 97;
     const audit = occurrenceAudit("CONSOLIDATION_BREAKOUT_CONTINUATION", {
       id: `direct-frozen-stop-${direction}`,
+      specificStrategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+      catastropheStopPrice: long ? 95 : 110,
       evaluatedCandleOpenTime: iso(600_000),
       direction,
       causalTrendDirection: direction,
@@ -1465,7 +1467,7 @@ test("Strong Breakout uses the strict midpoint-reentry stop from the frozen zone
     assert.equal(result.rejected.length, 0, JSON.stringify(result.rejected));
     assert.equal(result.candidates[0]?.strategyStopPrice, expectedStop);
     assert.equal(result.authoritativeTrades[0]?.audit?.strategyStopPrice, expectedStop);
-    assert.equal(result.candidates[0]?.managementContext?.stopBufferTicks, 8);
+    assert.equal(result.candidates[0]?.managementContext?.stopBufferTicks, null);
     assert.equal(result.authoritativeTrades[0]?.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
     assert.equal(result.authoritativeTrades[0]?.audit?.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
     assert.equal(result.authoritativeTrades[0]?.audit?.consolidationMidpointStop?.rawMidpoint, long ? 100 : 102);
@@ -3286,13 +3288,13 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   const candidate = result.candidates[0]!;
   const trade = result.authoritativeTrades[0]!;
   assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(trade.outcome, "strategy stop");
+  assert.equal(trade.outcome, "catastrophe stop");
   assert.equal(trade.audit?.targetPrice, 105.5);
   assert.equal(trade.audit?.targetHit, false);
-  assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
-  assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), false);
-   assert.equal(trade.audit?.stopPrice, 97);
-  assert.equal(trade.audit?.stopLevel, "strategy");
+  assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), false);
+  assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), true);
+   assert.equal(trade.audit?.stopPrice, 100);
+  assert.equal(trade.audit?.stopLevel, "catastrophe");
   assert.equal(trade.audit?.catastropheStopPrice, 100);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 1);
 });
@@ -3799,7 +3801,7 @@ test("every confirmed same-arm occurrence creates an independent long candidate 
     third.occurrenceId,
   ]);
   assert.deepEqual(projection.candidates.map((candidate) => candidate.attemptOrdinal), [1, 2, 3]);
-  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["strategy stop", "strategy stop", "strategy stop"]);
+  assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.outcome), ["catastrophe stop", "catastrophe stop", "catastrophe stop"]);
   assert.deepEqual(projection.authoritativeTrades.map((trade) => trade.attemptOrdinal), [1, 2, 3]);
   assert.equal(new Set(projection.candidates.map((candidate) => candidate.candidateId)).size, 3);
   assert.equal(new Set(projection.authoritativeTrades.map((trade) => trade.id)).size, 3);

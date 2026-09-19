@@ -3,7 +3,7 @@ name: Strong Breakout midpoint stop identity
 description: The frozen-zone midpoint-reentry stop applies only to canonical Strong Breakout consolidation occurrences, not extended consolidation aliases or equivalent reversals.
 ---
 
-The midpoint-reentry stop must be selected from the explicit causal occurrence identity. Canonical `CONSOLIDATION_BREAKOUT_CONTINUATION` represents Strong Breakout, while an explicit `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT` identity opts out; `EQUIVALENT_CANDLE_REVERSAL` keeps its separate opposite-extreme stop.
+The midpoint-reentry stop must be selected from the explicit causal occurrence identity. Only `STRONG_BREAKOUT_AFTER_CONSOLIDATION` authorizes it; canonical `CONSOLIDATION_BREAKOUT_CONTINUATION` without that identity fails closed, while `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT` and `EQUIVALENT_CANDLE_REVERSAL` keep separate stops.
 
 **Why:** The direct consolidation taxonomy is shared by multiple strategies, so changing the broad helper without an identity gate silently changes unrelated stops.
 

@@ -392,7 +392,7 @@ function replayTradeWithFixedContracts(
       ? CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
       : undefined,
     consolidationMidpointStop: midpointStopEvidence,
-    catastropheStop: null,
+    catastropheStop: replayInput.catastropheStopPrice ?? null,
     tickSize: specification.tickSize,
     tickValue: specification.dollarValuePerTick,
     pointMultiplier: specification.pointValue * specification.contractMultiplier,

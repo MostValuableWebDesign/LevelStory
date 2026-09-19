@@ -37,7 +37,11 @@ import { levelInteractionDistance, qualifyLevelInteraction } from "./strategy/ph
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { parseMesContractSymbol } from "./futures/multi-contract-replay.js";
 import { strategyConfig, type StrategyConfig } from "./strategy/config.js";
-import { canonicalStrategyId, type StrategyId } from "./strategy/taxonomy.js";
+import {
+  canonicalStrategyId,
+  type SpecificStrategyId,
+  type StrategyId,
+} from "./strategy/taxonomy.js";
 import type { AccountEntryBlock } from "./account-position-gate.js";
 import { activeShadowStrategySnapshot } from "./active-shadow-strategy.js";
 import { visualValidationCacheMetadata } from "./visual-validation-cache.js";
@@ -323,6 +327,7 @@ export type VisualValidationReplayExecutionInput = {
   subsequentCompletedCandles: VisualValidationCandle[];
   sessionCloseCandle: VisualValidationCandle | null;
   strategyStopPrice: number | null;
+  catastropheStopPrice?: number | null;
   consolidationMidpointStop?: NonNullable<NonNullable<BacktestTrade["audit"]>["consolidationMidpointStop"]> | null;
   targetPrice: number | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
@@ -607,6 +612,7 @@ function replayInputForSnapshot(
     subsequentCompletedCandles,
     sessionCloseCandle: subsequentCompletedCandles.at(-1) ?? null,
     strategyStopPrice: audit.strategyStopPrice,
+    catastropheStopPrice: audit.catastropheStopPrice ?? null,
     consolidationMidpointStop: audit.consolidationMidpointStop ?? null,
     targetPrice: audit.targetPrice,
     primaryLossExitLevel: audit.primaryLossExitLevel ?? null,
@@ -1391,6 +1397,7 @@ function auditEvidenceForOccurrence(
       : audit.directConsolidationSourceCandleTimestamps;
   return {
     ...audit,
+    specificStrategyId: occurrence.specificStrategyId ?? audit.specificStrategyId ?? null,
     direction: occurrence.direction ?? audit.direction,
     directQualificationTimestamp: occurrence.directQualificationTimestamp ?? audit.directQualificationTimestamp,
     directSignalOpenTimestamp: occurrence.directSignalOpenTimestamp ?? audit.directSignalOpenTimestamp,
@@ -1816,18 +1823,15 @@ type DirectConsolidationProjection = {
 };
 
 function isDirectConsolidationStrategy(
-  audit: Pick<BacktestAuditRecord, "setupType">,
+  audit: Pick<BacktestAuditRecord, "setupType" | "specificStrategyId">,
   occurrence?: HistoricalOccurrence,
 ): boolean {
-  const explicitExtended = occurrence?.strategyCandidate === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-    || occurrence?.primaryEdge === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
-    || audit.setupType === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
-  return !explicitExtended && (
-    occurrence?.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-    || occurrence?.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+  return occurrence?.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || occurrence?.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
+    || audit.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || audit.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT"
     || audit.setupType === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
-    || audit.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-  );
+    || audit.setupType === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
 }
 
 /**
@@ -1836,7 +1840,7 @@ function isDirectConsolidationStrategy(
  * a plausible-looking legacy candle-close entry or stop.
  */
 function directConsolidationProjection(
-  audit: Pick<BacktestAuditRecord, "contractSymbol" | "direction" | "setupType" | "directConsolidationZoneHigh" | "directConsolidationZoneLow" | "consolidationGuard">,
+  audit: Pick<BacktestAuditRecord, "contractSymbol" | "direction" | "setupType" | "specificStrategyId" | "directConsolidationZoneHigh" | "directConsolidationZoneLow" | "consolidationGuard">,
   occurrence?: HistoricalOccurrence,
 ): DirectConsolidationProjection | null {
   if (!isDirectConsolidationStrategy(audit, occurrence) || !audit.direction) return null;
@@ -1873,22 +1877,32 @@ function directConsolidationProjection(
   const entryThreshold = audit.direction === "long"
     ? zoneHigh + 8 * tickSize
     : zoneLow - 8 * tickSize;
-  const midpointStop = consolidationMidpointStop({
-    high: zoneHigh,
-    low: zoneLow,
-    tickSize,
-    direction: audit.direction,
-  });
-  if (!midpointStop) return null;
-  const strategyStop = midpointStop.strategyStop;
-  if (!Number.isFinite(entryThreshold) || !Number.isFinite(strategyStop)) return null;
+  const strong = occurrence?.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || audit.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || audit.setupType === "STRONG_BREAKOUT_AFTER_CONSOLIDATION";
+  const midpointStop = strong
+    ? consolidationMidpointStop({
+      high: zoneHigh,
+      low: zoneLow,
+      tickSize,
+      direction: audit.direction,
+    })
+    : null;
+  const strategyStop = strong
+    ? midpointStop?.strategyStop ?? null
+    : audit.direction === "long"
+      ? zoneLow - 8 * tickSize
+      : zoneHigh + 8 * tickSize;
+  if (typeof strategyStop !== "number"
+    || !Number.isFinite(entryThreshold)
+    || !Number.isFinite(strategyStop)) return null;
   return {
     zoneHigh,
     zoneLow,
     entryThreshold: Number(entryThreshold.toFixed(10)),
     strategyStop: Number(strategyStop.toFixed(10)),
-    rawMidpoint: midpointStop.rawMidpoint,
-    calculationVersion: midpointStop.calculationVersion,
+    rawMidpoint: midpointStop?.rawMidpoint ?? (zoneHigh + zoneLow) / 2,
+    calculationVersion: midpointStop?.calculationVersion ?? "EXTENDED_NTZ_FROZEN_ZONE_EIGHT_TICK_STOP_V1",
     tickSize,
     bufferPoints: Number(Math.abs(strategyStop - (audit.direction === "long" ? zoneLow : zoneHigh)).toFixed(10)),
   };
@@ -2814,9 +2828,9 @@ function buildMachineSnapshot(
       strategyStopPrice: directProjection.strategyStop,
       finalStrategyStopBoundary: directProjection.strategyStop,
       stopDirection: displayedAuditBeforeGeometry.direction,
-       stopBufferTicks: Math.round(Math.abs(directProjection.strategyStop
-         - (displayedAuditBeforeGeometry.direction === "long" ? directProjection.zoneLow : directProjection.zoneHigh))
-         / directProjection.tickSize),
+       // Strong Breakout uses midpoint evidence, not the legacy fixed
+       // eight-tick stop-buffer metadata.
+       stopBufferTicks: null,
       stopBufferPoints: directProjection.bufferPoints,
        consolidationMidpointStop: {
          frozenZoneHigh: directProjection.zoneHigh,

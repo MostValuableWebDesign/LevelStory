@@ -6,6 +6,7 @@ import type { StrategyConfig } from "./config.js";
 import { DEFAULT_STRATEGY_CONFIG, MIN_PHASE6_CONSOLIDATION_CANDLES } from "./config.js";
 import type { Candle, Direction, Level, TrendDirection } from "./types.js";
 import { canonicalStrategyId } from "./taxonomy.js";
+import type { SpecificStrategyId } from "./taxonomy.js";
 import { hasConfirmedDirectionalTrend } from "./rules.js";
 import {
   effectiveConfirmationThreshold,
@@ -147,6 +148,8 @@ export type ConsolidationEntryEvidence = {
 
 export type SetupEvaluation = {
   setupType: SetupType | LegacySetupType;
+  /** Exact direct-strategy identity; canonical setupType is retained for compatibility. */
+  specificStrategyId?: SpecificStrategyId | null;
   direction: Direction | null;
   decision: Phase6Decision;
   mandatoryPassed: boolean;
@@ -631,10 +634,17 @@ export function evaluateStrongBreakoutAfterConsolidation(context: Phase6Context)
     context.patience.state,
     consolidation,
     directSetupEvidence,
+    "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
   );
 }
 
-export const evaluateExtendedNtzConsolidationBreakout = evaluateStrongBreakoutAfterConsolidation;
+export function evaluateExtendedNtzConsolidationBreakout(context: Phase6Context): SetupEvaluation {
+  const evaluation = evaluateStrongBreakoutAfterConsolidation(context);
+  return {
+    ...evaluation,
+    specificStrategyId: "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT",
+  };
+}
 
 export function evaluateEquivalentCandleReversal(context: Phase6Context): SetupEvaluation {
   const completed = completedCandles(context.candles);
@@ -1266,6 +1276,7 @@ function buildEvaluation(
   patienceState: PatienceAnalysis["state"],
   consolidation: ExtendedConsolidation | null = null,
   directSetupEvidence: DirectSetupEvidence | null = null,
+  specificStrategyId: SpecificStrategyId | null = null,
 ): SetupEvaluation {
   const mandatory = rules.filter((item) => item.mandatory);
   const mandatoryPassed = mandatory.every((item) => item.passed);
@@ -1280,6 +1291,7 @@ function buildEvaluation(
           : "WAITING";
   return {
     setupType,
+    specificStrategyId,
     direction,
     decision,
     mandatoryPassed,
