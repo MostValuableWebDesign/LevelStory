@@ -10,6 +10,7 @@ import { evaluateOrbBreakoutQuality } from "./strategy/phase4.js";
 import { patienceCandleEngine } from "./strategy/phase5.js";
 import { buildPhase7RiskPlan, type Phase7RiskConfig } from "./strategy/phase7.js";
 import { simulatePhase8ShadowExecution } from "./strategy/phase8.js";
+import { buildHistoricalVisualValidationSetFromReport } from "./visual-validation.js";
 
 const specification = getFuturesContractSpecification("MES");
 const calendar = sessionCalendarForContract(specification);
@@ -251,8 +252,8 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
         contractSymbol: specification.fullContractSymbol,
         ordering: "timestamp_ascending" as const,
         equalTimestampSemantics: "conservative" as const,
-        coverageStart: entryCandle.openTime,
-        coverageEnd: entryCandle.closeTime,
+        coverageStart: 0,
+        coverageEnd: Number.MAX_SAFE_INTEGER,
       },
       orderedIntrabarEvidenceComplete: true,
       inSampleDates: dates.slice(0, -1),
@@ -351,7 +352,7 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
         item.signalOccurrenceId === occurrence?.occurrenceId
         && item.primaryEdge === setupType);
       assert.ok(candidate, `${kind} ${direction} must project a candidate`);
-      assert.equal(candidate?.executionStatus, "MODELED_TRADE_CREATED");
+       assert.equal(candidate?.executionStatus, "MODELED_TRADE_CREATED");
       assert.equal(candidate?.accountEntryStatus, "ENTERED");
       assert.ok(
         report.candidateExecutionEvidence?.some((trade) =>
@@ -402,9 +403,10 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
           const expectedEntry = direction === "long"
             ? frozenHigh! + 8 * specification.tickSize
             : frozenLow! - 8 * specification.tickSize;
+          const rawMidpoint = frozenLow! + (frozenHigh! - frozenLow!) / 2;
           const expectedStop = direction === "long"
-            ? frozenLow! - 8 * specification.tickSize
-            : frozenHigh! + 8 * specification.tickSize;
+            ? (Math.ceil(rawMidpoint / specification.tickSize) - 1) * specification.tickSize
+            : (Math.floor(rawMidpoint / specification.tickSize) + 1) * specification.tickSize;
           assert.equal(candidate?.confirmationPrice, expectedEntry);
           assert.equal(candidate?.strategyStopPrice, expectedStop);
           assert.equal(
@@ -431,6 +433,45 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
         assert.equal(occurrence?.directConsolidationSourceCandleTimestamps?.length, 4);
         const execution = report.candidateExecutionEvidence?.find((trade) => trade.candidateId === candidate?.candidateId);
         assert.equal(execution?.causalIdentity?.causalTrendTimestamp, occurrence?.causalTrendTimestamp);
+         const authoritativeTrade = report.trades.find((trade) =>
+           trade.candidateId === candidate?.candidateId
+           && trade.signalOccurrenceId === occurrence?.occurrenceId
+           && trade.primaryEdge === setupType,
+         );
+         assert.ok(authoritativeTrade);
+         assert.ok((authoritativeTrade.audit?.legs.length ?? 0) > 0);
+         assert.ok(
+           authoritativeTrade.audit?.exitReason === "target"
+           || authoritativeTrade.audit?.exitReason === "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+         );
+         assert.equal(authoritativeTrade.audit?.consolidationMidpointStop?.tickAlignedStop, expectedStop);
+         const visualSet = buildHistoricalVisualValidationSetFromReport(
+           {
+             ...fixture.request,
+             source: "historical_databento",
+             reviewMode: "trades_and_diagnostics",
+           },
+           fixture.dataset,
+           {
+             symbol: report.symbol,
+             formulaHash: report.formulaHash,
+             executionMode: report.executionMode,
+             audit: report.audit,
+             trades: report.trades,
+             occurrences: report.occurrences,
+             tradeCandidates: report.tradeCandidates,
+           },
+         );
+         const visualSnapshot = visualSet.snapshots.find((snapshot) =>
+           snapshot.machineEvidence.trade?.candidateId === candidate?.candidateId
+           && snapshot.category === "qualified_trade",
+         );
+         assert.ok(visualSnapshot);
+         assert.equal(visualSnapshot.machineEvidence.trade?.audit?.consolidationMidpointStop?.tickAlignedStop, expectedStop);
+         assert.equal(
+           visualSnapshot.annotations.find((annotation) => annotation.id === "strategy-stop")?.price,
+           expectedStop,
+         );
       }
     }
   }

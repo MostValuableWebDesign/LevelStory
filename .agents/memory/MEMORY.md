@@ -110,3 +110,4 @@
 - [Persistent JSONB cache identity](persistent-jsonb-cache-identity.md) — normalize undefined values before hashing JSONB-backed provenance or round-tripped identities will miss valid persisted results.
 - [Part 3 acceptance fixtures](part3-acceptance-fixtures.md) — prove configuration-driven qualification changes by reusing one raw dataset through detector, projection, execution, API, and chart paths.
 - [Superseded arm snapshots](superseded-arm-snapshot-filter.md) — later replay cursors can re-emit PATIENCE_ARMED for a terminal superseded arm; filter only that stale transition, not active contradictions.
+- [Strong Breakout midpoint stop identity](strong-breakout-midpoint-stop.md) — midpoint-reentry applies only to canonical Strong Breakout; explicit extended consolidation and equivalent reversal identities retain separate stops.

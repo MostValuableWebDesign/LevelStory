@@ -29,6 +29,7 @@ export const ORIGINAL_STOP_REACHED_BEFORE_BREAKEVEN_LABEL = "ORIGINAL_STOP_REACH
 export const DYNAMIC_TARGET_TIGHTENED_LABEL = "DYNAMIC_TARGET_TIGHTENED";
 export const DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED_LABEL = "DYNAMIC_TARGET_FARTHER_UPDATE_IGNORED";
 export const DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION = "causal-dynamic-target-v2-replay-context-pending-next-candle";
+export const CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON = "CONSOLIDATION_MIDPOINT_REENTRY_STOP";
 
 export type DynamicTargetSource = "VWAP" | "EMA200";
 
@@ -236,6 +237,18 @@ export type OhlcvExecutionAudit = {
   runnerActivated: boolean;
   runnerExited: boolean;
   strategyStopPrice: number | null;
+  consolidationMidpointStop?: {
+    frozenZoneHigh: number;
+    frozenZoneLow: number;
+    rawMidpoint: number;
+    tickAlignedStop: number;
+    direction: Direction;
+    calculationVersion: string;
+    activationTimestamp: number | null;
+    stopHitTimestamp: number | null;
+    sourceOccurrenceId?: string | null;
+    sourceAuditId?: string | null;
+  } | null;
   catastropheStopPrice: number | null;
   stopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
@@ -288,7 +301,7 @@ export type ModeledOhlcvExecution = {
   stopPrice: number | null;
   targetPrice: number | null;
   exitPrice: number | null;
-  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close" | "not filled";
+  exitReason: "target" | "runner" | "stop" | "breakeven" | "breakeven_recovery" | "manual" | "session_close" | "not filled" | typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON;
   legs: ModeledExecutionLeg[];
   accounting: ModeledExecutionAccounting;
   audit: OhlcvExecutionAudit;
@@ -339,6 +352,11 @@ export type OhlcvExecutionInput = {
   targetPrice?: number | null;
   stopPrice?: number | null;
   strategyStop?: number | null;
+  strategyStopExitReason?: typeof CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON;
+  consolidationMidpointStop?: Omit<
+    NonNullable<OhlcvExecutionAudit["consolidationMidpointStop"]>,
+    "activationTimestamp" | "stopHitTimestamp"
+  >;
   catastropheStop?: number | null;
   targetDollars?: number | null;
   tickSize: number;
@@ -474,6 +492,9 @@ function emptyResult(
       eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, modeledExitTimestamp: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
       strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
+      consolidationMidpointStop: input.consolidationMidpointStop
+        ? { ...input.consolidationMidpointStop, activationTimestamp: null, stopHitTimestamp: null }
+        : null,
       catastropheStopPrice: input.catastropheStop ?? null,
       stopLevel: null, primaryLossExitLevel: input.primaryLossExitLevel ?? null,
       initialRiskPoints: null, oneRPrice: null, oneRReached: false, profitCheckpointPrice: null,
@@ -962,7 +983,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
       remaining = 0;
       exitPrice = fill;
       exitCandle = candle;
-      exitReason = level.level === "breakeven" ? "breakeven" : "stop";
+      exitReason = level.level === "strategy" && input.strategyStopExitReason
+        ? input.strategyStopExitReason
+        : level.level === "breakeven" ? "breakeven" : "stop";
       break;
     }
     if (recoveryReached) {
@@ -1096,7 +1119,9 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         originalStopStillActive = level.level !== "structure_trailing";
         exitPrice = fill;
         exitCandle = candle;
-        exitReason = "stop";
+        exitReason = level.level === "strategy" && input.strategyStopExitReason
+          ? input.strategyStopExitReason
+          : "stop";
         break;
       }
     }
@@ -1329,7 +1354,24 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
        runnerActivated: (targetHit || oneRReached) && runnerQuantity > 0, runnerExited,
       strategyStopPrice: strategyStop === null ? null : tick(strategyStop, size),
       catastropheStopPrice: catastropheStop === null ? null : tick(catastropheStop, size),
-       stopLevel: exitReason === "stop" || exitReason === "breakeven" ? resolvedStopLevel : null,
+       consolidationMidpointStop: input.consolidationMidpointStop
+         ? {
+           ...input.consolidationMidpointStop,
+           activationTimestamp: modeledFillTimestamp
+             ?? (typeof trigger.closeTime === "number" && Number.isFinite(trigger.closeTime) ? trigger.closeTime : null),
+           stopHitTimestamp: input.strategyStopExitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
+             ? modeledExitTimestamp
+               ?? (typeof exitCandle?.closeTime === "number" && Number.isFinite(exitCandle.closeTime)
+                 ? exitCandle.closeTime
+                 : null)
+             : null,
+         }
+         : null,
+        stopLevel: exitReason === "stop"
+          || exitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
+          || exitReason === "breakeven"
+          ? resolvedStopLevel
+          : null,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
        initialRiskPoints,
        oneRPrice,

@@ -3,8 +3,9 @@ import { DEFAULT_STRATEGY_CONFIG, type StrategyConfig } from "./strategy/config.
 import type { BacktestRequest } from "./phase9.js";
 import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
+import { CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION } from "./strategy/consolidation-midpoint-stop.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.17-four-candle-consolidation";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.18-strong-breakout-midpoint-stop";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -51,7 +52,8 @@ export function formulaConfiguration(
       candidateSlippage: "use effective replay entry and exit slippage ticks exactly once",
       runnerRetracementRatio: null,
       patienceStopFormula: "patience-extreme-buffered-by-causal-atr-stop-buffer",
-      directConsolidationStopFormula: "long=frozen-zone-low-minus-eight-ticks; short=frozen-zone-high-plus-eight-ticks",
+      consolidationMidpointStopCalculationVersion: CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION,
+      directConsolidationStopFormula: "STRONG_BREAKOUT_AFTER_CONSOLIDATION only: raw midpoint M=L+((H-L)/2); long=(ceil(M/t)-1)*t; short=(floor(M/t)+1)*t; integer tick arithmetic; strict more-than-half reentry",
       directConsolidationTargetGuard: "target must be strictly profitable in direction; invalid persisted target falls back to fresh 1R",
       adaptiveManagement: {
         atrPeriod: config.executionManagementAtrPeriod,

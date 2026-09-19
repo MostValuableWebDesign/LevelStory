@@ -6,7 +6,12 @@ import {
   type AccountEntryBlock,
 } from "./account-position-gate.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
-import { simulateOhlcvExecution, validateIndicatorReplayContext, type OhlcvCandle } from "./strategy/ohlcv-execution.js";
+import {
+  CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON,
+  simulateOhlcvExecution,
+  validateIndicatorReplayContext,
+  type OhlcvCandle,
+} from "./strategy/ohlcv-execution.js";
 import type {
   VisualValidationReplayExecutionInput,
   VisualValidationSet,
@@ -348,6 +353,11 @@ function replayTradeWithFixedContracts(
       );
     }
   }
+  const midpointStopEvidence = replayInput.consolidationMidpointStop
+    ? (({ activationTimestamp: _activationTimestamp, stopHitTimestamp: _stopHitTimestamp, ...evidence }) => evidence)(
+      replayInput.consolidationMidpointStop,
+    )
+    : undefined;
   const specification = getFuturesContractSpecification("MES");
   const execution = simulateOhlcvExecution({
     direction: trade.direction,
@@ -378,6 +388,10 @@ function replayTradeWithFixedContracts(
     trailingBufferTicks: replayInput.runnerBufferTicks,
     noLevelBreakevenActivationBars: 6,
     strategyStop: replayInput.strategyStopPrice,
+    strategyStopExitReason: replayInput.consolidationMidpointStop
+      ? CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON
+      : undefined,
+    consolidationMidpointStop: midpointStopEvidence,
     catastropheStop: null,
     tickSize: specification.tickSize,
     tickValue: specification.dollarValuePerTick,
@@ -413,6 +427,17 @@ function replayTradeWithFixedContracts(
       targetPrice: execution.targetPrice,
       targetPlan: rebuiltTargetPlan ?? baseAudit.targetPlan,
       strategyStopPrice: execution.audit.strategyStopPrice,
+      consolidationMidpointStop: execution.audit.consolidationMidpointStop
+        ? {
+          ...execution.audit.consolidationMidpointStop,
+          activationTimestamp: execution.audit.consolidationMidpointStop.activationTimestamp === null
+            ? null
+            : new Date(execution.audit.consolidationMidpointStop.activationTimestamp).toISOString(),
+          stopHitTimestamp: execution.audit.consolidationMidpointStop.stopHitTimestamp === null
+            ? null
+            : new Date(execution.audit.consolidationMidpointStop.stopHitTimestamp).toISOString(),
+        }
+        : null,
       catastropheStopPrice: execution.audit.catastropheStopPrice,
       stopLevel: execution.audit.stopLevel,
       exitCandleOpenTime: exitCandle?.openTime ? new Date(exitCandle.openTime).toISOString() : null,

@@ -1392,7 +1392,7 @@ test("direct crossing evidence enriches one stable occurrence and candidate", ()
   }
 });
 
-test("consolidation continuation uses an eight-tick stop outside the opposite frozen range edge", () => {
+test("Strong Breakout uses the strict midpoint-reentry stop from the frozen zone", () => {
   const makeFixture = (direction: "long" | "short") => {
     const start = Date.parse("2026-08-25T14:00:00.000Z");
     const iso = (offset: number) => new Date(start + offset).toISOString();
@@ -1461,12 +1461,14 @@ test("consolidation continuation uses an eight-tick stop outside the opposite fr
       specification: getFuturesContractSpecification("MES"),
       executionMode: "ohlcv_modeled",
     });
-    const expectedStop = long ? 97 : 107;
+    const expectedStop = long ? 99.75 : 102.25;
     assert.equal(result.rejected.length, 0, JSON.stringify(result.rejected));
     assert.equal(result.candidates[0]?.strategyStopPrice, expectedStop);
     assert.equal(result.authoritativeTrades[0]?.audit?.strategyStopPrice, expectedStop);
     assert.equal(result.candidates[0]?.managementContext?.stopBufferTicks, 8);
     assert.equal(result.authoritativeTrades[0]?.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
+    assert.equal(result.authoritativeTrades[0]?.audit?.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+    assert.equal(result.authoritativeTrades[0]?.audit?.consolidationMidpointStop?.rawMidpoint, long ? 100 : 102);
   };
   makeFixture("long");
   makeFixture("short");

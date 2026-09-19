@@ -209,9 +209,9 @@ test("Visual Review reconstructs Strong Breakout entry and stop from the frozen 
   const stop = snapshot.annotations.find((annotation) => annotation.id === "strategy-stop");
   assert.equal(entry?.price, 5528);
   assert.equal(trigger?.price, 5528);
-  assert.equal(stop?.price, 5542);
+   assert.equal(stop?.price, 5535.25);
   assert.equal(snapshot.machineEvidence.audit.entryTriggerPrice, 5528);
-  assert.equal(snapshot.machineEvidence.audit.strategyStopPrice, 5542);
+   assert.equal(snapshot.machineEvidence.audit.strategyStopPrice, 5535.25);
 });
 
 test("Visual Review withholds a direct trade whose modeled fill is inside the frozen zone", () => {

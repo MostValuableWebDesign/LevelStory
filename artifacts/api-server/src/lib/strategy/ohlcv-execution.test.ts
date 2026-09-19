@@ -29,6 +29,32 @@ test("models bullish entry, open gap and slippage on ticks", () => {
   assert.equal(result.audit.entryCandle?.open, 101);
 });
 
+test("Strong Breakout midpoint stop ignores midpoint touches and exits at the strict threshold", () => {
+  const result = simulateOhlcvExecution({
+    ...base,
+    entry: 105,
+    immediateTriggerCandle: timedCandle(105, 105.25, 104.75, 105, 8_000_000 + 300_000),
+    strategyStop: 101.75,
+    strategyStopExitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+    consolidationMidpointStop: {
+      frozenZoneHigh: 104,
+      frozenZoneLow: 100,
+      rawMidpoint: 102,
+      tickAlignedStop: 101.75,
+      direction: "long",
+      calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+    },
+    subsequentCompletedCandles: [
+      timedCandle(105, 105.25, 102, 102.5, 8_000_000 + 600_000),
+      timedCandle(102.5, 103, 101.75, 102, 8_000_000 + 900_000),
+    ],
+  });
+  assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
+  assert.equal(result.audit.strategyStopPrice, 101.75);
+  assert.equal(result.audit.consolidationMidpointStop?.rawMidpoint, 102);
+  assert.equal(result.audit.consolidationMidpointStop?.tickAlignedStop, 101.75);
+});
+
 test("expires when the immediate trigger does not reach entry", () => {
   const result = simulateOhlcvExecution({ ...base, immediateTriggerCandle: candle(99, 99.5, 98, 99), subsequentCompletedCandles: [candle(99, 100, 98, 99)] });
   assert.equal(result.audit.entryCandle, null);

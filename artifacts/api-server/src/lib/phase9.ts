@@ -105,6 +105,9 @@ import {
   initialStopForPatience,
   structuralRiskTicks,
 } from "./strategy/execution-management.js";
+import {
+  consolidationMidpointStop,
+} from "./strategy/consolidation-midpoint-stop.js";
 
 export type ReplayCursor = {
   cursor: number;
@@ -371,6 +374,18 @@ export type BacktestTrade = {
     targetPrice: number | null;
      targetPlan?: KeyLevelTargetPlan;
     strategyStopPrice?: number | null;
+     consolidationMidpointStop?: {
+       frozenZoneHigh: number;
+       frozenZoneLow: number;
+       rawMidpoint: number;
+       tickAlignedStop: number;
+       direction: Direction;
+       calculationVersion: string;
+       activationTimestamp?: string | null;
+       stopHitTimestamp?: string | null;
+       sourceOccurrenceId?: string | null;
+       sourceAuditId?: string | null;
+     } | null;
     catastropheStopPrice?: number | null;
      stopLevel?: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
      causalIdentity?: CandidateCausalIdentity;
@@ -618,6 +633,18 @@ export type BacktestAuditRecord = {
   entryFillOutsideZone?: boolean | null;
   consolidationEntryDisposition?: string;
   strategyStopPrice: number | null;
+  consolidationMidpointStop?: {
+    frozenZoneHigh: number;
+    frozenZoneLow: number;
+    rawMidpoint: number;
+    tickAlignedStop: number;
+    direction: Direction;
+    calculationVersion: string;
+    activationTimestamp?: string | null;
+    stopHitTimestamp?: string | null;
+    sourceOccurrenceId?: string | null;
+    sourceAuditId?: string | null;
+  } | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
   targetPlan?: KeyLevelTargetPlan;
@@ -931,6 +958,14 @@ export type CandidateManagementContext = {
   contracts: number;
   entryPrice: number;
   strategyStopPrice: number | null;
+  consolidationMidpointStop?: {
+    frozenZoneHigh: number;
+    frozenZoneLow: number;
+    rawMidpoint: number;
+    tickAlignedStop: number;
+    direction: Direction;
+    calculationVersion: string;
+  } | null;
   primaryLossExitLevel?: PrimaryLossExitReference | null;
   catastropheStopPrice: number | null;
   targetPrice: number | null;
@@ -3107,6 +3142,17 @@ function auditForEvaluation(
   const strategyStopForAudit = directSetupEvidence
     ? directStrategyStop
     : effectiveSignalPatience.strategyStopPrice;
+  const directMidpointStopEvidence = directSetupEvidence && evaluation.setupType === "CONSOLIDATION_BREAKOUT_CONTINUATION"
+    ? directConsolidationStopForOccurrence({
+      strategyCandidate: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      primaryEdge: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+      contractSymbol,
+      direction: evaluation.direction,
+      directConsolidationZoneHigh: directSetupEvidence.frozenHigh,
+      directConsolidationZoneLow: directSetupEvidence.frozenLow,
+      consolidationGuard,
+    } as HistoricalOccurrence).evidence ?? null
+    : null;
   return {
     id: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
     tradingDate,
@@ -3208,6 +3254,15 @@ function auditForEvaluation(
      entryFillOutsideZone: consolidationGuard?.entryFillOutsideZone ?? null,
      consolidationEntryDisposition: consolidationGuard?.consolidationEntryDisposition,
      strategyStopPrice: strategyStopForAudit,
+      consolidationMidpointStop: directMidpointStopEvidence
+        ? {
+          ...directMidpointStopEvidence,
+          activationTimestamp: null,
+          stopHitTimestamp: null,
+          sourceOccurrenceId: null,
+          sourceAuditId: `${tradingDate}-${candle.openTime}-${evaluation.setupType}`,
+        }
+        : null,
     catastropheStopPrice: snapshot.riskPlan.catastropheStop,
     targetPrice: snapshot.riskPlan.target,
     targetLevelInputs: targetLevelsForSnapshot(
@@ -5066,8 +5121,7 @@ export function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence)
     parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
   ).tickSize;
   if (!Number.isFinite(tickSize) || tickSize <= 0) return null;
-  if (occurrence.strategyCandidate === "CONSOLIDATION_BREAKOUT_CONTINUATION"
-    || occurrence.primaryEdge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
+  if (isStrongBreakoutOccurrence(occurrence)) {
     return directConsolidationStopForOccurrence(occurrence).price;
   }
   if (occurrence.strategyCandidate === "EQUIVALENT_CANDLE_REVERSAL"
@@ -5090,9 +5144,26 @@ export function strategyStopPriceForOccurrence(occurrence: HistoricalOccurrence)
   return null;
 }
 
+function isStrongBreakoutOccurrence(occurrence: Pick<HistoricalOccurrence, "strategyCandidate" | "primaryEdge">): boolean {
+  const identities = [occurrence.strategyCandidate, occurrence.primaryEdge].filter(
+    (value): value is string => typeof value === "string",
+  );
+  if (identities.includes("EXTENDED_NTZ_CONSOLIDATION_BREAKOUT")) return false;
+  return identities.includes("STRONG_BREAKOUT_AFTER_CONSOLIDATION")
+    || identities.includes("CONSOLIDATION_BREAKOUT_CONTINUATION");
+}
+
 function directConsolidationStopForOccurrence(occurrence: HistoricalOccurrence): {
   price: number | null;
   reason: string | null;
+  evidence?: {
+    frozenZoneHigh: number;
+    frozenZoneLow: number;
+    rawMidpoint: number;
+    tickAlignedStop: number;
+    direction: Direction;
+    calculationVersion: string;
+  };
 } {
   const specification = getFuturesContractSpecification(
     parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
@@ -5124,25 +5195,37 @@ function directConsolidationStopForOccurrence(occurrence: HistoricalOccurrence):
   if (!(high > low) || !Number.isFinite(tickSize) || tickSize <= 0) {
     return { price: null, reason: "INVALID_FROZEN_CONSOLIDATION_RANGE" };
   }
-  const rangeTicks = (high - low) / tickSize;
-   if (!Number.isFinite(rangeTicks) || rangeTicks <= 0) {
-     return { price: null, reason: "DIRECT_CONSOLIDATION_RANGE_HAS_NO_WIDTH" };
-   }
-  const stop = occurrence.direction === "long"
-     ? low - 8 * tickSize
-    : occurrence.direction === "short"
-       ? high + 8 * tickSize
-      : null;
-  if (stop === null || !Number.isFinite(stop)) {
+   if (occurrence.direction !== "long" && occurrence.direction !== "short") {
     return { price: null, reason: "MISSING_DIRECT_CONSOLIDATION_DIRECTION" };
   }
+   const midpointStop = consolidationMidpointStop({
+     high,
+     low,
+     tickSize,
+     direction: occurrence.direction,
+   });
+   if (!midpointStop) {
+     return { price: null, reason: "INVALID_FROZEN_CONSOLIDATION_RANGE" };
+   }
+   const stop = midpointStop.strategyStop;
   const entry = effectiveEntryThresholdForOccurrence(occurrence);
   if (entry !== null && (
     occurrence.direction === "long" ? stop >= entry : stop <= entry
   )) {
     return { price: null, reason: "DIRECT_CONSOLIDATION_STOP_WRONG_SIDE_OF_ENTRY" };
   }
-  return { price: Number(stop.toFixed(10)), reason: null };
+   return {
+     price: Number(stop.toFixed(10)),
+     reason: null,
+     evidence: {
+       frozenZoneHigh: midpointStop.zoneHigh,
+       frozenZoneLow: midpointStop.zoneLow,
+       rawMidpoint: midpointStop.rawMidpoint,
+       tickAlignedStop: midpointStop.strategyStop,
+       direction: midpointStop.direction,
+       calculationVersion: midpointStop.calculationVersion,
+     },
+   };
 }
 
 function targetPlanForOccurrence(
@@ -5231,6 +5314,9 @@ function freezeCandidateManagementContext(
   const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
   const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
   const strategyStopPrice = strategyStopPriceForOccurrence(occurrence);
+  const midpointStopEvidence = isStrongBreakoutOccurrence(occurrence)
+    ? directConsolidationStopForOccurrence(occurrence).evidence ?? null
+    : null;
   const contractTickSize = getFuturesContractSpecification(
     parseMesContractSymbol(occurrence.contractSymbol ?? "MES")?.rootSymbol ?? occurrence.contractSymbol ?? "MES",
   ).tickSize;
@@ -5275,6 +5361,7 @@ function freezeCandidateManagementContext(
     contracts,
     entryPrice: entryPrice ?? 0,
     strategyStopPrice,
+    consolidationMidpointStop: midpointStopEvidence,
     primaryLossExitLevel,
     catastropheStopPrice,
     targetPrice,
@@ -6100,6 +6187,16 @@ function candidateDrivenEntryTrade(
     trailingBufferTicks: management.runnerBufferTicks ?? 4,
     noLevelBreakevenActivationBars: 6,
     strategyStop: management.strategyStopPrice,
+    strategyStopExitReason: management.consolidationMidpointStop
+      ? "CONSOLIDATION_MIDPOINT_REENTRY_STOP"
+      : undefined,
+    consolidationMidpointStop: management.consolidationMidpointStop
+      ? {
+        ...management.consolidationMidpointStop,
+        sourceOccurrenceId: occurrence.occurrenceId,
+        sourceAuditId: occurrence.auditId,
+      }
+      : undefined,
     // Candidate-driven management deliberately ignores the legacy
     // catastrophe barrier. Preserve that value in provenance below, but do
     // not let it create a competing operative loss exit.
@@ -6137,7 +6234,7 @@ function candidateDrivenEntryTrade(
   const isOpen = modeled?.exitPrice === null || !modeled?.legs.length;
   const outcome: BacktestTrade["outcome"] = modeled?.exitReason === "target"
       ? "target"
-      : modeled?.exitReason === "stop"
+      : modeled?.exitReason === "stop" || modeled?.exitReason === "CONSOLIDATION_MIDPOINT_REENTRY_STOP"
         ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
         : modeled?.exitReason === "breakeven"
           ? "breakeven"
@@ -6213,6 +6310,25 @@ function candidateDrivenEntryTrade(
       targetPlan,
       primaryLossExitLevel,
       strategyStopPrice: management.strategyStopPrice,
+       consolidationMidpointStop: modeled?.audit.consolidationMidpointStop
+         ? {
+           ...modeled.audit.consolidationMidpointStop,
+           activationTimestamp: modeled.audit.consolidationMidpointStop.activationTimestamp === null
+             ? null
+             : new Date(modeled.audit.consolidationMidpointStop.activationTimestamp).toISOString(),
+           stopHitTimestamp: modeled.audit.consolidationMidpointStop.stopHitTimestamp === null
+             ? null
+             : new Date(modeled.audit.consolidationMidpointStop.stopHitTimestamp).toISOString(),
+         }
+         : management.consolidationMidpointStop
+           ? {
+             ...management.consolidationMidpointStop,
+             activationTimestamp: modeledFillTimestamp === null ? null : new Date(modeledFillTimestamp).toISOString(),
+             stopHitTimestamp: null,
+             sourceOccurrenceId: occurrence.occurrenceId,
+             sourceAuditId: occurrence.auditId,
+           }
+           : null,
       catastropheStopPrice: management.catastropheStopPrice,
       stopLevel: modeled?.audit.stopLevel ?? null,
       patienceCandleOpenTime: occurrence.patienceTimestamp,
@@ -6877,7 +6993,7 @@ export function runCausalBacktest(
        const exitCandle = modeled.audit.exitCandle ?? trigger;
       const outcome = modeled.exitReason === "target"
         ? "target"
-        : modeled.exitReason === "stop"
+        : modeled.exitReason === "stop" || modeled.exitReason === "CONSOLIDATION_MIDPOINT_REENTRY_STOP"
           ? modeled.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop"
            : modeled.exitReason === "breakeven"
              ? "breakeven"
