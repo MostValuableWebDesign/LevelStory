@@ -491,6 +491,66 @@ test("rejects legacy and mismatched Strong replay chronology instead of changing
     () => buildShadowAccountReplay(mismatchedSet),
     /complete immutable ordered execution evidence/i,
   );
+
+  const canonicalFrozenZoneIdentity = "frozen-consolidation-identity-v2:test";
+  const currentOrderedEvidence = {
+    schemaVersion: "ordered-execution-evidence-v3-exact-selected-stop" as const,
+    chronologyMode: "ORDERED_INTRABAR" as const,
+    source: "tick" as const,
+    sourceFingerprint: "source-fingerprint",
+    contractSymbol: "MESU26",
+    tradingDate: "2026-08-25",
+    entryCandleOpenTime: Date.parse("2026-08-25T13:35:00.000Z"),
+    entryCandleCloseTime: Date.parse("2026-08-25T13:40:00.000Z"),
+    coverageStart: Date.parse("2026-08-25T13:35:00.000Z"),
+    coverageEnd: Date.parse("2026-08-25T13:40:00.000Z"),
+    ordering: "timestamp_ascending" as const,
+    equalTimestampSemantics: "conservative" as const,
+    entryPoints: [{ timestamp: Date.parse("2026-08-25T13:36:00.000Z"), price: 100, sequence: 1 }],
+    laterIntervals: [],
+    entryEvent: { timestamp: Date.parse("2026-08-25T13:36:00.000Z"), price: 100, sequence: 1 },
+    entryFillTimestamp: Date.parse("2026-08-25T13:36:00.000Z"),
+    stopEvent: null,
+    strategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    direction: "long" as const,
+    frozenZoneIdentity: canonicalFrozenZoneIdentity,
+    occurrenceId: "occurrence-strong-replay-contract",
+    candidateId: "strong-replay-contract",
+    formulaVersion: "phase9-fixed-formula-current",
+  };
+  const modeMismatchTrade = {
+    ...sourceTrade,
+    audit: {
+      ...sourceTrade.audit!,
+      modeledFillTimestamp: "2026-08-25T13:36:00.000Z",
+      executionChronologyMode: "ORDERED_INTRABAR" as const,
+      executionChronology: currentOrderedEvidence,
+      orderedExecutionEvidence: currentOrderedEvidence,
+      causalIdentity: { canonicalFrozenZoneIdentity },
+    },
+  };
+  const modeMismatchSet = {
+    ...staleSet,
+    formulaVersion: "phase9-fixed-formula-current",
+    accountReplayTrades: [{
+      candidate: replayCandidate,
+      trade: modeMismatchTrade,
+      snapshotId: replayCandidate.snapshotId,
+      replayInput: {
+        ...replayInput,
+        replaySchemaVersion: "visual-review-replay-input-v5-bound-chronology-evidence" as const,
+        sourceFingerprint: "source-fingerprint",
+        formulaVersion: "phase9-fixed-formula-current",
+        executionChronologyMode: "DETERMINISTIC_LATER_CANDLE" as const,
+        executionChronology: currentOrderedEvidence,
+        orderedExecutionEvidence: currentOrderedEvidence,
+      },
+    }],
+  } as unknown as VisualValidationSet;
+  assert.throws(
+    () => buildShadowAccountReplay(modeMismatchSet),
+    /complete immutable ordered execution evidence or compatible deterministic execution chronology/i,
+  );
 });
 
 test("rejects a stale candidate whose long stop is above entry", () => {
@@ -502,6 +562,146 @@ test("rejects a stale candidate whose long stop is above entry", () => {
     () => buildShadowAccountReplay(replaySet([candidate("invalid-stop")], [snapshot(sourceTrade)])),
     /strategy stop on the wrong side of its long entry/i,
   );
+});
+
+test("replays a Strong gap-open trade with bound deterministic chronology", () => {
+  const candidateId = "strong-gap-replay";
+  const replayCandidate = {
+    ...candidate(candidateId),
+    entryTriggerPrice: 105,
+    primaryEdge: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    matchedEdges: ["STRONG_BREAKOUT_AFTER_CONSOLIDATION"],
+    outcome: "strategy stop" as const,
+  };
+  const entryOpen = Date.parse("2026-08-25T13:35:00.000Z");
+  const entryClose = Date.parse("2026-08-25T13:40:00.000Z");
+  const exitOpen = entryClose;
+  const exitClose = Date.parse("2026-08-25T13:45:00.000Z");
+  const formulaVersion = "phase9-fixed-formula-v23.21-bound-chronology-evidence";
+  const canonicalFrozenZoneIdentity = "frozen-consolidation-identity-v2:strong-gap-replay";
+  const targetPlan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 105,
+    levels: [{ id: "major-resistance", type: "major resistance", price: 112 }],
+    tickSize: 0.25,
+    placementMode: "NEAR_SIDE_8_TICKS",
+    targetBufferTicks: 8,
+    initialRiskPoints: 3.25,
+    contracts: 1,
+  });
+  const chronology = {
+    mode: "DETERMINISTIC_CANDLE_OPEN" as const,
+    sourceFingerprint: "source-fingerprint",
+    contractSymbol: "MESU26",
+    tradingDate: "2026-08-25",
+    entryCandleOpenTime: entryOpen,
+    entryCandleCloseTime: entryClose,
+    entryFillTimestamp: entryOpen,
+    exitCandleOpenTime: exitOpen,
+    exitCandleCloseTime: exitClose,
+    exitTimestamp: exitOpen,
+    selectedStopPrice: 101.75,
+    strategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    direction: "long" as const,
+    frozenZoneIdentity: canonicalFrozenZoneIdentity,
+    occurrenceId: `occurrence-${candidateId}`,
+    candidateId,
+    formulaVersion,
+  };
+  const sourceTrade = trade("strong-gap-replay-trade", -17.5, candidateId, {
+    specificStrategyId: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    setupType: "CONSOLIDATION_BREAKOUT_CONTINUATION",
+    primaryEdge: "STRONG_BREAKOUT_AFTER_CONSOLIDATION",
+    entryTime: new Date(entryOpen).toISOString(),
+    exitTime: new Date(exitOpen).toISOString(),
+    entryPrice: 105,
+    exitPrice: 101.5,
+    outcome: "strategy stop",
+    targetPlan,
+    audit: {
+      entryTriggerPrice: 105,
+      modeledFillPrice: 105,
+      modeledFillTimestamp: new Date(entryOpen).toISOString(),
+      modeledExitTimestamp: new Date(exitOpen).toISOString(),
+      stopPrice: 101.75,
+      strategyStopPrice: 101.75,
+      targetPrice: targetPlan.targetPrice,
+      targetPlan,
+      stopLevel: "strategy",
+      stopHitTimestampSource: "CANDLE_OPEN",
+      triggerCandleOpenTime: new Date(entryOpen).toISOString(),
+      triggerCandleCloseTime: new Date(entryClose).toISOString(),
+      patienceCandleOpenTime: "2026-08-25T13:30:00.000Z",
+      patienceCandleCloseTime: new Date(entryOpen).toISOString(),
+      modeledFillObservationTime: new Date(entryClose).toISOString(),
+      exitCandleOpenTime: new Date(exitOpen).toISOString(),
+      exitCandleCloseTime: new Date(exitClose).toISOString(),
+      assumptions: [],
+      eventLabels: ["STRATEGY_STOP_REACHED", "GAP_THROUGH_STOP"],
+      ambiguityLabels: [],
+      targetHit: false,
+      runnerActivated: false,
+      runnerExited: false,
+      consolidationMidpointStop: {
+        frozenZoneHigh: 104,
+        frozenZoneLow: 100,
+        rawMidpoint: 102,
+        tickAlignedStop: 101.75,
+        direction: "long",
+        calculationVersion: "strong-breakout-midpoint-reentry-v1-integer-ticks",
+        activationTimestamp: new Date(entryOpen).toISOString(),
+        stopHitTimestamp: new Date(exitOpen).toISOString(),
+      },
+      causalIdentity: { canonicalFrozenZoneIdentity },
+      executionChronologyMode: "DETERMINISTIC_CANDLE_OPEN",
+      executionChronology: chronology,
+      exitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
+      legs: [],
+    } as NonNullable<BacktestTrade["audit"]>,
+  });
+  const replayInput = {
+    replaySchemaVersion: "visual-review-replay-input-v5-bound-chronology-evidence" as const,
+    sourceFingerprint: "source-fingerprint",
+    formulaVersion,
+    entryPrice: 105,
+    patienceCandle: {
+      openTime: "2026-08-25T13:30:00.000Z", closeTime: new Date(entryOpen).toISOString(),
+      timestamp: new Date(entryOpen).toISOString(), open: 103, high: 104, low: 100, close: 103,
+      volume: 1_000, bid: 103, ask: 103, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    immediateTriggerCandle: {
+      openTime: new Date(entryOpen).toISOString(), closeTime: new Date(entryClose).toISOString(),
+      timestamp: new Date(entryClose).toISOString(), open: 105, high: 105.25, low: 104.75, close: 105,
+      volume: 1_000, bid: 105, ask: 105, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    },
+    subsequentCompletedCandles: [{
+      openTime: new Date(exitOpen).toISOString(), closeTime: new Date(exitClose).toISOString(),
+      timestamp: new Date(exitClose).toISOString(), open: 101.5, high: 102, low: 101, close: 101.25,
+      volume: 1_000, bid: 101.25, ask: 101.25, bidSize: 1, askSize: 1, contractSymbol: "MESU26", isComplete: true,
+    }],
+    sessionCloseCandle: null,
+    strategyStopPrice: 101.75,
+    catastropheStopPrice: null,
+    consolidationMidpointStop: sourceTrade.audit!.consolidationMidpointStop,
+    targetPrice: targetPlan.targetPrice,
+    primaryLossExitLevel: null,
+    runnerBufferTicks: 4,
+    executionChronologyMode: "DETERMINISTIC_CANDLE_OPEN" as const,
+    executionChronology: chronology,
+  } satisfies VisualValidationReplayExecutionInput;
+  const set = {
+    ...replaySet([replayCandidate], []),
+    formulaVersion,
+    sourceFingerprint: "source-fingerprint",
+    accountReplayTrades: [{ candidate: replayCandidate, trade: sourceTrade, snapshotId: replayCandidate.snapshotId, replayInput }],
+  } as unknown as VisualValidationSet;
+
+  const replay = buildShadowAccountReplay(set, { contractsPerTrade: 1 });
+  console.log("STRONG_GAP_REPLAY", JSON.stringify(replay.ledger[0]));
+  assert.equal(replay.rejectedCandidates.length, 0);
+  assert.equal(replay.ledger[0]?.exitTime, sourceTrade.exitTime);
+  assert.equal(replay.ledger[0]?.exitPrice, sourceTrade.exitPrice);
+  assert.equal(replay.ledger[0]?.outcome, "strategy stop");
 });
 
 test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {

@@ -8,12 +8,12 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { ACCOUNT_POSITION_STATE_VERSION } from "./account-position-gate.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v21-execution-chronology-frozen-zone";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v16-execution-chronology-frozen-zone";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v21-execution-chronology-frozen-zone";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v19-execution-chronology-frozen-zone";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v16-immutable-ordered-evidence";
-export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v11-immutable-ordered-evidence";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v22-bound-chronology-evidence";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v17-bound-chronology-evidence";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v22-bound-chronology-evidence";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v20-bound-chronology-evidence";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v17-bound-chronology-evidence";
+export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v12-bound-chronology-evidence";
 
 export type VisualValidationCacheMetadata = {
   cacheSourceFingerprint: string;

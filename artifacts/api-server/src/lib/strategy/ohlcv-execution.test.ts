@@ -192,6 +192,11 @@ test("equal-timestamp ordered entry-before-stop sequence executes the Strong sto
   assert.equal(result.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
   assert.equal(result.audit.modeledExitTimestamp, timestamp);
   assert.equal(result.legs[0]?.exitTimestamp, timestamp);
+  assert.deepEqual(result.audit.selectedOrderedStopPoint, {
+    timestamp,
+    price: 101.5,
+    sequence: 2,
+  });
 });
 
 test("equal-timestamp ordered stop-before-entry sequence ignores the pre-entry stop", () => {

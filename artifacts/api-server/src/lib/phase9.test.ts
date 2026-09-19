@@ -1476,6 +1476,24 @@ test("Strong Breakout uses the strict midpoint-reentry stop from the frozen zone
     assert.equal(result.authoritativeTrades[0]?.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), true);
     assert.equal(result.authoritativeTrades[0]?.audit?.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
     assert.equal(result.authoritativeTrades[0]?.audit?.consolidationMidpointStop?.rawMidpoint, long ? 100 : 102);
+    if (long) {
+      const conflictingOccurrence = {
+        ...occurrence,
+        consolidationGuard: {
+          ...occurrence.consolidationGuard!,
+          consolidationZoneHigh: high + 1,
+        },
+      };
+      const conflicting = projectHistoricalTradeCandidates([conflictingOccurrence], [], {
+        dataset,
+        specification: getFuturesContractSpecification("MES"),
+        executionMode: "ohlcv_modeled",
+      });
+      assert.equal(conflicting.authoritativeTrades.length, 0);
+      assert.equal(conflicting.candidates.length, 0);
+      assert.ok(conflicting.rejected[0]?.reasonCodes.includes("INVALID_CAUSAL_IDENTITY"));
+      assert.match(conflicting.rejected[0]?.details.join(" ") ?? "", /CONFLICTING_FROZEN_CONSOLIDATION_RANGE/);
+    }
   };
   makeFixture("long");
   makeFixture("short");

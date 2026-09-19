@@ -1726,7 +1726,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v8-execution-chronology-frozen-zone";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v9-bound-chronology-evidence";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -6275,6 +6275,17 @@ function candidateDrivenEntryTrade(
     occurrence,
     management.consolidationMidpointStop,
   );
+  const governedConsolidationStrategy = occurrence.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
+    || occurrence.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
+  if (governedConsolidationStrategy && canonicalFrozenZoneIdentity === null) {
+    return {
+      kind: "NO_ESTABLISHED_FILL",
+      executionStatus: "REJECTED_RISK_MANAGEMENT",
+      entryReachedThreshold: candidate.entryReachedThreshold,
+      executionReason: "CONFLICTING_OR_MISSING_FROZEN_CONSOLIDATION_IDENTITY: direct consolidation execution requires one complete canonical frozen-zone identity.",
+      executionAmbiguityLabel: null,
+    };
+  }
   const primaryLossExitLevel = management.primaryLossExitLevel
     ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
   const targetPrice = targetPlan?.targetPrice ?? null;
@@ -6405,10 +6416,6 @@ function candidateDrivenEntryTrade(
       executionAmbiguityLabel,
     };
   }
-  const orderedEvidencePoints = [
-    ...(orderedEntryEvidence?.points ?? []),
-    ...orderedPostEntryEvidenceIntervals.flatMap((interval) => interval.points),
-  ];
   const governedEntryEvent = orderedEntryEvidence?.points.find((point) =>
     occurrence.direction === "long" ? point.price >= entryPrice : point.price <= entryPrice,
   ) ?? null;
@@ -6449,7 +6456,9 @@ function candidateDrivenEntryTrade(
       entryFillTimestamp: modeled.modeledFillTimestamp,
       stopEvent: orderedStopTimestamp === null
         ? null
-        : orderedEvidencePoints.find((point) => point.timestamp === orderedStopTimestamp) ?? null,
+        : modeled.audit.selectedOrderedStopPoint
+          ? { ...modeled.audit.selectedOrderedStopPoint }
+          : null,
       strategyId: occurrence.specificStrategyId ?? null,
       direction: occurrence.direction,
       frozenZoneIdentity: canonicalFrozenZoneIdentity,
@@ -6479,7 +6488,7 @@ function candidateDrivenEntryTrade(
       exitCandleOpenTime: modeled.audit.exitCandle?.openTime ?? null,
       exitCandleCloseTime: modeled.audit.exitCandle?.closeTime ?? null,
       exitTimestamp: modeledExitTimestamp,
-      selectedStopPrice: modeled.audit.strategyStopPrice,
+      selectedStopPrice: modeled.audit.stopLevel === null ? null : modeled.stopPrice,
       strategyId: occurrence.specificStrategyId ?? null,
       direction: occurrence.direction,
       frozenZoneIdentity: canonicalFrozenZoneIdentity,

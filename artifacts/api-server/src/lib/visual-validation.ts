@@ -325,7 +325,7 @@ export type VisualValidationTradeCandidate = {
 };
 
 export type VisualValidationReplayExecutionInput = {
-  replaySchemaVersion?: "visual-review-replay-input-v4-execution-chronology";
+  replaySchemaVersion?: "visual-review-replay-input-v5-bound-chronology-evidence";
   sourceFingerprint?: string;
   formulaVersion?: string;
   entryPrice: number;
@@ -616,7 +616,7 @@ function replayInputForSnapshot(
     && Date.parse(candle.closeTime) > Date.parse(immediateTriggerCandle.closeTime),
   );
   return {
-    replaySchemaVersion: "visual-review-replay-input-v4-execution-chronology",
+    replaySchemaVersion: "visual-review-replay-input-v5-bound-chronology-evidence",
     sourceFingerprint: snapshot.sourceFingerprint ?? "",
     formulaVersion: snapshot.formulaVersion,
     entryPrice: trade.entryPrice,

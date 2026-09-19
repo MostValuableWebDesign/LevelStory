@@ -116,7 +116,7 @@ export type OrderedIntrabarEvidenceInterval = {
   points: readonly OrderedIntrabarPoint[];
 };
 
-export const ORDERED_EXECUTION_EVIDENCE_VERSION = "ordered-execution-evidence-v2-entry-interval-sequence-aware";
+export const ORDERED_EXECUTION_EVIDENCE_VERSION = "ordered-execution-evidence-v3-exact-selected-stop";
 
 export type ExecutionChronologyMode =
   | "ORDERED_INTRABAR"
@@ -291,6 +291,8 @@ export type OhlcvExecutionAudit = {
   modeledExitTimestamp?: number | null;
   activationTimestampSource?: "ORDERED_INTRABAR_POINT" | "EXPLICIT_THRESHOLD" | "CANDLE_OPEN" | null;
   stopHitTimestampSource?: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null;
+  /** Exact ordered observation selected as the stop event, including equal-time sub-order. */
+  selectedOrderedStopPoint?: OrderedIntrabarPoint | null;
   breachedStopLevels?: Array<"strategy" | "catastrophe">;
   targetHit: boolean;
   runnerActivated: boolean;
@@ -579,6 +581,7 @@ function emptyResult(
     audit: {
       eventLabels: labels, labels, ambiguityLabels, assumptions, entryCandle: null, exitCandle: null, modeledExitTimestamp: null, targetHit: false,
       runnerActivated: false, runnerExited: false,
+      selectedOrderedStopPoint: null,
        strategyStopPrice: input.strategyStop ?? input.stopPrice ?? input.stop ?? null,
        breachedStopLevels: [],
       consolidationMidpointStop: input.consolidationMidpointStop
@@ -902,6 +905,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
   let resolvedStopLevel: "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null = null;
   let midpointStopHitTimestamp: number | null = null;
   let midpointStopHitTimestampSource: "ORDERED_INTRABAR_POINT" | "CANDLE_OPEN" | null = null;
+  let selectedOrderedStopPoint: OrderedIntrabarPoint | null = null;
   let breachedStopLevels: Array<"strategy" | "catastrophe"> = [];
   const multiplier = input.pointMultiplier ?? 1;
   const tickValue = input.tickValue ?? size * multiplier;
@@ -1099,6 +1103,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           ? { price: activeTrailingStop!, level: "structure_trailing" as const }
           : fallbackStop!;
       if (candleOrderedEvidenceComplete && orderedEvent?.kind === "stop") {
+        selectedOrderedStopPoint = { ...orderedEvent.point };
         const point = orderedEvent.point.price;
         if (strategyStop !== null
           && (input.direction === "long" ? point <= strategyStop : point >= strategyStop)) {
@@ -1271,6 +1276,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
           return catastrophe || trailing || strategy;
         });
       if (runnerStopPoint) {
+        selectedOrderedStopPoint = { ...runnerStopPoint };
         const catastrophe = catastropheStop !== null
           && (input.direction === "long" ? runnerStopPoint.price <= catastropheStop : runnerStopPoint.price >= catastropheStop);
         const trailing = !catastrophe
@@ -1585,6 +1591,7 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
                 ? "CANDLE_OPEN"
                 : null,
         stopHitTimestampSource: midpointStopHitTimestampSource,
+        selectedOrderedStopPoint,
         breachedStopLevels,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
        initialRiskPoints,

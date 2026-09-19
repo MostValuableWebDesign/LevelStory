@@ -29,10 +29,10 @@ import {
   type KeyLevelTargetPlan,
 } from "./strategy/key-level-targets.js";
 
-const REPLAY_INPUT_SCHEMA_VERSION = "visual-review-replay-input-v4-execution-chronology";
+const REPLAY_INPUT_SCHEMA_VERSION = "visual-review-replay-input-v5-bound-chronology-evidence";
 
-function orderedPointKey(point: { timestamp: number; sequence?: number }): string {
-  return `${point.timestamp}:${Number.isFinite(point.sequence) ? point.sequence : ""}`;
+function orderedPointKey(point: { timestamp: number; price: number; sequence?: number }): string {
+  return `${point.timestamp}:${Number.isFinite(point.sequence) ? point.sequence : ""}:${point.price}`;
 }
 
 function validOrderedEvidence(
@@ -56,6 +56,26 @@ function validOrderedEvidence(
     || members.has(orderedPointKey(evidence.stopEvent));
   const sameEntryTimestamp = evidence.entryEvent === null
     || evidence.entryFillTimestamp === evidence.entryEvent.timestamp;
+  const entryThreshold = trade.audit?.entryTriggerPrice ?? trade.entryPrice;
+  const entryEventValid = evidence.entryEvent !== null
+    && (trade.direction === "long"
+      ? evidence.entryEvent.price >= entryThreshold
+      : evidence.entryEvent.price <= entryThreshold);
+  const orderedStopRequired = trade.audit?.stopHitTimestampSource === "ORDERED_INTRABAR_POINT";
+  const expectedStopTimestamp = trade.audit?.modeledExitTimestamp
+    ? Date.parse(trade.audit.modeledExitTimestamp)
+    : Number.NaN;
+  const selectedStopPrice = trade.audit?.stopPrice ?? null;
+  const stopEventValid = !orderedStopRequired
+    || (
+      evidence.stopEvent !== null
+      && Number.isFinite(expectedStopTimestamp)
+      && evidence.stopEvent.timestamp === expectedStopTimestamp
+      && selectedStopPrice !== null
+      && (trade.direction === "long"
+        ? evidence.stopEvent.price <= selectedStopPrice
+        : evidence.stopEvent.price >= selectedStopPrice)
+    );
   const intervalsValid = evidence.laterIntervals.every((interval, index, intervals) =>
     interval.startTime <= interval.endTime
     && interval.points.every((point) =>
@@ -70,6 +90,8 @@ function validOrderedEvidence(
     && entryMember
     && stopMember
     && sameEntryTimestamp
+    && entryEventValid
+    && stopEventValid
     && intervalsValid
     && evidence.entryCandleOpenTime === triggerOpenTime
     && evidence.entryCandleCloseTime === triggerCloseTime
@@ -88,15 +110,30 @@ function validDeterministicEvidence(
   trade: BacktestTrade,
   triggerOpenTime: number,
   triggerCloseTime: number,
+  expectedMode: DeterministicExecutionEvidence["mode"],
 ): boolean {
-  return evidence.entryCandleOpenTime === triggerOpenTime
+  const expectedEntryFillTimestamp = trade.audit?.modeledFillTimestamp
+    ? Date.parse(trade.audit.modeledFillTimestamp)
+    : null;
+  const expectedExitTimestamp = trade.audit?.modeledExitTimestamp
+    ? Date.parse(trade.audit.modeledExitTimestamp)
+    : null;
+  const expectedSelectedStopPrice = trade.audit?.stopLevel
+    ? trade.audit.stopPrice
+    : null;
+  return evidence.mode === expectedMode
+    && evidence.frozenZoneIdentity !== null
+    && evidence.entryCandleOpenTime === triggerOpenTime
     && evidence.entryCandleCloseTime === triggerCloseTime
     && evidence.contractSymbol === trade.contractSymbol
     && evidence.tradingDate === trade.tradingDate
     && evidence.direction === trade.direction
     && evidence.occurrenceId === trade.signalOccurrenceId
     && evidence.candidateId === trade.candidateId
-    && evidence.strategyId === (trade.specificStrategyId ?? null);
+    && evidence.strategyId === (trade.specificStrategyId ?? null)
+    && evidence.entryFillTimestamp === expectedEntryFillTimestamp
+    && evidence.exitTimestamp === expectedExitTimestamp
+    && evidence.selectedStopPrice === expectedSelectedStopPrice;
 }
 
 export const DEFAULT_SHADOW_ACCOUNT_STARTING_BALANCE = 10_000;
@@ -338,13 +375,23 @@ function replayTradeWithFixedContracts(
   }
   const directEntryCandleStrategy = trade.specificStrategyId === "STRONG_BREAKOUT_AFTER_CONSOLIDATION"
     || trade.specificStrategyId === "EXTENDED_NTZ_CONSOLIDATION_BREAKOUT";
-  const orderedExecutionEvidence = replayInput.orderedExecutionEvidence;
+  const chronology = replayInput.executionChronology;
+  const chronologyMode = chronology
+    ? "chronologyMode" in chronology
+      ? chronology.chronologyMode
+      : chronology.mode
+    : null;
+  const orderedExecutionEvidence = chronologyMode === "ORDERED_INTRABAR"
+    ? chronology as OrderedExecutionEvidence
+    : undefined;
   if (directEntryCandleStrategy) {
     const triggerOpenTime = Date.parse(replayInput.immediateTriggerCandle.openTime);
     const triggerCloseTime = Date.parse(replayInput.immediateTriggerCandle.closeTime);
-    const chronology = replayInput.executionChronology;
+    const auditChronologyMode = trade.audit?.executionChronologyMode ?? null;
     const evidenceMatchesCommon = chronology
       && replayInput.replaySchemaVersion === REPLAY_INPUT_SCHEMA_VERSION
+      && replayInput.executionChronologyMode === chronologyMode
+      && replayInput.executionChronologyMode === auditChronologyMode
       && replayInput.sourceFingerprint === chronology.sourceFingerprint
       && replayInput.formulaVersion === chronology.formulaVersion
       && replayInput.sourceFingerprint === match.expectedSourceFingerprint
@@ -355,18 +402,21 @@ function replayTradeWithFixedContracts(
       && chronology.occurrenceId === trade.signalOccurrenceId
       && chronology.candidateId === trade.candidateId
       && chronology.strategyId === (trade.specificStrategyId ?? null)
+      && chronology.frozenZoneIdentity !== null
       && chronology.frozenZoneIdentity === (trade.audit?.causalIdentity?.canonicalFrozenZoneIdentity ?? null);
     const evidenceMatchesTrade = evidenceMatchesCommon
       && (replayInput.executionChronologyMode === "ORDERED_INTRABAR"
         ? orderedExecutionEvidence !== undefined
           && orderedExecutionEvidence.schemaVersion === ORDERED_EXECUTION_EVIDENCE_VERSION
           && validOrderedEvidence(orderedExecutionEvidence, trade, triggerOpenTime, triggerCloseTime)
-        : validDeterministicEvidence(
-          chronology as DeterministicExecutionEvidence,
-          trade,
-          triggerOpenTime,
-          triggerCloseTime,
-        ));
+        : replayInput.executionChronologyMode !== undefined
+          && validDeterministicEvidence(
+            chronology as DeterministicExecutionEvidence,
+            trade,
+            triggerOpenTime,
+            triggerCloseTime,
+            replayInput.executionChronologyMode,
+          ));
     if (!evidenceMatchesTrade) {
       throw new Error(
         `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} lacks complete immutable ordered execution evidence or compatible deterministic execution chronology. Regenerate the review set.`,
@@ -529,6 +579,25 @@ function replayTradeWithFixedContracts(
   const modeledExitTimestamp = execution.audit.modeledExitTimestamp
     ?? execution.legs.at(-1)?.exitTimestamp
     ?? (closed ? exitCandle?.closeTime ?? null : null);
+  if (directEntryCandleStrategy) {
+    const replayExitTime = closed && modeledExitTimestamp !== null
+      ? new Date(modeledExitTimestamp).toISOString()
+      : null;
+    const expectedExitReason = trade.audit?.exitReason ?? null;
+    const expectedAmbiguity = trade.audit?.ambiguityLabels ?? [];
+    const replayAmbiguity = execution.audit.ambiguityLabels;
+    const chronologyMatchesExecution = execution.modeledFill === trade.entryPrice
+      && execution.exitPrice === trade.exitPrice
+      && replayExitTime === trade.exitTime
+      && (expectedExitReason === null || execution.exitReason === expectedExitReason)
+      && expectedAmbiguity.length === replayAmbiguity.length
+      && expectedAmbiguity.every((label, index) => label === replayAmbiguity[index]);
+    if (!chronologyMatchesExecution) {
+      throw new Error(
+        `Visual-validation set is stale/incompatible: candidate ${trade.candidateId ?? trade.id} replay chronology does not reproduce the authoritative entry, exit, or ambiguity state. Regenerate the review set.`,
+      );
+    }
+  }
   const baseAudit = trade.audit;
   return {
     ...trade,
