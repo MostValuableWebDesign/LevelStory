@@ -1,0 +1,286 @@
+Implement this strategy-rule change in the current LevelStory repository.
+
+OBJECTIVE
+
+Change the strategy stop for only:
+
+STRONG_BREAKOUT_AFTER_CONSOLIDATION
+
+After a valid breakout entry, exit the trade when price reenters more than halfway through the same frozen consolidation zone used to qualify that breakout.
+
+The current implementation derives the consolidation breakout stop outside the zone:
+
+- Long: consolidationZoneLow - 8 ticks
+- Short: consolidationZoneHigh + 8 ticks
+
+Replace that Strong Breakout stop behavior with the midpoint-reentry rule below.
+
+Do not merely change the displayed chart level. Update the authoritative strategy stop, replay execution, trade results, audit evidence, and Visual Review.
+
+AUTHORITATIVE ZONE
+
+Use the exact frozen causal consolidation zone belonging to the executed breakout occurrence:
+
+- H = frozen consolidationZoneHigh
+- L = frozen consolidationZoneLow
+- M = L + ((H - L) / 2)
+- t = the contract tick size; MES currently uses 0.25
+
+Never recalculate the zone from later candles. The zone must remain frozen after the breakout.
+
+Fail closed when:
+
+- H or L is missing or nonfinite
+- H <= L
+- The direct consolidation range conflicts with the consolidation guard range
+- The tick size is unavailable or invalid
+- The candidate, occurrence, audit, and execution do not reference the same frozen zone
+
+LONG RULE
+
+For a long breakout:
+
+1. Entry must still occur above H under the existing Strong Breakout entry rules.
+2. After the modeled entry fill, the strategy stop becomes active.
+3. The stop is triggered when price trades strictly below M.
+4. Merely touching M does not trigger the stop because that is exactly halfway, not more than halfway.
+5. Calculate the first valid MES tick strictly below M:
+
+   longStop = (ceil(M / t) - 1) * t
+
+Example:
+
+- Zone: 100.00–104.00
+- Midpoint: 102.00
+- Long strategy stop: 101.75
+- Trade at 102.00: no exit
+- Trade at 101.75: execute the strategy stop
+
+SHORT RULE
+
+For a short breakout:
+
+1. Entry must still occur below L under the existing Strong Breakout entry rules.
+2. After the modeled entry fill, the strategy stop becomes active.
+3. The stop is triggered when price trades strictly above M.
+4. Merely touching M does not trigger the stop.
+5. Calculate the first valid MES tick strictly above M:
+
+   shortStop = (floor(M / t) + 1) * t
+
+Example:
+
+- Zone: 100.00–104.00
+- Midpoint: 102.00
+- Short strategy stop: 102.25
+- Trade at 102.00: no exit
+- Trade at 102.25: execute the strategy stop
+
+Use integer tick arithmetic internally to avoid floating-point drift. Do not round M to a valid tick before applying the strict “more than halfway” rule.
+
+TIMING AND FILL BEHAVIOR
+
+This is an intrabar price stop. A candle does not need to close beyond the midpoint.
+
+- Do not use any part of the entry candle occurring before the modeled entry-fill timestamp to trigger the stop.
+- With ordered tick or quote evidence, only post-fill observations may trigger it.
+- If a later candle crosses the stop and then closes back in the favorable half, the stop was still hit.
+- If a post-entry candle opens beyond the stop, use the opening price or first executable observed price under the existing adverse-gap and slippage rules.
+- If price crosses the stop normally, use the calculated stop tick as the reference fill, then apply the existing slippage and fee model.
+- If entry and midpoint reentry are both possible within one OHLC candle but ordered intrabar evidence is unavailable, do not invent the sequence. Record the existing event-order ambiguity and apply the current conservative execution policy.
+- If the target and strategy stop are both reachable during the same OHLC candle without authoritative ordering, preserve the existing conservative ambiguity policy.
+- Do not authorize ordered execution from a nonempty tick array alone. Evidence must match the contract, source, candle interval, and post-entry time range.
+
+OTHER STOP BEHAVIOR
+
+This rule replaces only the ordinary strategy stop for `STRONG_BREAKOUT_AFTER_CONSOLIDATION`.
+
+- Preserve the catastrophe stop as an independent emergency safeguard.
+- Preserve existing breakeven and trailing-stop behavior.
+- The earliest authoritatively ordered exit event wins.
+- If the first observable post-entry price gaps through both the strategy stop and catastrophe stop, use the existing conservative gap-fill and exit-reason precedence. Record both breached levels in the audit evidence.
+- Recalculate initial risk and all R-based values from the new midpoint-reentry strategy stop.
+- Do not allow an old ordinary-stop or 1R fallback to restore the previous eight-tick-outside stop.
+
+SCOPE CONTROL
+
+Do not change:
+
+- `EXTENDED_NTZ_CONSOLIDATION_BREAKOUT`
+- `EQUIVALENT_CANDLE_REVERSAL`
+- ORB Pullback Continuation
+- Patience-entry strategies
+- Strong Breakout entry qualification
+- The rule requiring a minimum of four completed consolidation candles
+- The requirement that the entry be outside the frozen zone in the trend direction
+- Consolidation detection, geometry, expiration, or constituent candles
+- Account-wide active-position arbitration
+- Position sizing, fees, slippage, target selection, or session-close rules
+
+Strong Breakout After Consolidation still does not require a patience candle.
+
+The current code may represent multiple strategies through the shared `CONSOLIDATION_BREAKOUT_CONTINUATION` taxonomy. Do not change every strategy mapped to that family. Gate the new stop using the authoritative specific strategy/setup identity for `STRONG_BREAKOUT_AFTER_CONSOLIDATION`.
+
+IMPLEMENTATION PATH
+
+Inspect the current code before editing. Trace the complete production path, especially:
+
+- `artifacts/api-server/src/lib/strategy/phase6.ts`
+- `artifacts/api-server/src/lib/phase9.ts`
+- `strategyStopPriceForOccurrence`
+- `directConsolidationStopForOccurrence`
+- `artifacts/api-server/src/lib/strategy/ohlcv-execution.ts`
+- Direct-strategy occurrence and candidate construction
+- Audit and management projections
+- Account and batch aggregation
+- `artifacts/api-server/src/lib/visual-validation.ts`
+- Formula hashing and strategy-result cache versions
+
+Use one authoritative helper for the midpoint and strict tick thresholds. Detection, occurrence management, execution, audit, and Visual Review must not calculate different stop prices.
+
+Add explicit evidence fields where appropriate:
+
+- frozen zone high
+- frozen zone low
+- raw midpoint
+- tick-aligned strategy-stop threshold
+- direction
+- calculation version
+- stop activation timestamp
+- stop-hit timestamp
+- source audit/occurrence ID
+- exit reason such as `CONSOLIDATION_MIDPOINT_REENTRY_STOP`
+
+Preserve the complete linkage:
+
+strategy → direction → frozen zone → occurrence ID → candidate ID → modeled trade → exit leg → audit record → Visual Review
+
+VISUAL REVIEW
+
+For a qualifying Strong Breakout trade:
+
+- Draw the frozen consolidation high and low.
+- Draw or label the raw 50% midpoint.
+- Draw the actual tick-aligned strategy-stop threshold.
+- Mark the stop exit on the candle where it was triggered.
+- Explain that the stop occurred after price entered more than 50% of the frozen zone.
+- Do not display the old eight-tick-outside strategy stop.
+- Continue using the cached base candles; invalidate and regenerate the strategy-derived overlay and result.
+
+VERSIONING AND CACHE INVALIDATION
+
+Because this changes stop placement, risk, exit time, P/L, and chart markup:
+
+- Advance `FIXED_FORMULA_VERSION`.
+- Update the formula/configuration hash inputs.
+- Advance the relevant strategy-result, replay, and Visual Review cache versions.
+- Do not invalidate reusable raw/base candle data unless its source identity changed.
+- A cached result generated under the previous stop rule must never be returned as current.
+
+REQUIRED REGRESSION TESTS
+
+Use deterministic fixtures.
+
+1. Long, zone 100–104:
+   - Entry above 104
+   - Post-entry price trades at 102
+   - No stop
+
+2. Long, same zone:
+   - Post-entry price trades at 101.75
+   - Stop executes at the strategy-stop reference before slippage
+
+3. Short, zone 100–104:
+   - Entry below 100
+   - Post-entry price trades at 102
+   - No stop
+
+4. Short, same zone:
+   - Post-entry price trades at 102.25
+   - Stop executes
+
+5. Midpoint falls between two ticks:
+   - Confirm strict tick rounding in both directions
+   - Confirm the midpoint is not rounded first
+
+6. Candle wick crosses the stop and closes back:
+   - Stop still executes
+
+7. Entry candle contains both entry and stop prices:
+   - Ordered post-fill evidence executes correctly
+   - OHLC-only evidence records ambiguity and follows conservative policy
+
+8. Gap beyond the stop:
+   - Fill uses the adverse opening/first executable price, not a favorable midpoint fill
+
+9. Stop and target reachable in one candle:
+   - Ordered evidence chooses the first event
+   - Missing ordering uses the existing conservative ambiguity result
+
+10. Catastrophe stop:
+    - Remains present
+    - Does not replace or disable the midpoint-reentry strategy stop
+
+11. Missing or conflicting frozen zone:
+    - Candidate fails closed
+    - No executable trade is manufactured
+
+12. Identity:
+    - Occurrence, candidate, trade, exit leg, audit, and Visual Review reference the same strategy, direction, and frozen zone
+
+13. Strategy isolation:
+    - Equivalent-Candle Reversal remains unchanged
+    - Extended NTZ consolidation breakout remains unchanged
+    - ORB and patience strategies remain unchanged
+
+14. Cache behavior:
+    - Old-version result is rejected
+    - Fresh result is cached
+    - Identical repeat returns the new result
+    - Restarted process returns the same new result and hashes
+
+VERIFICATION
+
+Run focused tests before any broad historical replay:
+
+node --import ./scripts/node_modules/tsx/dist/loader.mjs --test \
+  artifacts/api-server/src/lib/strategy/phase6.test.ts \
+  artifacts/api-server/src/lib/strategy/ohlcv-execution.test.ts \
+  artifacts/api-server/src/lib/phase9.test.ts \
+  artifacts/api-server/src/lib/phase9.integration.test.ts \
+  artifacts/api-server/src/lib/visual-validation.test.ts
+
+Then run the repository’s API and LevelStory typechecks.
+
+Finally, run at least one authoritative real-data Strong Breakout fixture that produces a nonzero executed trade and show:
+
+- Exact strategy is `STRONG_BREAKOUT_AFTER_CONSOLIDATION`
+- Direction
+- Frozen zone high and low
+- Raw midpoint
+- Tick-aligned stop
+- Entry price and timestamp
+- Stop activation timestamp
+- Exit price and timestamp
+- Exit reason
+- Occurrence ID
+- Candidate ID
+- Trade ID
+- Visual Review evidence
+- Formula and cache versions
+
+A successful HTTP response, passing tests with skipped assertions, or a replay producing zero Strong Breakout trades is not execution proof.
+
+DELIVERABLE
+
+Return:
+
+1. Files and functions changed
+2. Previous versus new long/short formulas
+3. Focused test results
+4. Typecheck results
+5. Real linked trade evidence
+6. Cache-version changes
+7. Any remaining ambiguity or unverified path
+
+Do not claim completion if the real occurrence-to-trade-to-chart linkage was not demonstrated.
