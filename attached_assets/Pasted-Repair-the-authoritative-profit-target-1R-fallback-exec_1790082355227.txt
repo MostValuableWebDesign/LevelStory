@@ -1,0 +1,331 @@
+Repair the authoritative profit-target, 1R fallback, execution, and P/L calculations for LevelStory continuation trades.
+
+Review the current repository before editing because file contents may have changed. Implement this through the complete production chain. Do not patch only the chart or explanation text.
+
+Confirmed defects
+
+1. The target planner currently rejects forward key levels whose buffered target is below 1R.
+
+This is incorrect. A valid forward key level or indicator has priority over the 1R fallback, even when that target produces less than 1R.
+
+2. The current 1R fallback is calculated from entry to the buffered strategy stop.
+
+This is incorrect. Profit-side 1R must be measured from the actual modeled entry fill to the raw adverse wick of the patience candle.
+
+3. The fixed eight-tick near-side target placement is not applied consistently to every eligible key level.
+
+Premarket, prior-session, ORB, NTZ, major levels, VWAP, EMA 200, and other governed target levels must use the same eight-tick near-side target placement.
+
+4. The incorrect target flows into execution, trade outcome, P/L, Visual Review, and the generated explanation.
+
+Authoritative target-selection rule
+
+At the completed E snapshot, freeze the levels and indicators that were causally visible.
+
+For each level in the profitable direction, measure the raw directional distance from entry to the nearest boundary that price would encounter.
+
+The eligible search interval is:
+
+```text
+raw level distance > 5.00 points
+raw level distance ≤ 20.00 points
+Boundary rules:
+- Exactly 5.00 points: skip.
+- Less than 5.00 points: skip.
+- More than 5.00 points: potentially eligible.
+- Exactly 20.00 points: eligible.
+- More than 20.00 points: skip.
+Select the nearest eligible forward level after applying those boundaries.
+Place the executable target eight MES ticks before the selected raw level:
+MES tick size = 0.25
+8 ticks = 2.00 points
+Long:
+target = selected forward level boundary − 2.00
+Short:
+target = selected forward level boundary + 2.00
+Apply this placement to all eligible governed target types, including:
+- EMA 200
+- VWAP
+- premarket high and low
+- previous-session high and low
+- two-sessions-ago high and low
+- ORB high and low
+- NTZ high and low
+- major support and resistance
+- governed Dynamite/confluence levels
+Do not require the buffered key-level target to be at least 1R.
+Remove key-level rejection based on:
+TARGET_LEVEL_SKIPPED_BELOW_1R
+A level may still be skipped because it is:
+- on the wrong side of entry
+- 5 points or less from entry
+- more than 20 points from entry
+- non-causal or unavailable at completed E
+- diagnostic-only
+- malformed or non-finite
+- a prohibited level type such as Fibonacci or previous-session close
+Add explicit reason codes such as:
+TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS
+TARGET_LEVEL_SKIPPED_BEYOND_20_POINTS
+Target priority
+Use this order:
+1. Nearest causally visible forward key level or indicator more than 5 and no more than 20 points from entry.
+2. Executable target eight ticks before that level.
+3. Patience-wick 1R fallback only when no eligible level exists in that interval.
+Do not compare the key-level target against 1R to decide whether to keep it.
+Authoritative 1R fallback
+Use 1R only when there is no eligible forward level between more than 5 and no more than 20 points from entry.
+Calculate fallback 1R from the actual modeled entry fill to the raw patience-candle adverse wick.
+Long:
+risk points = modeled entry fill − patience-candle low
+1R target = modeled entry fill + risk points
+Short:
+risk points = patience-candle high − modeled entry fill
+1R target = modeled entry fill − risk points
+The raw patience wick is the candle’s actual high or low. Do not add or subtract the strategy-stop buffer.
+The following must not determine profit-side 1R:
+- buffered strategy stop
+- primary-loss exit level
+- catastrophe stop
+- consolidation midpoint stop
+- adaptive stop buffer
+- account risk amount
+- fixed dollar target
+Fail closed when:
+- the modeled entry fill is missing
+- the patience candle is missing
+- the required patience high or low is non-finite
+- the patience wick is on the wrong side of entry
+- calculated risk is zero or negative
+Do not fall back to entry-to-stop 1R when patience-wick evidence is invalid.
+Planning versus execution
+The actual modeled entry fill may differ from the trigger threshold because of an entry gap or slippage.
+Therefore:
+- Key-level selection may use the governed candidate entry reference to select and freeze the level.
+- Once the actual modeled fill is established, the authoritative 1R fallback must be calculated from that fill and the frozen raw patience wick.
+- Candidate, trade, replay, audit, and Visual Review must store the same final fallback target.
+- Do not let the target planner display threshold-based 1R while execution uses fill-based 1R.
+- Do not let execution recompute 1R from the strategy stop.
+If necessary, pass an explicit field into OHLCV execution, such as:
+oneRRiskAnchorPrice
+oneRRiskAnchorType = PATIENCE_WICK
+Then calculate oneRPrice after the modeled fill is known.
+Files and functions to inspect
+Start with:
+- artifacts/api-server/src/lib/strategy/key-level-targets.ts
+  - buildKeyLevelTargetPlan(...)
+  - usesEightTickNearSideBuffer(...)
+  - placementTicksForLevel(...)
+  - level eligibility and skipped-level reasons
+- artifacts/api-server/src/lib/strategy/ohlcv-execution.ts
+  - simulateOhlcvExecution(...)
+  - initialRiskPoints
+  - oneRPrice
+  - oneRProfitRule
+  - target-versus-stop event ordering
+- artifacts/api-server/src/lib/phase9.ts
+  - targetPlanForSnapshot(...)
+  - targetPlanForOccurrence(...)
+  - freezeCandidateManagementContext(...)
+  - candidateDrivenEntryTrade(...)
+  - candidate/trade target projection
+- artifacts/api-server/src/lib/shadow-account-replay.ts
+  - target-plan rebuilding
+  - 1R replay calculation
+  - exact execution and P/L reconciliation
+- artifacts/api-server/src/lib/visual-validation.ts
+  - candidate/trade target presentation
+  - skipped target levels
+  - target provenance
+  - authoritative outcome explanation
+- LevelStory Visual Review chart and trade-analytics components
+  - plotted target
+  - selected key level
+  - 1R status
+  - skipped-level explanation
+  - exit reason
+  - gross and net P/L
+Screenshot regression
+Add a deterministic short fixture matching this case:
+Direction: short
+Modeled entry: 5763.75
+EMA 200: 5755.75
+Premarket low: 5749.75
+Post-entry low: 5755.25
+Expected selection:
+Distance to EMA 200:
+5763.75 − 5755.75 = 8.00 points
+The EMA is:
+more than 5 points from entry
+within 20 points from entry
+nearest eligible forward level
+Expected target:
+5755.75 + 2.00 = 5757.75
+Expected execution:
+- Selected source: EMA 200
+- Raw selected level: 5755.75
+- Executable target: 5757.75
+- The post-entry low of 5755.25 reaches the target.
+- The trade exits at the target, subject to configured exit slippage.
+- It does not remain open until the strategy stop.
+- Its outcome is a target win.
+- Gross and net P/L are recalculated from the actual modeled entry and exit fills.
+- The chart must not display 5745.75.
+- The explanation must not claim that no executable target was reached.
+Premarket-low verification:
+Raw premarket low: 5749.75
+Eight-tick near-side target for a short: 5751.75
+Premarket low is the subsequent level after EMA 200. It must remain visible in the frozen target plan as a subsequent eligible level, but it must not replace the nearer EMA target.
+Five-point boundary tests
+Add symmetric long and short tests proving:
+1. Level 4.75 points from entry:
+   - skipped
+2. Level exactly 5.00 points from entry:
+   - skipped
+3. Level 5.25 points from entry:
+   - eligible
+   - target placed eight ticks before it
+4. First level within 5 points and second level 10 points away:
+   - first skipped
+   - second selected
+5. Level exactly 20 points away:
+   - eligible
+6. Level 20.25 points away:
+   - skipped
+7. Several eligible levels:
+   - nearest raw directional level selected deterministically
+8. A level zone:
+   - distance measured to the first directional boundary price would encounter
+   - eight-tick target placed before that boundary
+1R fallback tests
+Add symmetric tests:
+Short:
+modeled fill = 100
+patience high = 103
+strategy stop = 110
+
+risk = 103 − 100 = 3
+1R target = 100 − 3 = 97
+Assert that the target is 97 regardless of the strategy stop at 110.
+Long:
+modeled fill = 100
+patience low = 97
+strategy stop = 90
+
+risk = 100 − 97 = 3
+1R target = 100 + 3 = 103
+Assert that the target is 103 regardless of the strategy stop at 90.
+Also test:
+- entry gap changes the modeled fill and therefore changes 1R
+- entry slippage changes the modeled fill and therefore changes 1R
+- changing only the strategy-stop buffer does not change 1R
+- changing only the catastrophe stop does not change 1R
+- missing patience wick fails closed
+- wrong-side patience wick fails closed
+- no eligible level triggers the 1R fallback
+- any eligible level more than 5 and within 20 points suppresses the 1R fallback
+- a key-level target below 1R remains selected
+- complete ordered intrabar evidence selects the first target or stop event
+- ambiguous same-candle target/stop ordering retains the existing conservative handling
+Production-chain acceptance
+For long and short fixtures, prove exact propagation through:
+completed E snapshot
+→ frozen target-level inputs
+→ target plan
+→ candidate management context
+→ modeled execution
+→ authoritative trade
+→ Shadow Account Replay
+→ Visual Review
+→ chart annotations
+→ trade analytics and P/L
+Assert matching:
+- selected level ID and type
+- raw level price
+- raw distance from entry
+- skipped-level reason codes
+- eight-tick placement
+- executable target
+- fallback-used flag
+- patience-wick risk anchor
+- modeled fill
+- exit reference price
+- exit fill after slippage
+- exit timestamp
+- target-hit status
+- exit reason
+- gross P/L
+- fees
+- slippage
+- net P/L
+- candidate ID
+- signal occurrence ID
+P/L rules
+Calculate P/L only from authoritative modeled fills:
+Short:
+gross P/L = (entry fill − exit fill) × MES point value × contracts
+Long:
+gross P/L = (exit fill − entry fill) × MES point value × contracts
+Then subtract commissions, exchange fees, regulatory fees, clearing fees, and modeled slippage exactly once.
+Do not calculate P/L from:
+- the raw key-level price
+- the unslipped target reference
+- the trigger threshold when the actual entry fill differs
+- the strategy stop when the trade exited at target
+Scope limits
+Do not change:
+- entry qualification
+- ORB trend rules
+- Patience strategy switches
+- P-to-E timing
+- entry confirmation buffer
+- loss-side strategy-stop placement
+- primary-loss exit behavior
+- catastrophe stops
+- account-position arbitration
+- contract quantity
+- trailing rules after a valid partial exit
+- Fibonacci’s diagnostic-only status
+- target/stop chronology rules
+This repair changes profit-target selection and profit-side 1R only. It must not move the protective stop.
+Versions and cache invalidation
+Because this changes target selection, exit results, trade outcomes, P/L, Shadow Replay, and Visual Review, bump all affected versions:
+- key-level target-plan version
+- fixed-formula version
+- strategy-result cache version
+- batch-aggregation version
+- candidate-projection version
+- execution-management version
+- qualification-funnel version if its outcome counts change
+- Shadow Account Replay version/cache identity
+- Visual Review cache version
+- Visual Review candidate projection version
+- Visual Review execution-management version
+- Visual Review snapshot and chart projection versions
+Add exact previous-versus-current version tests. Old target plans and cached trades must not be reused.
+Verification
+Run:
+1. Key-level target-plan tests.
+2. OHLCV execution tests.
+3. Phase 9 unit tests.
+4. Phase 9 integration tests.
+5. Shadow Account Replay tests.
+6. Visual Review tests.
+7. Cache/version tests.
+8. API-server typecheck.
+9. LevelStory/shared typecheck.
+10. git diff --check.
+Final response
+Report:
+- files and functions changed
+- exact target-selection algorithm
+- exact 5-point and 20-point boundaries
+- exact long and short patience-wick 1R formulas
+- screenshot-regression selected level and target
+- authoritative entry and exit fills
+- resulting gross and net P/L
+- versions bumped
+- focused test counts
+- typecheck results
+- validation not run
+Do not report this complete unless the screenshot regression selects EMA 200 at 5755.75, creates the 5757.75 reference target, exits when price reaches it, and no longer uses entry-to-stop distance for 1R.
