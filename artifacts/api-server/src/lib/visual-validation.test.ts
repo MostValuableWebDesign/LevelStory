@@ -566,7 +566,7 @@ test("Visual Review keeps expired P1 diagnostic-only and pairs the trade with ad
     entryPrice: confirmed.confirmationThreshold!,
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
-    levels: [{ id: "candidate-resistance", type: "major resistance", price: confirmed.confirmationThreshold! + 4 }],
+     levels: [{ id: "candidate-resistance", type: "major resistance", price: confirmed.confirmationThreshold! + 6 }],
   });
   const linkedTrade: BacktestTrade = {
     ...fixture.trade,

@@ -3120,7 +3120,7 @@ const TRADER_LABELS: Record<string, string> = {
   NEUTRAL_ORB_TREND: "Neutral ORB trend",
   CAUSAL_ORB_TREND_EPOCH: "ORB direction established",
   TARGET_LEVEL_SKIPPED_WRONG_DIRECTION: "Wrong direction",
-  TARGET_LEVEL_SKIPPED_TOO_CLOSE: "Too close to entry",
+  TARGET_LEVEL_SKIPPED_TOO_CLOSE: "At or within 5.00 points",
   TARGET_LEVEL_SKIPPED_OBSTRUCTED: "Obstructed",
   TARGET_LEVEL_SKIPPED_NO_SOURCE_TIMESTAMP: "Missing source timestamp",
   NO_ELIGIBLE_KEY_LEVEL: "No eligible key level",
@@ -3479,7 +3479,7 @@ function TechnicalTradeInspector({ trade }: { trade: TradeEvidenceView | null })
             ["Search range", `${formatTradePrice(targetPlan.searchRangePoints)} pt · ${targetPlan.searchRangeTicks ?? "—"} ticks`],
               ["Target placement", targetPlan.fallbackUsed
                 ? "Exactly 1R · no level offset"
-                : `${targetPlan.placementTicks} ticks · ${formatTradePrice(targetPlan.placementTicks * targetPlan.tickSize)} points · ${targetPlan.placementTicks > 0 ? "near side" : "raw level boundary"}`],
+                : `${targetPlan.placementTicks} ticks · ${formatTradePrice(targetPlan.placementTicks * targetPlan.tickSize)} points · near side`],
              ["Raw level / executable", `${formatTradePrice(targetPlan.selectedLevelPrice)} / ${formatTradePrice(targetPlan.targetPrice)} · ${targetPlan.targetDistanceTicks ?? "—"} ticks from entry`],
               ["Target driver", targetPlan.targetDrivingMember
                 ? `${targetPlan.targetDrivingMember.id} · ${targetPlan.targetDrivingMember.dynamicSource ?? "structural"}`

@@ -75,7 +75,7 @@ test("independent Patience strategy switches invalidate the current Visual Revie
   assert.equal(base.candidateProjectionVersion, VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION);
   assert.equal(base.snapshotProjectionVersion, VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION);
   assert.equal(base.chartProjectionVersion, VISUAL_VALIDATION_CHART_PROJECTION_VERSION);
-  assert.equal(VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION, "phase12-strategy-engine-v21-independent-patience-switch");
+  assert.equal(VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION, "phase12-strategy-engine-v22-authoritative-target-wick-1r");
   assert.notEqual(base.cacheKey, orbOnlyCache.cacheKey);
   assert.notEqual(base.cacheKey, patienceOnlyCache.cacheKey);
   assert.notEqual(orbOnlyCache.cacheKey, patienceOnlyCache.cacheKey);

@@ -478,6 +478,8 @@ function replayTradeWithFixedContracts(
       initialRiskPoints: frozenTargetPlan.initialRiskPoints
         ?? trade.audit?.initialRiskPoints
         ?? null,
+       oneRRiskAnchorType: frozenTargetPlan.oneRRiskAnchorType ?? null,
+       oneRRiskAnchorPrice: frozenTargetPlan.oneRRiskAnchorPrice ?? null,
       contracts: contractsPerTrade,
     })
     : frozenTargetPlan;
@@ -540,6 +542,8 @@ function replayTradeWithFixedContracts(
     contracts: contractsPerTrade,
     targetQuantity: replayTargetPrice === null ? 0 : Math.min(1, contractsPerTrade),
     target: replayTargetPrice,
+     oneRRiskAnchorType: rebuiltTargetPlan?.oneRRiskAnchorType ?? null,
+     oneRRiskAnchorPrice: rebuiltTargetPlan?.oneRRiskAnchorPrice ?? null,
     dynamicTarget: rebuiltTargetPlan?.dynamicTargetSource
       ? {
         source: rebuiltTargetPlan.dynamicTargetSource,

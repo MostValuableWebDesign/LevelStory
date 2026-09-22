@@ -2957,6 +2957,9 @@ function targetPlanForSnapshot(
     ?? snapshot.patience;
   const patienceCandle = patience.patienceCandle
   const entryCandle = patience.triggerCandle;
+  const oneRRiskAnchorPrice = patienceCandle
+    ? direction === "long" ? patienceCandle.low : patienceCandle.high
+    : null;
   return buildKeyLevelTargetPlan({
     direction,
     entryPrice,
@@ -2970,6 +2973,8 @@ function targetPlanForSnapshot(
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
     initialRiskPoints,
+    oneRRiskAnchorType: oneRRiskAnchorPrice === null ? null : "PATIENCE_WICK",
+    oneRRiskAnchorPrice,
     contracts,
   });
 }
@@ -5454,6 +5459,9 @@ function targetPlanForOccurrence(
   const contracts = config.executionManagementFixedContracts;
   const stopPrice = strategyStopPriceForOccurrence(occurrence);
   const initialRiskPoints = stopPrice === null ? null : Math.abs(entryPrice - stopPrice);
+  const patienceLow = numericCandleValue(occurrence.patienceCandle, "low");
+  const patienceHigh = numericCandleValue(occurrence.patienceCandle, "high");
+  const oneRRiskAnchorPrice = occurrence.direction === "long" ? patienceLow : patienceHigh;
   const plan = buildKeyLevelTargetPlan({
     direction: occurrence.direction,
     entryPrice,
@@ -5461,6 +5469,8 @@ function targetPlanForOccurrence(
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
     initialRiskPoints,
+    oneRRiskAnchorType: oneRRiskAnchorPrice === null ? null : "PATIENCE_WICK",
+    oneRRiskAnchorPrice,
     contracts,
   });
   const targetIsDirectional = plan.targetPrice === null
@@ -5476,11 +5486,49 @@ function targetPlanForOccurrence(
       placementMode: "NEAR_SIDE_8_TICKS",
       targetBufferTicks: 8,
       initialRiskPoints,
+       oneRRiskAnchorType: oneRRiskAnchorPrice === null ? null : "PATIENCE_WICK",
+       oneRRiskAnchorPrice,
       contracts,
     });
   return {
     ...safePlan,
     targetLevelSnapshot: snapshot,
+  };
+}
+
+function finalizeFallbackTargetPlanForFill(
+  plan: KeyLevelTargetPlan | undefined,
+  direction: Direction,
+  modeledFill: number | null,
+): KeyLevelTargetPlan | undefined {
+  if (!plan || !plan.fallbackUsed || modeledFill === null || !Number.isFinite(modeledFill)) return plan;
+  const anchor = plan.oneRRiskAnchorPrice ?? null;
+  const validAnchor = anchor !== null
+    && Number.isFinite(anchor)
+    && (direction === "long" ? anchor < modeledFill : anchor > modeledFill);
+  if (!validAnchor) {
+    return {
+      ...plan,
+      entryPrice: modeledFill,
+      targetPrice: null,
+      targetDistanceTicks: null,
+      targetR: null,
+      fallbackUsed: false,
+      fallbackReason: null,
+    };
+  }
+  const riskPoints = Math.abs(modeledFill - anchor);
+  const targetPrice = Number((
+    direction === "long" ? modeledFill + riskPoints : modeledFill - riskPoints
+  ).toFixed(10));
+  return {
+    ...plan,
+    entryPrice: modeledFill,
+    targetPrice,
+    targetDistanceTicks: Math.round(riskPoints / plan.tickSize),
+    targetR: 1,
+    oneRRiskAnchorType: "PATIENCE_WICK",
+    oneRRiskAnchorPrice: anchor,
   };
 }
 
@@ -6120,6 +6168,20 @@ export function projectHistoricalTradeCandidates(
       continue;
     }
     const candidateTrade = candidateResult.trade;
+    const authoritativeCandidate: HistoricalTradeCandidate = {
+      ...candidateWithOccurrenceIdentity,
+      targetPlan: candidateTrade.targetPlan ?? candidateWithOccurrenceIdentity.targetPlan,
+      managementContext: candidateWithOccurrenceIdentity.managementContext
+        ? {
+          ...candidateWithOccurrenceIdentity.managementContext,
+          targetPlan: candidateTrade.targetPlan ?? candidateWithOccurrenceIdentity.managementContext.targetPlan,
+          targetPrice: candidateTrade.targetPlan?.targetPrice
+            ?? candidateWithOccurrenceIdentity.managementContext.targetPrice,
+          runnerActivationPrice: candidateTrade.targetPlan?.targetPrice
+            ?? candidateWithOccurrenceIdentity.managementContext.runnerActivationPrice,
+        }
+        : candidateWithOccurrenceIdentity.managementContext,
+    };
     const projectedTrade = {
       ...candidateTrade,
       armAttemptId: attemptId,
@@ -6138,7 +6200,7 @@ export function projectHistoricalTradeCandidates(
     };
     candidateExecutionEvidence.push(projectedTrade);
     authoritativeTrades.push(projectedTrade);
-    candidates.push(candidateWithOccurrenceIdentity);
+    candidates.push(authoritativeCandidate);
   }
   const accountGate = applyHistoricalAccountPositionGate(candidates, authoritativeTrades, {
     resetAtContractBoundary: Boolean(executionContext?.dataset.contractSchedule),
@@ -6314,7 +6376,7 @@ function candidateDrivenEntryTrade(
   if (!entryObservationTimestamp) return undefined;
   const management = candidate.managementContext ?? freezeCandidateManagementContext(occurrence, candidateId, undefined);
   const contracts = config.executionManagementFixedContracts;
-  const targetPlan = management.targetPlan;
+  let targetPlan = management.targetPlan;
   const canonicalFrozenZoneIdentity = canonicalFrozenZoneIdentityForOccurrence(
     occurrence,
     management.consolidationMidpointStop,
@@ -6332,7 +6394,7 @@ function candidateDrivenEntryTrade(
   }
   const primaryLossExitLevel = management.primaryLossExitLevel
     ?? primaryLossExitReferenceForOccurrence(occurrence, entryPrice);
-  const targetPrice = targetPlan?.targetPrice ?? null;
+  let targetPrice = targetPlan?.targetPrice ?? null;
   const contractCandles = context.dataset.candles
     .filter((item) => item.contractSymbol === occurrence.contractSymbol)
     .sort((first, second) => first.openTime - second.openTime);
@@ -6398,7 +6460,9 @@ function candidateDrivenEntryTrade(
     subsequentCompletedCandles: postEntry,
     contracts,
     targetQuantity: targetPrice === null ? 0 : Math.min(1, contracts),
-    target: targetPrice,
+     target: targetPrice,
+    oneRRiskAnchorType: targetPlan?.oneRRiskAnchorType ?? null,
+    oneRRiskAnchorPrice: targetPlan?.oneRRiskAnchorPrice ?? null,
     dynamicTarget: targetPlan?.dynamicTargetSource
       ? {
         source: targetPlan.dynamicTargetSource,
@@ -6415,7 +6479,7 @@ function candidateDrivenEntryTrade(
         }),
       }
       : undefined,
-    oneRProfitRule: targetPlan?.fallbackUsed === true,
+     oneRProfitRule: targetPlan?.fallbackUsed === true,
     targetIsOneR: targetPlan?.fallbackUsed === true,
     structureTrailing: true,
     trailingBufferTicks: management.runnerBufferTicks ?? 4,
@@ -6448,6 +6512,8 @@ function candidateDrivenEntryTrade(
       clearing: executionSpecification.clearingFeePerContract,
     },
   });
+  targetPlan = finalizeFallbackTargetPlanForFill(targetPlan, occurrence.direction, modeled.modeledFill);
+  targetPrice = targetPlan?.targetPrice ?? null;
   if (modeled.modeledFill === null) {
     const executionAmbiguityLabel = modeled.ambiguityLabels.find(isExecutionAmbiguityLabel) ?? null;
     return {

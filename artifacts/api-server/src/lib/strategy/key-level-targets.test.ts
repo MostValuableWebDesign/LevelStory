@@ -15,13 +15,13 @@ test("long key-level targets select the nearest forward level within 20 points",
       { id: "behind", type: "ORB", price: 99 },
       { id: "exact-buffer", type: "VWAP", price: 103 },
       { id: "near", type: "EMA200", price: 102.75 },
-        { id: "next", type: "prior-high", price: 119 },
+        { id: "next", type: "previous-day-high", price: 119 },
     ],
   });
-  assert.equal(plan.selectedTargetLevel?.id, "exact-buffer|near");
-  assert.equal(plan.targetPrice, 100.75);
-  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["behind"]);
-  assert.equal(plan.subsequentTargetLevels[0]?.id, "next");
+  assert.equal(plan.selectedTargetLevel?.id, "next");
+  assert.equal(plan.targetPrice, 117);
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["behind", "exact-buffer|near"]);
+  assert.equal(plan.subsequentTargetLevels.length, 0);
   assert.ok(plan.availableLevels.every((level) => level.id !== "behind"));
   assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION");
   assert.equal(plan.bufferPoints, 20);
@@ -36,14 +36,14 @@ test("short key-level targets select close levels and skip distant levels", () =
     levels: [
       { id: "behind", type: "ORB", price: 101 },
       { id: "exact-buffer", type: "VWAP", price: 97 },
-       { id: "next", type: "major-resistance", rangeLow: 77, rangeHigh: 79 },
+       { id: "next", type: "major-resistance", rangeLow: 79.5, rangeHigh: 80 },
     ],
   });
-  assert.equal(plan.selectedTargetLevel?.id, "exact-buffer");
-  assert.equal(plan.selectedTargetLevel?.price, 97);
-  assert.equal(plan.targetPrice, 99);
-  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["behind"]);
-  assert.equal(plan.subsequentTargetLevels[0]?.id, "next");
+  assert.equal(plan.selectedTargetLevel?.id, "next");
+  assert.equal(plan.selectedTargetLevel?.price, 80);
+  assert.equal(plan.targetPrice, 82);
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["behind", "exact-buffer"]);
+  assert.equal(plan.subsequentTargetLevels.length, 0);
 });
 
 test("short entries inside a support zone target the zone's lower boundary", () => {
@@ -75,13 +75,14 @@ test("only levels within the maximum entry distance can become targets", () => {
     entryPrice,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "ema-200", type: "EMA200", price: 7523 },
-       { id: "vwap", type: "VWAP", price: 7499.5 },
+       { id: "ema-200", type: "EMA200", price: 7521 },
+        { id: "vwap", type: "VWAP", price: 7509 },
     ],
   });
-  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["vwap"]);
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), []);
   assert.equal(plan.selectedTargetLevel?.id, "ema-200");
-  assert.equal(plan.targetPrice, 7525);
+  assert.equal(plan.targetPrice, 7523);
+  assert.equal(plan.subsequentTargetLevels[0]?.id, "vwap");
 });
 
 test("dynamite or duplicate prices become one frozen close target level", () => {
@@ -90,16 +91,17 @@ test("dynamite or duplicate prices become one frozen close target level", () => 
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "dynamite-vwap", type: "DYNAMITE", rangeLow: 104, rangeHigh: 105, price: 104.5 },
-      { id: "dynamite-ema", type: "DYNAMITE", rangeLow: 104, rangeHigh: 105, price: 104.5 },
-       { id: "farther", type: "prior-high", price: 125 },
+       { id: "dynamite-vwap", type: "DYNAMITE", rangeLow: 106, rangeHigh: 107, price: 106.5 },
+       { id: "dynamite-ema", type: "DYNAMITE", rangeLow: 106, rangeHigh: 107, price: 106.5 },
+        { id: "farther", type: "previous-day-high", price: 119 },
     ],
   });
   assert.equal(plan.availableLevels.length, 2);
   assert.equal(plan.selectedTargetLevel?.id, "dynamite-ema|dynamite-vwap");
-  assert.equal(plan.selectedTargetLevel?.price, 104);
-  assert.equal(plan.targetPrice, 102);
-  assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["farther"]);
+  assert.equal(plan.selectedTargetLevel?.price, 106);
+  assert.equal(plan.targetPrice, 104);
+  assert.deepEqual(plan.skippedLevels.map((level) => level.id), []);
+  assert.equal(plan.subsequentTargetLevels[0]?.id, "farther");
 });
 
 test("overlapping and within-Dynamite-tolerance aliases become one physical target area", () => {
@@ -108,18 +110,18 @@ test("overlapping and within-Dynamite-tolerance aliases become one physical targ
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "major-resistance", type: "major resistance", rangeLow: 104, rangeHigh: 105 },
-      { id: "vwap", type: "VWAP", price: 105.5 },
-      { id: "ema-200", type: "EMA200", price: 106 },
+       { id: "major-resistance", type: "major resistance", rangeLow: 106, rangeHigh: 107 },
+       { id: "vwap", type: "VWAP", price: 107.5 },
+       { id: "ema-200", type: "EMA200", price: 108 },
        { id: "separate-prior-high", type: "previous-day-high", price: 123 },
     ],
   });
   assert.equal(plan.availableLevels.length, 2);
   assert.equal(plan.selectedTargetLevel?.id, "ema-200|major-resistance|vwap");
-  assert.equal(plan.selectedTargetLevel?.rangeLow, 104);
-  assert.equal(plan.selectedTargetLevel?.rangeHigh, 106);
-  assert.equal(plan.selectedTargetLevel?.price, 104);
-  assert.equal(plan.targetPrice, 102);
+   assert.equal(plan.selectedTargetLevel?.rangeLow, 106);
+   assert.equal(plan.selectedTargetLevel?.rangeHigh, 108);
+   assert.equal(plan.selectedTargetLevel?.price, 106);
+   assert.equal(plan.targetPrice, 104);
   assert.deepEqual(plan.skippedLevels.map((level) => level.id), ["separate-prior-high"]);
 });
 
@@ -129,15 +131,15 @@ test("a structural confluence member remains the target driver over indicator ev
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "major-resistance", type: "major resistance", rangeLow: 104, rangeHigh: 105 },
-      { id: "vwap", type: "VWAP", price: 105.5 },
+       { id: "major-resistance", type: "major resistance", rangeLow: 106, rangeHigh: 107 },
+       { id: "vwap", type: "VWAP", price: 107.5 },
     ],
   });
   assert.equal(plan.dynamicTargetSource, null);
   assert.equal(plan.targetDrivingMember?.id, "major-resistance");
   assert.equal(plan.targetDrivingMember?.dynamicSource, null);
-  assert.equal(plan.selectedLevelPrice, 104);
-  assert.equal(plan.targetPrice, 102);
+   assert.equal(plan.selectedLevelPrice, 106);
+   assert.equal(plan.targetPrice, 104);
 });
 
 test("an indicator-only confluence selects the independently qualifying VWAP driver", () => {
@@ -146,14 +148,14 @@ test("an indicator-only confluence selects the independently qualifying VWAP dri
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "vwap", type: "VWAP", price: 105 },
-      { id: "vwap-alias", type: "VWAP", price: 105.5 },
+       { id: "vwap", type: "VWAP", price: 106 },
+       { id: "vwap-alias", type: "VWAP", price: 106.5 },
     ],
   });
   assert.equal(plan.targetDrivingMember?.dynamicSource, "VWAP");
   assert.equal(plan.dynamicTargetSource, "VWAP");
-  assert.equal(plan.targetDrivingMember?.rawPrice, 105);
-  assert.equal(plan.targetPrice, 103);
+   assert.equal(plan.targetDrivingMember?.rawPrice, 106);
+   assert.equal(plan.targetPrice, 104);
 });
 
 test("VWAP and EMA200 choose one deterministic driver by executable distance then identity", () => {
@@ -162,13 +164,13 @@ test("VWAP and EMA200 choose one deterministic driver by executable distance the
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
-      { id: "z-ema", type: "EMA200", price: 105 },
-      { id: "a-vwap", type: "VWAP", price: 105 },
+       { id: "z-ema", type: "EMA200", price: 106 },
+       { id: "a-vwap", type: "VWAP", price: 106 },
     ],
   });
   assert.equal(plan.targetDrivingMember?.id, "a-vwap");
   assert.equal(plan.targetDrivingMember?.dynamicSource, "VWAP");
-  assert.equal(plan.targetPrice, 103);
+   assert.equal(plan.targetPrice, 104);
   assert.equal(plan.selectedTargetLevel?.targetDrivingMember?.id, "a-vwap");
 });
 
@@ -189,16 +191,16 @@ test("candidate near-side placement stays 8 ticks in front of a directional leve
     direction: "long",
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
-    levels: [{ id: "resistance", type: "major resistance", price: 105 }],
+       levels: [{ id: "resistance", type: "major resistance", price: 106 }],
   });
   const shortPlan = buildKeyLevelTargetPlan({
     direction: "short",
     entryPrice: 100,
     placementMode: "NEAR_SIDE_8_TICKS",
-    levels: [{ id: "support", type: "major support", price: 95 }],
+       levels: [{ id: "support", type: "major support", price: 94 }],
   });
-  assert.equal(longPlan.targetPrice, 103);
-  assert.equal(shortPlan.targetPrice, 97);
+  assert.equal(longPlan.targetPrice, 104);
+   assert.equal(shortPlan.targetPrice, 96);
   assert.equal(longPlan.placementTicks, 8);
 });
 
@@ -209,13 +211,13 @@ test("near-side placement skips a close level whose target would not be profitab
     placementMode: "NEAR_SIDE_8_TICKS",
     levels: [
       { id: "too-close", type: "VWAP", price: 102 },
-      { id: "profitable", type: "major resistance", price: 104.25 },
+       { id: "profitable", type: "major resistance", price: 106.25 },
     ],
   });
   assert.equal(plan.selectedTargetLevel?.id, "profitable");
-  assert.equal(plan.targetPrice, 102.25);
+  assert.equal(plan.targetPrice, 104.25);
   assert.equal(plan.skippedLevels[0]?.id, "too-close");
-  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_NOT_PROFITABLE");
+   assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS");
 });
 
 test("allowlist excludes Fibonacci, close, critical, and management artifacts", () => {
@@ -227,7 +229,7 @@ test("allowlist excludes Fibonacci, close, critical, and management artifacts", 
     { id: "strategy-stop", type: "stop", price: 95 },
     { id: "runner-threshold", type: "runner", price: 110 },
     { id: "generic-critical", type: "critical", price: 111 },
-    { id: "major-resistance", type: "major resistance", price: 105 },
+     { id: "major-resistance", type: "major resistance", price: 106 },
   ]);
   assert.deepEqual(filtered.map((level) => level.id), ["major-resistance"]);
   assert.equal(buildKeyLevelTargetPlan({
@@ -236,7 +238,7 @@ test("allowlist excludes Fibonacci, close, critical, and management artifacts", 
     targetBufferTicks: 8,
     levels: [
       { id: "fib-618", type: "Fibonacci", price: 105 },
-      { id: "major-resistance", type: "major resistance", price: 105 },
+       { id: "major-resistance", type: "major resistance", price: 106 },
     ],
   }).selectedTargetLevel?.id, "major-resistance");
 });
@@ -324,6 +326,8 @@ test("causal search skips a buffered level below 1R and selects the next eligibl
     direction: "long",
     entryPrice: 100,
     initialRiskPoints: 3,
+     oneRRiskAnchorType: "PATIENCE_WICK",
+     oneRRiskAnchorPrice: 98,
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
     levels: [
@@ -334,7 +338,7 @@ test("causal search skips a buffered level below 1R and selects the next eligibl
   assert.equal(plan.selectedTargetLevel?.id, "next-major");
   assert.equal(plan.targetPrice, 104);
   assert.equal(plan.targetR, 1.3333333333333333);
-  assert.equal(plan.skippedLevels.find((level) => level.id === "near-indicator")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
+   assert.equal(plan.skippedLevels.find((level) => level.id === "near-indicator")?.reason, "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS");
   assert.equal(plan.fallbackUsed, false);
 });
 
@@ -348,9 +352,9 @@ test("causal search allows a buffered level above 1.5R when it is within 20 poin
    levels: [{ id: "too-far-for-r", type: "previous-day-high", price: 106.5 }],
   });
    assert.equal(plan.selectedTargetLevel?.id, "too-far-for-r");
-   assert.equal(plan.targetPrice, 106.5);
-   assert.equal(plan.targetR, 3.25);
-   assert.equal(plan.placementTicks, 0);
+    assert.equal(plan.targetPrice, 104.5);
+    assert.equal(plan.targetR, 2.25);
+    assert.equal(plan.placementTicks, 8);
    assert.equal(plan.maximumTargetR, null);
    assert.equal(plan.searchRangeTicks, 80);
 });
@@ -364,7 +368,7 @@ test("causal search classifies a level beyond 20 MES points as beyond the achiev
     targetBufferTicks: 8,
      levels: [{ id: "outside-twenty-points", type: "previous-day-high", price: 123 }],
   });
-  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE");
+    assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BEYOND_20_POINTS");
 });
 
 test("fixed target planning always uses the eight-tick near-side mode", () => {
@@ -406,9 +410,8 @@ test("causal search evaluates the buffered executable price, not the raw level",
       { id: "eligible", type: "previous-day-high", price: 108 },
     ],
   });
-  assert.equal(plan.skippedLevels.find((level) => level.id === "raw-above-one-r")?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
-  assert.equal(plan.selectedTargetLevel?.id, "eligible");
-   assert.equal(plan.targetPrice, 108);
+   assert.equal(plan.selectedTargetLevel?.id, "raw-above-one-r");
+   assert.equal(plan.targetPrice, 103.75);
 });
 
 test("causal search falls back to exactly 1R when no level is within 20 points", () => {
@@ -416,12 +419,14 @@ test("causal search falls back to exactly 1R when no level is within 20 points",
     direction: "long",
     entryPrice: 100,
     initialRiskPoints: 2,
+     oneRRiskAnchorType: "PATIENCE_WICK",
+     oneRRiskAnchorPrice: 98,
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
      levels: [{ id: "too-far", type: "previous-day-high", price: 123 }],
   });
   assert.equal(plan.disposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(plan.targetPrice, 102);
+   assert.equal(plan.targetPrice, 102);
   assert.equal(plan.targetR, 1);
   assert.equal(plan.fallbackUsed, true);
   assert.equal(plan.fallbackReason, "ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL");
@@ -434,15 +439,15 @@ test("a too-close major level is skipped and the next eligible level is selected
     initialRiskPoints: 2,
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
-    levels: [
-      { id: "hard-resistance", type: "major resistance", price: 101.5 },
-      { id: "farther-level", type: "previous-day-high", price: 104.75 },
-    ],
+     levels: [
+       { id: "hard-resistance", type: "major resistance", price: 101.5 },
+       { id: "farther-level", type: "previous-day-high", price: 106.75 },
+     ],
   });
   assert.equal(plan.rejectionReason, null);
   assert.equal(plan.obstructingLevel, null);
   assert.equal(plan.selectedTargetLevel?.id, "farther-level");
-  assert.equal(plan.targetPrice, 104.75);
+   assert.equal(plan.targetPrice, 104.75);
   assert.equal(plan.fallbackUsed, false);
 });
 
@@ -451,12 +456,14 @@ test("a major level exactly at 1R falls back to the full 1R price", () => {
     direction: "long",
     entryPrice: 100,
     initialRiskPoints: 2,
+     oneRRiskAnchorType: "PATIENCE_WICK",
+     oneRRiskAnchorPrice: 98,
     placementMode: "NEAR_SIDE_8_TICKS",
     targetBufferTicks: 8,
     levels: [{ id: "one-r-resistance", type: "major resistance", price: 102 }],
   });
   assert.equal(plan.selectedTargetLevel, null);
-  assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_BELOW_1R");
+   assert.equal(plan.skippedLevels[0]?.reason, "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS");
   assert.equal(plan.fallbackUsed, true);
   assert.equal(plan.targetPrice, 102);
   assert.equal(plan.targetR, 1);
@@ -478,4 +485,72 @@ test("short search is symmetric and retains wrong-direction diagnostics", () => 
   assert.equal(plan.selectedTargetLevel?.id, "next");
   assert.equal(plan.targetPrice, 96.5);
   assert.equal(plan.skippedLevels.find((level) => level.id === "behind")?.reason, "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION");
+});
+
+test("raw target distance uses a strict 5-point floor and inclusive 20-point ceiling", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [
+      { id: "at-five", type: "VWAP", price: 105 },
+      { id: "nearest-eligible", type: "PREMARKET", price: 107.25 },
+      { id: "at-twenty", type: "previous-day-high", price: 120 },
+      { id: "beyond-twenty", type: "EMA200", price: 122.25 },
+    ],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "nearest-eligible");
+  assert.equal(plan.targetPrice, 105.25);
+  assert.equal(plan.subsequentTargetLevels[0]?.id, "at-twenty");
+  assert.equal(plan.subsequentTargetLevels[0]?.price, 120);
+  assert.deepEqual(
+    plan.skippedLevels.map((level) => [level.id, level.reason]),
+    [
+      ["at-five", "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS"],
+      ["beyond-twenty", "TARGET_LEVEL_SKIPPED_BEYOND_20_POINTS"],
+    ],
+  );
+});
+
+test("every governed level uses the fixed eight-tick near-side placement", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    levels: [
+      { id: "orb-high", type: "ORB", price: 106 },
+      { id: "premarket-high", type: "PREMARKET", price: 109 },
+      { id: "prior-high", type: "previous-day-high", price: 112 },
+    ],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "orb-high");
+  assert.equal(plan.targetPrice, 104);
+  assert.equal(plan.placementTicks, 8);
+  assert.equal(plan.targetBufferPoints, 2);
+});
+
+test("a valid key level remains selected even when its executable target is below structural 1R", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "long",
+    entryPrice: 100,
+    initialRiskPoints: 10,
+    levels: [{ id: "near-level", type: "VWAP", price: 106 }],
+  });
+  assert.equal(plan.selectedTargetLevel?.id, "near-level");
+  assert.equal(plan.targetPrice, 104);
+  assert.equal(plan.targetR, 0.4);
+  assert.equal(plan.fallbackUsed, false);
+});
+
+test("fallback provenance uses the raw adverse patience wick", () => {
+  const plan = buildKeyLevelTargetPlan({
+    direction: "short",
+    entryPrice: 100,
+    oneRRiskAnchorType: "PATIENCE_WICK",
+    oneRRiskAnchorPrice: 104,
+    levels: [{ id: "too-far", type: "previous-day-high", price: 123 }],
+  });
+  assert.equal(plan.selectedTargetLevel, null);
+  assert.equal(plan.targetPrice, 96);
+  assert.equal(plan.oneRRiskAnchorType, "PATIENCE_WICK");
+  assert.equal(plan.oneRRiskAnchorPrice, 104);
+  assert.equal(plan.fallbackUsed, true);
 });

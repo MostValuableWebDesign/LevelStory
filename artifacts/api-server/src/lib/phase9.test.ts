@@ -3238,18 +3238,18 @@ test("candidate target snapshot rejects legacy target fallback and exits one con
   const candidate = result.candidates[0]!;
   const trade = result.authoritativeTrades[0]!;
   assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(candidate.targetPlan?.targetPrice, 105.5);
+   assert.equal(candidate.targetPlan?.targetPrice, 103.5);
   assert.equal(candidate.targetPlan?.fallbackUsed, true);
   assert.equal(candidate.managementContext?.managementEvidenceStatus, "complete");
   assert.equal(candidate.managementContext?.missingEvidenceReasons.includes("NO_ELIGIBLE_KEY_LEVEL"), false);
   assert.equal(trade.outcome, "target");
   assert.notEqual(trade.exitPrice, null);
   assert.notEqual(trade.netPnl, 0);
-  assert.equal(trade.audit?.targetPrice, 105.5);
+   assert.equal(trade.audit?.targetPrice, 103.5);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.oneRReached, true);
-   assert.equal(trade.audit?.oneRPrice, 105.5);
-   assert.equal(trade.audit?.profitCheckpointPrice, 105.5);
+    assert.equal(trade.audit?.oneRPrice, 103.5);
+    assert.equal(trade.audit?.profitCheckpointPrice, 103.5);
   assert.deepEqual(trade.audit?.legs?.map((leg) => [leg.kind, leg.quantity]), [["target", 1]]);
   assert.equal(trade.audit?.trailingStopActive, false);
 });
@@ -3282,9 +3282,9 @@ test("candidate target planning never reuses L-time qualifying values as E-time 
     executionMode: "ohlcv_modeled",
   });
   assert.equal(result.candidates[0]?.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
-  assert.equal(result.candidates[0]?.targetPlan?.targetPrice, 105.5);
+   assert.equal(result.candidates[0]?.targetPlan?.targetPrice, 103.5);
   assert.equal(result.authoritativeTrades[0]?.outcome, "target");
-  assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, 105.5);
+   assert.equal(result.authoritativeTrades[0]?.audit?.targetPrice, 103.5);
   assert.equal(result.authoritativeTrades[0]?.audit?.oneRReached, true);
 });
 
@@ -3347,7 +3347,7 @@ test("no target does not disable the candidate-owned strategy stop", () => {
   const trade = result.authoritativeTrades[0]!;
   assert.equal(candidate.targetDisposition, "NO_ELIGIBLE_KEY_LEVEL");
   assert.equal(trade.outcome, "catastrophe stop");
-  assert.equal(trade.audit?.targetPrice, 105.5);
+   assert.equal(trade.audit?.targetPrice, 103.5);
   assert.equal(trade.audit?.targetHit, false);
   assert.equal(trade.audit?.eventLabels.includes("STRATEGY_STOP_REACHED"), false);
   assert.equal(trade.audit?.eventLabels.includes("CATASTROPHE_STOP_REACHED"), true);
@@ -3383,7 +3383,7 @@ test("no target and no independent exit leaves the candidate open and unscored",
   const trade = result.authoritativeTrades[0]!;
   assert.equal(trade.outcome, "open");
   assert.equal(trade.exitPrice, null);
-  assert.equal(trade.audit?.targetPrice, 105.5);
+   assert.equal(trade.audit?.targetPrice, 103.5);
   assert.equal(calculateBacktestMetrics([trade]).tradeCount, 0);
 });
 

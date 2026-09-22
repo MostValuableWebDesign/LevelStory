@@ -8,12 +8,12 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { ACCOUNT_POSITION_STATE_VERSION } from "./account-position-gate.js";
 
-export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v26-independent-patience-switch";
-export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v21-independent-patience-switch";
-export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v26-independent-patience-switch";
-export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v22-causal-source-identity";
-export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v21-independent-patience-switch";
-export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v16-independent-patience-switch";
+export const VISUAL_VALIDATION_CACHE_KEY_VERSION = "visual-review-cache-v27-authoritative-target-wick-1r";
+export const VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v22-authoritative-target-wick-1r";
+export const VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION = "candidate-projection-v27-authoritative-target-wick-1r";
+export const VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION = "execution-management-v23-authoritative-target-wick-1r";
+export const VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION = "snapshot-projection-v22-authoritative-target-wick-1r";
+export const VISUAL_VALIDATION_CHART_PROJECTION_VERSION = "chart-projection-v17-authoritative-target-wick-1r";
 
 export type VisualValidationCacheMetadata = {
   cacheSourceFingerprint: string;

@@ -314,6 +314,8 @@ export type OhlcvExecutionAudit = {
   stopLevel: "primary_level" | "strategy" | "catastrophe" | "structure_trailing" | "breakeven" | null;
   primaryLossExitLevel: PrimaryLossExitReference | null;
   initialRiskPoints: number | null;
+  oneRRiskAnchorType?: "PATIENCE_WICK" | null;
+  oneRRiskAnchorPrice?: number | null;
   oneRPrice: number | null;
   oneRReached: boolean;
   profitCheckpointPrice: number | null;
@@ -436,6 +438,9 @@ export type OhlcvExecutionInput = {
   oneRProfitRule?: boolean;
   /** The supplied target is the planner's explicit exactly-1R fallback, not a causal key-level target. */
   targetIsOneR?: boolean;
+  /** Raw adverse patience wick used to anchor the profit-side 1R calculation. */
+  oneRRiskAnchorType?: "PATIENCE_WICK" | null;
+  oneRRiskAnchorPrice?: number | null;
   /** Candidate-owned runner management: use confirmed five-minute swings. */
   structureTrailing?: boolean;
   trailingBufferTicks?: number;
@@ -589,7 +594,9 @@ function emptyResult(
         : null,
       catastropheStopPrice: input.catastropheStop ?? null,
       stopLevel: null, primaryLossExitLevel: input.primaryLossExitLevel ?? null,
-      initialRiskPoints: null, oneRPrice: null, oneRReached: false, profitCheckpointPrice: null,
+      initialRiskPoints: null, oneRRiskAnchorType: input.oneRRiskAnchorType ?? null,
+      oneRRiskAnchorPrice: input.oneRRiskAnchorPrice ?? null,
+      oneRPrice: null, oneRReached: false, profitCheckpointPrice: null,
       trailingStopPrice: null, trailingStopActive: false, trailingStopSource: null,
       runnerReferencePrice: null, runnerImpulse: null,
       runnerMostFavorablePrice: null, remainingQuantity: input.quantity ?? input.contractQuantity ?? input.contracts ?? 0,
@@ -695,10 +702,12 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
     : (input.direction === "long"
       ? entryReference + (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size
       : entryReference - (input.targetDollars / (input.tickValue ?? size * (input.pointMultiplier ?? 1))) * size);
-  const initialTarget = convertedTarget == null ? null : tick(convertedTarget, size);
-  let effectiveTarget = initialTarget;
   const oneRProfitRule = input.oneRProfitRule === true
-    && (initialTarget === null || input.targetIsOneR === true);
+    && (convertedTarget === null || input.targetIsOneR === true);
+  let initialTarget = oneRProfitRule
+    ? null
+    : convertedTarget == null ? null : tick(convertedTarget, size);
+  let effectiveTarget = initialTarget;
   const noForwardLevelAtEntry = oneRProfitRule;
   const breakevenActivationBars = noForwardLevelAtEntry
     ? input.noLevelBreakevenActivationBars ?? BREAKEVEN_EVALUATION_BARS
@@ -844,10 +853,25 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         point.timestamp > (trigger.closeTime ?? Number.NEGATIVE_INFINITY))
       : []
     : orderedExitPoints;
-  const initialRiskPoints = initialStop === null ? null : Math.abs(modeledFill - initialStop);
-  const oneRPrice = initialRiskPoints === null
-    ? null
-    : tick(input.direction === "long" ? modeledFill + initialRiskPoints : modeledFill - initialRiskPoints, size);
+  const anchorPrice = input.oneRRiskAnchorPrice ?? null;
+  const validAnchor = anchorPrice !== null
+    && Number.isFinite(anchorPrice)
+    && (input.direction === "long" ? anchorPrice < modeledFill : anchorPrice > modeledFill);
+  const patienceWickRiskPoints = validAnchor ? Math.abs(modeledFill - anchorPrice) : null;
+  const initialRiskPoints = oneRProfitRule
+    ? patienceWickRiskPoints
+    : initialStop === null ? null : Math.abs(modeledFill - initialStop);
+  const oneRPrice = oneRProfitRule
+    ? patienceWickRiskPoints === null
+      ? null
+      : tick(input.direction === "long" ? modeledFill + patienceWickRiskPoints : modeledFill - patienceWickRiskPoints, size)
+    : initialRiskPoints === null
+      ? null
+      : tick(input.direction === "long" ? modeledFill + initialRiskPoints : modeledFill - initialRiskPoints, size);
+  if (oneRProfitRule && oneRPrice !== null) {
+    initialTarget = oneRPrice;
+    effectiveTarget = oneRPrice;
+  }
   const candles = [
     ...(input.evaluateEntryCandleForExit === false ? [] : [triggerForExecution]),
     ...subsequentCandles,
@@ -1595,6 +1619,8 @@ export function simulateOhlcvExecution(input: OhlcvExecutionInput): ModeledOhlcv
         breachedStopLevels,
       primaryLossExitLevel: input.primaryLossExitLevel ?? null,
        initialRiskPoints,
+        oneRRiskAnchorType: validAnchor ? input.oneRRiskAnchorType ?? "PATIENCE_WICK" : null,
+        oneRRiskAnchorPrice: validAnchor ? anchorPrice : null,
        oneRPrice,
        oneRReached,
         profitCheckpointPrice: profitCheckpointPrice ?? (targetHit ? effectiveTarget : null),

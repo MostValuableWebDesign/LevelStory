@@ -20,7 +20,17 @@ const candle = (open: number, high: number, low: number, close: number) => ({ op
 const timedCandle = (open: number, high: number, low: number, close: number, closeTime: number) => ({
   open, high, low, close, openTime: closeTime - 5 * 60_000, closeTime,
 });
-const base = { direction: "long" as const, entry: 100, patienceCandle: candle(99, 100, 98, 99), tickSize: 0.25, tickValue: 1.25, pointMultiplier: 5, contracts: 1 };
+const base = {
+  direction: "long" as const,
+  entry: 100,
+  patienceCandle: candle(99, 100, 98, 99),
+  oneRRiskAnchorType: "PATIENCE_WICK" as const,
+  oneRRiskAnchorPrice: 98,
+  tickSize: 0.25,
+  tickValue: 1.25,
+  pointMultiplier: 5,
+  contracts: 1,
+};
 
 test("models bullish entry, open gap and slippage on ticks", () => {
   const result = simulateOhlcvExecution({ ...base, immediateTriggerCandle: candle(101, 102, 100.5, 101), target: 102, stop: 99, entrySlippageTicks: 1 });
@@ -91,6 +101,7 @@ test("Strong short executes a verified midpoint stop during the entry candle", (
   const result = simulateOhlcvExecution({
     ...base,
     direction: "short",
+    oneRRiskAnchorPrice: 102,
     entry: 95,
     immediateTriggerCandle: {
       ...timedCandle(95.5, 98.5, 95, 98.5, openTime + 300_000),
@@ -1407,6 +1418,7 @@ test("short structure trailing uses swing highs and never widens", () => {
   const result = simulateOhlcvExecution({
     ...base,
     direction: "short",
+    oneRRiskAnchorPrice: 102,
     immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
     contracts: 2,
     stop: 102,
@@ -1521,6 +1533,7 @@ test("applies the same completed-bar breakeven boundary to shorts", () => {
   const result = simulateOhlcvExecution({
     ...base,
     direction: "short",
+    oneRRiskAnchorPrice: 102,
     immediateTriggerCandle: candle(100, 100.5, 99.5, 100),
     stop: 102,
     target: null,

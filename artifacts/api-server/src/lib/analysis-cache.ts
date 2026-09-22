@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v3-causal-source-identity";
-export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v12-independent-patience-switch";
-export const BATCH_AGGREGATION_CACHE_KEY_VERSION = "batch-aggregation-v8-independent-patience-switch";
+export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v13-authoritative-target-wick-1r";
+export const BATCH_AGGREGATION_CACHE_KEY_VERSION = "batch-aggregation-v9-authoritative-target-wick-1r";
 export const LIFECYCLE_RECONCILIATION_VERSION = "pullback-lifecycle-v2-preserved-transition-history";
 
 export type AnalysisCacheStatus = "complete" | "incomplete" | "failed";

@@ -2208,10 +2208,14 @@ function buildAnnotations(
        `skipped-target-${skipped.id}`,
        `Skipped: ${skipped.id}`,
        skipped.price,
-        skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
-          ? "Skipped: the buffered executable target was below 1R."
-          : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE" || skipped.reason === "OUTSIDE_20_POINTS"
-             ? "Skipped: the buffered executable target is beyond the 20-point search range."
+         skipped.reason === "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS"
+           ? "Skipped: the raw directional level is at or within 5.00 points of entry."
+           : skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_20_POINTS"
+             || skipped.reason === "TARGET_LEVEL_SKIPPED_BEYOND_ACHIEVABLE_RANGE"
+             || skipped.reason === "OUTSIDE_20_POINTS"
+              ? "Skipped: the raw directional level is beyond the 20.00-point search range."
+           : skipped.reason === "TARGET_LEVEL_SKIPPED_BELOW_1R" || skipped.reason === "TARGET_NOT_PROFITABLE"
+             ? "Skipped: legacy reward-to-risk evidence; current raw-distance rules do not use this filter."
          : skipped.reason === "TARGET_LEVEL_SKIPPED_HARD_STRUCTURAL_OBSTRUCTION"
            ? "Skipped: a major structural obstacle blocks the path to 1R."
            : skipped.reason === "TARGET_LEVEL_SKIPPED_WRONG_DIRECTION"

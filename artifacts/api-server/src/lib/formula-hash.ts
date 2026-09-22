@@ -5,7 +5,7 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION } from "./strategy/consolidation-midpoint-stop.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.26-independent-patience-switch";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.27-authoritative-target-wick-1r";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -71,9 +71,10 @@ export function formulaConfiguration(
           dynamicTargetCalculationVersion: DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION,
          candidatePlacementMode: "NEAR_SIDE_8_TICKS",
          executableTargetBuffer: "8 MES ticks (2.00 points), entry-facing side",
-        minimumTargetR: 1,
+         minimumTargetR: null,
         maximumSearchDistance: "20 MES points",
-         fallback: "exactly 1R when no eligible level",
+          rawDistanceEligibility: ">5.00 and <=20.00 points",
+          fallback: "exactly 1R from actual fill to raw patience adverse wick when no eligible level",
       },
       shadowContractsPerTrade: config.executionManagementFixedContracts,
       qualifyingKeyLevelInteraction: {
