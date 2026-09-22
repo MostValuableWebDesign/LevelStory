@@ -1,0 +1,403 @@
+Repair the remaining causal-direction defects in the `CONFIRMED_15M_TREND` removal.
+
+Work from the current LevelStory checkout. The reviewed baseline was commit:
+
+`929f315 Refactor phase logic and update related strategy tests`
+
+Inspect the current code before editing because the checkout may have advanced.
+
+Do not redo the parts already implemented correctly. Preserve:
+
+- Removal of `CONFIRMED_15M_TREND` from non-Peak production paths.
+- Market-data precedence of causal ORB trend followed by valid breakout direction.
+- `UPLOADED_CHART_DIRECTION`.
+- Peak Retracement Reversal’s full eight-candle confirmation requirement.
+- Existing patience geometry, entry buffers, stops, targets, execution, and account arbitration.
+- Strong Breakout, Extended Consolidation, Early ORB, and Equivalent Candle rules.
+
+CURRENT VERIFIED DEFECTS
+
+### 1. ORB Pullback bypasses strict causal-direction validation
+
+`evaluateOrbBreakPullbackContinuation()` currently treats this as sufficient:
+
+```ts
+causalOrbEpochActive || context.breakout.detected
+It does not strictly verify:
+- context.breakout.failed === false;
+- an allowed current breakout state;
+- breakout time at or before P;
+- patience.directionSource;
+- the exact matching patience occurrence;
+- occurrence direction;
+- occurrence ORB epoch;
+- conflict between stored source and current evidence.
+The stricter hasCausalContinuationDirection() is only used by Patience Candle Continuation.
+A failed, stale, future, mismatched, or fabricated breakout source can therefore pass the ORB Pullback evaluator.
+2. Missing ORB epoch identity fails open
+The current ORB-trend branch effectively does this:
+return occurrenceEpoch === null || occurrenceEpoch === undefined
+  ? true
+  : orbTrend.epochIdAt(patienceCandle.openTime) === occurrenceEpoch;
+An occurrence labeled ORB_TREND can qualify without proving which ORB epoch authorized it.
+Missing epoch identity must fail closed.
+3. Phase 5 tests manufacture causal authorization
+The test wrappers automatically insert:
+directionSource: "ORB_BREAKOUT"
+into most existing Phase 5 tests without building breakout evidence.
+Those tests prove patience geometry but do not prove causal authorization. They can conceal implementations that trust a source label without validating its evidence.
+4. Cache and compatibility versions were not coordinated
+Only the fixed formula version was advanced. These values still use their earlier chronology-era versions:
+- Strategy-result cache: v9
+- Batch aggregation: v5
+- Qualification funnel: v9
+- Route strategy engine: v15
+- Route candidate projection: v20
+- Route execution management: v17
+- Visual Review cache: v22
+- Visual Review strategy engine: v17
+- Visual Review candidate projection: v22
+- Visual Review execution management: v20
+- Visual Review snapshot projection: v17
+- Visual Review chart projection: v12
+There is no regression proving that persisted results containing the old trend source cannot load as current.
+OBJECTIVE
+Create one canonical causal-continuation-direction validator and use it for both:
+- ORB_PULLBACK_CONTINUATION
+- PATIENCE_CANDLE_CONTINUATION
+The validator must bind the source label to the underlying causal evidence and the exact patience occurrence.
+PART 1 — CANONICAL VALIDATION RESULT
+Replace the loose boolean helper with a canonical result type such as:
+type CausalContinuationDirectionValidation =
+  | {
+      valid: true;
+      direction: "long" | "short";
+      source: "ORB_TREND" | "ORB_BREAKOUT";
+      sourceTimestamp: number;
+      orbTrendEpochId: string | null;
+      occurrenceId: string;
+    }
+  | {
+      valid: false;
+      reasonCode:
+        | "MISSING_CAUSAL_DIRECTION"
+        | "UNSUPPORTED_DIRECTION_SOURCE"
+        | "MISSING_PATIENCE_OCCURRENCE"
+        | "DIRECTION_SOURCE_MISMATCH"
+        | "DIRECTION_MISMATCH"
+        | "MISSING_ORB_TREND_EPOCH"
+        | "ORB_TREND_EPOCH_MISMATCH"
+        | "ORB_TREND_NOT_EFFECTIVE_AT_P"
+        | "BREAKOUT_NOT_DETECTED"
+        | "BREAKOUT_FAILED"
+        | "BREAKOUT_STATE_NOT_EXECUTABLE"
+        | "BREAKOUT_DIRECTION_MISMATCH"
+        | "BREAKOUT_TIME_INVALID"
+        | "BREAKOUT_AFTER_P"
+        | "CONFLICTING_CAUSAL_DIRECTION";
+      detail: string;
+    };
+Use repository naming conventions if an equivalent result type exists.
+Do not validate only a string such as ORB_TREND or ORB_BREAKOUT.
+PART 2 — PATIENCE OCCURRENCE MATCHING
+Find the exact occurrence using immutable identity, not only P open time when multiple occurrences could share a timestamp.
+Bind at least:
+- occurrence ID;
+- direction;
+- direction source;
+- P open and close;
+- expected E open;
+- eligibility arm ID;
+- ORB epoch ID when applicable;
+- source audit ID when available.
+The selected occurrence must be the one represented by the current PatienceAnalysis.
+If exact matching is unavailable or ambiguous, fail closed.
+PART 3 — ORB TREND SOURCE
+For ORB_TREND, require all of the following:
+1. patience.directionSource === "ORB_TREND".
+2. The exact occurrence also has directionSource === "ORB_TREND".
+3. The occurrence direction equals the evaluated direction.
+4. occurrence.orbTrendEpochId is non-null and non-empty.
+5. orbTrend.epochIdAt(P.openTime) exactly equals that occurrence epoch.
+6. orbTrend.trendDirectionAt(P.openTime) equals the occurrence direction.
+7. A transition with that exact epoch ID exists.
+8. The transition direction matches.
+9. transition.effectiveFromTimestamp <= P.openTime.
+10. The transition’s confirming candle was complete before the epoch became effective.
+11. A later transition cannot authorize an earlier P.
+12. A current ORB trend from another epoch cannot replace the P-time epoch.
+Delete the branch that treats a missing occurrence epoch as valid.
+If epoch identity is missing, mismatched, duplicated, future-dated, or contradictory, fail closed with a specific reason code.
+PART 4 — ORB BREAKOUT SOURCE
+For ORB_BREAKOUT, require:
+1. patience.directionSource === "ORB_BREAKOUT".
+2. The exact occurrence has the same source.
+3. Occurrence direction equals the evaluated direction.
+4. breakout.detected === true.
+5. breakout.failed === false.
+6. breakout.direction equals the occurrence direction.
+7. breakout.time is finite.
+8. breakout.time <= P.openTime.
+9. The breakout state is one of the explicitly executable continuation states.
+Use an explicit allowlist appropriate to the repository, such as:
+QUALIFIED_BREAKOUT
+WAITING_FOR_PULLBACK
+PULLBACK_IN_PROGRESS
+WAITING_FOR_PATIENCE_CANDLE
+PATIENCE_CANDLE_VALID
+TRIGGER_CANDLE_ACTIVE
+ENTRY_TRIGGERED
+Do not allow:
+ORB_FORMING
+INSIDE_ORB
+ORB_PROBE_WAIT
+WEAK_BREAK_WAIT
+BREAKOUT_CANDIDATE
+WAITING_FOR_CONTINUATION
+BREAKOUT_FAILED
+SETUP_EXPIRED
+Verify the actual state machine before finalizing the allowlist.
+A detected breakout in BREAKOUT_FAILED or SETUP_EXPIRED must not authorize a candidate merely because detected remains true.
+PART 5 — ORB PULLBACK EVALUATOR
+Update evaluateOrbBreakPullbackContinuation() to use the canonical validation result.
+Do not derive authorization from:
+context.orbTrend?.direction ?? context.breakout.direction
+at the current replay cursor.
+Use the direction frozen on the exact P occurrence and validate its P-time source.
+Add a mandatory rule such as:
+causalDirection
+The rule passes only when the canonical validator returns valid: true.
+The existing closeOutsideNtz rule must continue to prove breakout/ORB geometry. It must not double as causal-direction authorization.
+If the source is invalid:
+- decision cannot be SETUP QUALIFIED;
+- no candidate may be emitted;
+- no authoritative trade may be emitted;
+- record the specific validation reason;
+- do not fall back to generic 15-minute trend.
+PART 6 — PATIENCE CONTINUATION EVALUATOR
+Use the same canonical validator in evaluatePatienceCandleContinuation().
+Preserve:
+- qualifying pullback or consolidation context;
+- P shape;
+- immediate P→E adjacency;
+- four-tick confirmation;
+- finalized NTZ separation;
+- entry cutoff;
+- stop and target rules.
+A neutral or opposing generic 15-minute trend must remain diagnostic only.
+PART 7 — PEAK RETRACEMENT REVERSAL
+Do not weaken Peak Retracement Reversal.
+It must continue to require the complete hasConfirmedDirectionalTrend() result:
+- eight completed 15-minute candles;
+- directional score of +5 or -5;
+- matching structure;
+- matching VWAP;
+- matching EMA;
+- matching EMA slope;
+- reversal direction opposite the confirmed trend.
+Add a regression proving that these causal-direction repairs do not allow Peak to use ORB trend or breakout direction as a substitute.
+PART 8 — TEST REPAIR
+Remove the broad Phase 5 wrappers that silently inject:
+directionSource: "ORB_BREAKOUT"
+Do not mechanically label every geometry fixture as causally authorized.
+Separate tests into two categories.
+Geometry tests
+Low-level tests may supply an explicit source when their only purpose is testing P/E geometry, but:
+- name the fixture clearly as geometry-only;
+- do not cite those tests as proof of causal authorization;
+- include direct tests proving a missing source fails closed.
+Causal authorization tests
+Build actual causal evidence through the production detector or real market-snapshot pipeline.
+Do not manually set matching labels on both sides and call that proof.
+PART 9 — REQUIRED REGRESSION MATRIX
+Add symmetric long and short tests proving:
+1. ORB Pullback qualifies from an exact active ORB epoch.
+2. Patience Continuation qualifies from an exact active ORB epoch.
+3. ORB Pullback qualifies from a valid non-failed breakout.
+4. Patience Continuation qualifies from a valid non-failed breakout.
+5. Neutral generic 15-minute trend does not block either source.
+6. Opposing generic 15-minute trend does not block either source.
+7. Missing direction source fails closed.
+8. Unsupported direction source fails closed.
+9. Missing patience occurrence fails closed.
+10. Occurrence direction mismatch fails closed.
+11. Occurrence source mismatch fails closed.
+12. Missing ORB epoch fails closed.
+13. Wrong ORB epoch fails closed.
+14. Future ORB transition fails closed.
+15. Later ORB epoch cannot authorize an earlier P.
+16. Breakout failed: true fails closed.
+17. BREAKOUT_FAILED fails closed.
+18. SETUP_EXPIRED fails closed.
+19. Weak or candidate-only breakout states fail closed.
+20. Breakout after P fails closed.
+21. Breakout direction mismatch fails closed.
+22. Current ORB direction cannot overwrite the occurrence’s P-time direction.
+23. Generic confirmed 15-minute trend alone cannot create a non-Peak candidate.
+24. Peak still rejects fewer than eight completed 15-minute candles.
+25. Peak still rejects incomplete evidence even with an ORB trend.
+26. Peak qualifies only from a fully confirmed opposite generic trend.
+27. Early ORB remains independent of generic trend.
+28. Strong Breakout remains governed by its existing direct causal logic.
+29. Equivalent Candle Reversal remains free of a generic-trend gate.
+30. Uploaded charts remain labeled UPLOADED_CHART_DIRECTION.
+PART 10 — PRODUCTION-PATH ACCEPTANCE
+Add a deterministic production-path fixture before 11:30 a.m. ET.
+Generate it through the real path:
+market candles
+→ ORB trend or breakout detector
+→ pullback
+→ Phase 5 patience occurrence
+→ Phase 6 qualification
+→ Phase 9 canonical occurrence
+→ trade candidate
+→ authoritative trade
+→ Visual Review
+Require at least one long and one short fixture.
+For every fixture, assert:
+- strategy ID;
+- direction;
+- direction source;
+- source timestamp;
+- ORB epoch or breakout identity;
+- P open and close;
+- E open and close;
+- occurrence ID;
+- candidate ID;
+- trade ID;
+- candidate-to-occurrence linkage;
+- trade-to-candidate linkage;
+- nonzero authoritative trade count;
+- Visual Review contains the same candidate and trade;
+- generic 15-minute candle count is below eight or trend is neutral;
+- replay does not recalculate direction from the later generic trend.
+An HTTP 200 response, signal count, candidate without a trade, or zero-trade replay is not acceptance proof.
+PART 11 — CACHE AND VERSION INVALIDATION
+Because these repairs change candidate qualification and identity, advance all affected versions coherently.
+Advance from the current values to new causal-direction-integrity versions, including at least:
+- FIXED_FORMULA_VERSION
+- STRATEGY_RESULT_CACHE_KEY_VERSION
+- BATCH_AGGREGATION_CACHE_KEY_VERSION
+- QUALIFICATION_FUNNEL_VERSION
+- route STRATEGY_ENGINE_VERSION
+- route CANDIDATE_PROJECTION_VERSION
+- route EXECUTION_MANAGEMENT_VERSION
+- VISUAL_VALIDATION_CACHE_KEY_VERSION
+- VISUAL_VALIDATION_STRATEGY_ENGINE_VERSION
+- VISUAL_VALIDATION_CANDIDATE_PROJECTION_VERSION
+- VISUAL_VALIDATION_EXECUTION_MANAGEMENT_VERSION
+- VISUAL_VALIDATION_SNAPSHOT_PROJECTION_VERSION
+- VISUAL_VALIDATION_CHART_PROJECTION_VERSION
+The current fixed formula is v23.22; advance it again because this repair closes qualification paths that currently fail open.
+Add compatibility tests proving:
+1. A result containing CONFIRMED_15M_TREND cannot load as current.
+2. A result with a missing ORB epoch cannot load as current.
+3. A result with the old strategy-result version cannot load as current.
+4. A result with the old batch version cannot load as current.
+5. A result with old route engine/projection versions cannot load as current.
+6. An old Visual Review result cannot load as current.
+7. The first current request computes.
+8. An identical current request reuses the result.
+9. A regenerated result contains the new causal direction identity.
+Do not delete raw market data.
+FILES TO INSPECT
+Inspect at least:
+- artifacts/api-server/src/lib/strategy/phase4.ts
+- artifacts/api-server/src/lib/strategy/phase5.ts
+- artifacts/api-server/src/lib/strategy/phase5.test.ts
+- artifacts/api-server/src/lib/strategy/phase6.ts
+- artifacts/api-server/src/lib/strategy/phase6.test.ts
+- artifacts/api-server/src/lib/market-data.ts
+- artifacts/api-server/src/lib/phase9.ts
+- artifacts/api-server/src/lib/phase9.test.ts
+- artifacts/api-server/src/lib/phase9.integration.test.ts
+- artifacts/api-server/src/lib/phase3-edge-pilot.ts
+- artifacts/api-server/src/lib/phase3-edge-pilot.test.ts
+- artifacts/api-server/src/lib/formula-hash.ts
+- artifacts/api-server/src/lib/analysis-cache.ts
+- artifacts/api-server/src/lib/visual-validation.ts
+- artifacts/api-server/src/lib/visual-validation-cache.ts
+- artifacts/api-server/src/lib/shadow-account-replay.ts
+- artifacts/api-server/src/routes/backtest.ts
+- generated schemas and clients affected by diagnostic changes
+Search for:
+CONFIRMED_15M_TREND
+hasCausalContinuationDirection
+evaluateOrbBreakPullbackContinuation
+evaluatePatienceCandleContinuation
+directionSource
+directionSources
+orbTrendEpochId
+breakout.failed
+BREAKOUT_FAILED
+SETUP_EXPIRED
+FIXED_FORMULA_VERSION
+STRATEGY_RESULT_CACHE_KEY_VERSION
+BATCH_AGGREGATION_CACHE_KEY_VERSION
+QUALIFICATION_FUNNEL_VERSION
+PRESERVE
+Do not alter:
+- patience shape;
+- four-tick confirmation buffer;
+- eight-tick or adaptive strategy-stop behavior;
+- finalized NTZ geometry;
+- entry cutoffs;
+- pullback-level requirements;
+- target selection;
+- fees or slippage;
+- account-position arbitration;
+- execution chronology;
+- Strong Breakout midpoint behavior;
+- Extended Consolidation stops;
+- Early ORB isolation;
+- Equivalent Candle pattern rules;
+- Peak Retracement Reversal’s confirmed-trend requirement.
+Do not add a new generic early-trend score. The authorized early sources remain:
+exact causal ORB trend epoch
+    otherwise
+current valid non-failed ORB breakout
+    otherwise
+no executable continuation direction
+VERIFICATION ORDER
+Run:
+pnpm --filter @workspace/scripts exec tsx --test \
+  ../artifacts/api-server/src/lib/strategy/phase5.test.ts \
+  ../artifacts/api-server/src/lib/strategy/phase6.test.ts
+Then:
+pnpm --filter @workspace/scripts exec tsx --test \
+  ../artifacts/api-server/src/lib/phase9.test.ts \
+  ../artifacts/api-server/src/lib/phase9.integration.test.ts \
+  ../artifacts/api-server/src/lib/phase3-edge-pilot.test.ts \
+  ../artifacts/api-server/src/lib/analysis-cache.test.ts \
+  ../artifacts/api-server/src/lib/visual-validation.test.ts \
+  ../artifacts/api-server/src/lib/visual-validation-cache.test.ts \
+  ../artifacts/api-server/src/lib/shadow-account-replay.test.ts
+Then run:
+pnpm --filter @workspace/api-server run typecheck
+pnpm --filter @workspace/levelstory run typecheck
+pnpm test
+git diff --check
+Report database-backed or sandbox-blocked tests separately. Do not describe an unrun database test as passing.
+FINAL RESPONSE
+Return:
+1. Root cause of each remaining defect.
+2. Files and functions changed.
+3. The canonical causal-direction validation rules.
+4. Exact ORB epoch requirements.
+5. Exact valid and invalid breakout states.
+6. Fail-closed reason codes.
+7. Version values before and after.
+8. Tests added and commands run.
+9. Test totals and typecheck results.
+10. Long and short pre-11:30 production evidence.
+11. Occurrence, candidate, trade, and Visual Review linkage.
+12. Any validation that could not run.
+Do not call this complete unless:
+- ORB Pullback and Patience Continuation use the same strict validator.
+- A missing ORB epoch fails closed.
+- Failed, expired, weak, future, and direction-mismatched breakouts fail closed.
+- Tests no longer manufacture causal authorization as acceptance proof.
+- Old cached qualification results are rejected.
+- Peak retains its complete eight-candle generic-trend requirement.
+- Both typechecks pass.
+- At least one nonzero long and short production-path fixture before 11:30 a.m. ET is linked through occurrence, candidate, trade, and Visual Review.
