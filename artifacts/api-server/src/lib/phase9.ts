@@ -328,6 +328,7 @@ export type CandidateCausalIdentity = {
   causalTrendDirection?: Direction | null;
   causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
   causalTrendTimestamp?: string | null;
+  directionSourceTimestamp?: string | null;
   /** Stable causal crossing identity for direct consolidation entries. */
   directConsolidationCrossingIdentity?: string | null;
   /** Stable identity for this independent entry attempt within the shared arm. */
@@ -1570,6 +1571,7 @@ export type HistoricalOccurrence = {
   canonicalTrade: boolean;
   canonicalOccurrence?: boolean;
   directionSource?: string;
+  directionSourceTimestamp?: string | null;
   directionSources?: string[];
   primaryEdge?: string;
   matchedEdges?: string[];
@@ -1697,6 +1699,9 @@ function candidateCausalIdentityForOccurrence(
         causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
       }
       : {}),
+    ...(occurrence.directionSourceTimestamp
+      ? { directionSourceTimestamp: occurrence.directionSourceTimestamp }
+      : {}),
     ...(occurrence.directConsolidationCrossingIdentity
       ? { directConsolidationCrossingIdentity: occurrence.directConsolidationCrossingIdentity }
       : {}),
@@ -1727,7 +1732,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v9-bound-chronology-evidence";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v10-causal-direction-integrity";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -3863,7 +3868,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
   }
   if (value.kind === "patience") {
     return occurrenceId([
-       "historical-patience-occurrence-v6-causal-direction-source-identity",
+        "historical-patience-occurrence-v7-causal-direction-integrity",
       value.sourceFingerprint,
       value.formulaHash,
       value.formulaVersion,
@@ -4768,6 +4773,9 @@ export function buildHistoricalOccurrenceLedger(
         record.contractSymbol,
         patience.direction,
          patience.directionSource ?? "no-direction-source",
+         patience.directionSourceTimestamp != null
+           ? new Date(patience.directionSourceTimestamp).toISOString()
+           : "no-direction-source-time",
          patience.orbTrendEpochId ?? record.orbTrendEpochId ?? "no-orb-epoch",
         patience.eligibilityArmId ?? "no-arm",
         pOpenTimestamp ?? "invalid",
@@ -4796,6 +4804,9 @@ export function buildHistoricalOccurrenceLedger(
         direction: patience.direction,
          orbTrendEpochId: patience.orbTrendEpochId ?? record.orbTrendEpochId ?? null,
          directionSource: patience.directionSource,
+          directionSourceTimestamp: patience.directionSourceTimestamp != null
+            ? new Date(patience.directionSourceTimestamp).toISOString()
+            : null,
          directionSources: patience.directionSource ? [patience.directionSource] : [],
         lTimestamp: linkedPullback?.candle ? new Date(linkedPullback.candle.openTime).toISOString() : linkedPullback ? new Date(linkedPullback.time).toISOString() : null,
         lEventId: linkedPullback ? pullbackEventId(linkedPullback) : patience.eligibilityEventId ?? null,

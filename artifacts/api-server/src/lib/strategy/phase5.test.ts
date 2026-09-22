@@ -79,7 +79,7 @@ function phase5PatienceAnalysis(
     entryBufferTicks,
     stopBufferTicks,
     allowOpposingTrend,
-    directionSource ?? "ORB_BREAKOUT",
+    directionSource,
     orbTrend,
     orbTrendEpochId,
   );

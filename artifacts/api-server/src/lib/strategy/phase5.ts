@@ -116,6 +116,7 @@ export type PatienceOccurrence = {
   occurrenceId: string;
   direction: Direction;
   directionSource?: PatienceDirectionSource;
+  directionSourceTimestamp?: number | null;
   orbTrendEpochId?: string | null;
   entryBufferTicks: number;
   stopBufferTicks: number;
@@ -215,9 +216,12 @@ export function patienceArmLifecycleTransitions(
 
 export type PatienceAnalysis = {
   state: PatienceState;
+  /** Immutable identity of the occurrence represented by this analysis. */
+  occurrenceId?: string | null;
   /** The direction this patience engine evaluated, independent of the established continuation trend. */
   direction?: Direction;
   directionSource?: PatienceDirectionSource | null;
+  directionSourceTimestamp?: number | null;
   eligible: boolean;
   eligibilityReason: PatienceEligibilityReason | null;
   eligibilityTime: number | null;
@@ -249,6 +253,7 @@ export type PatienceEngineOptions = {
   validContext?: boolean;
   allowOpposingTrend?: boolean;
   directionSource?: PatienceDirectionSource | null;
+  directionSourceTimestamp?: number | null;
   orbTrend?: OrbTrendAnalysis;
   orbTrendEpochId?: string | null;
   finalizedNtz?: NtzRange | null;
@@ -301,9 +306,10 @@ export function patienceCandleEngine(
   const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
   const directionSource = options.directionSource ?? null;
+  const directionSourceTimestamp = options.directionSourceTimestamp ?? null;
   const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => directionSource
-    ? { ...analysis, direction, directionSource }
-    : { ...analysis, direction: undefined, directionSource: null };
+    ? { ...analysis, direction, directionSource, directionSourceTimestamp }
+    : { ...analysis, direction: undefined, directionSource: null, directionSourceTimestamp: null };
   validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
   const validContext = options.validContext ?? eligibility.length > 0;
   if (!validContext) return withDirection(waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks));
@@ -332,6 +338,7 @@ export function patienceCandleEngine(
     sorted,
     direction,
     directionSource,
+    directionSourceTimestamp,
     options.orbTrend,
     trend,
     tickSize,
@@ -343,10 +350,21 @@ export function patienceCandleEngine(
     options.entryCutoffMinutes,
   );
   const finalize = (analysis: PatienceAnalysis): PatienceAnalysis => {
-    const latestOccurrence = occurrences.at(-1);
+    const matchingOccurrences = analysis.patienceCandle
+      ? occurrences.filter((occurrence) =>
+        occurrence.patienceCandle.openTime === analysis.patienceCandle?.openTime
+        && occurrence.patienceCandle.closeTime === analysis.patienceCandle?.closeTime
+        && occurrence.direction === analysis.direction
+        && (!analysis.triggerCandle
+          || occurrence.triggerCandle?.openTime === analysis.triggerCandle.openTime)
+      )
+      : [];
+    const selectedOccurrence = matchingOccurrences.length === 1 ? matchingOccurrences[0] : undefined;
+    const latestOccurrence = selectedOccurrence ?? occurrences.at(-1);
     return {
       ...withDirection(analysis),
       occurrences,
+      occurrenceId: selectedOccurrence?.occurrenceId ?? null,
       eligibilityArmId: latestOccurrence?.eligibilityArmId ?? null,
       eligibilityArmState: latestOccurrence?.eligibilityArmState ?? null,
       eligibilityArmStateReason: latestOccurrence?.eligibilityArmStateReason ?? null,
@@ -519,6 +537,7 @@ export function phase5PatienceAnalysis(
   directionSource: PatienceDirectionSource | null = null,
   orbTrend?: OrbTrendAnalysis,
   orbTrendEpochId?: string | null,
+  directionSourceTimestamp?: number | null,
 ): PatienceAnalysis {
   const eligibleAfter = minimumEligibilityTime === undefined ? null : minimumEligibilityTime;
   const terminalTransition = pullback.armTransitions
@@ -540,6 +559,7 @@ export function phase5PatienceAnalysis(
       ),
       direction,
       directionSource,
+      directionSourceTimestamp,
     };
   }
   const eligibilityEvents: PatienceEligibilityEvent[] = [
@@ -588,6 +608,7 @@ export function phase5PatienceAnalysis(
     validContext: pullback.status === "observed" || (ntz?.complete === true),
     allowOpposingTrend,
     directionSource,
+    directionSourceTimestamp,
     orbTrend,
     orbTrendEpochId,
     finalizedNtz: ntz,
@@ -1021,6 +1042,7 @@ function buildPatienceOccurrences(
   sorted: readonly Candle[],
   direction: Direction,
   directionSource: PatienceDirectionSource,
+  directionSourceTimestamp: number | null | undefined,
   orbTrend: OrbTrendAnalysis | undefined,
   trend: TrendDirection,
   tickSize: number,
@@ -1063,6 +1085,10 @@ function buildPatienceOccurrences(
       tickSize,
     );
     const armId = candidate.armId ?? eligibilityArmId(event);
+    const orbTrendEpochId = orbTrend?.epochIdAt(candidate.candle.openTime) ?? null;
+    const causalSourceTimestamp = directionSource === "ORB_TREND"
+      ? orbTrend?.transitions.find((transition) => transition.epochId === orbTrendEpochId)?.effectiveFromTimestamp ?? null
+      : directionSourceTimestamp ?? null;
     const arm = armStates.get(armId) ?? { state: "active" as const, reason: "Eligibility context opened by the causal level interaction." };
     const provenance = {
       eventId: event.eventId ?? null,
@@ -1080,7 +1106,8 @@ function buildPatienceOccurrences(
         occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
-        orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
+        directionSourceTimestamp: causalSourceTimestamp,
+        orbTrendEpochId,
         entryBufferTicks,
         stopBufferTicks,
         patienceCandleExtreme,
@@ -1113,7 +1140,8 @@ function buildPatienceOccurrences(
         occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
         direction,
         directionSource,
-        orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
+        directionSourceTimestamp: causalSourceTimestamp,
+        orbTrendEpochId,
         entryBufferTicks,
         stopBufferTicks,
         patienceCandleExtreme,
@@ -1264,7 +1292,8 @@ function buildPatienceOccurrences(
       occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
       direction,
       directionSource,
-      orbTrendEpochId: orbTrend?.epochIdAt(candidate.candle.openTime) ?? null,
+      directionSourceTimestamp: causalSourceTimestamp,
+      orbTrendEpochId,
       entryBufferTicks,
       stopBufferTicks,
       patienceCandleExtreme,

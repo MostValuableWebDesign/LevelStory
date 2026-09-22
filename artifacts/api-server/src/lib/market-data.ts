@@ -700,6 +700,9 @@ export function createMarketSnapshot(
     patienceDirectionSource,
     orbTrendDirection ? orbTrend : undefined,
     orbTrendDirection ? orbTrend.epochId : undefined,
+    orbTrendDirection
+      ? orbTrend.transitions.find((transition) => transition.epochId === orbTrend.epochId)?.effectiveFromTimestamp ?? null
+      : executableBreakout.time,
   );
   const epochContexts = new Map<string, {
     breakout: ReturnType<typeof breakoutFromOrbTrendTransition>;
@@ -757,6 +760,7 @@ export function createMarketSnapshot(
         "ORB_TREND",
         orbTrend,
         transition.epochId,
+        transition.effectiveFromTimestamp,
       );
       epochContexts.set(transition.epochId, {
         breakout: epochBreakout,
@@ -824,6 +828,7 @@ export function createMarketSnapshot(
       "ORB_TREND",
       orbTrend,
       priorEpochId,
+      priorTransition.effectiveFromTimestamp,
     );
     const expired = (preReversalPatience.occurrences ?? []).filter((occurrence) =>
       occurrence.orbTrendEpochId === priorEpochId

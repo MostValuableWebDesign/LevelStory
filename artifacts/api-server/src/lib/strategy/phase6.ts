@@ -1,4 +1,4 @@
-import type { BreakoutEvent, FibonacciAnalysis, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
+import type { BreakoutEvent, FibonacciAnalysis, OrbBreakoutState, Phase4VolumeAnalysis, PullbackAnalysis } from "./phase4.js";
 import type { MajorLevel } from "./major-levels.js";
 import type { DynamiteLevel } from "./major-levels.js";
 import type { SessionLevels } from "./levels.js";
@@ -13,6 +13,7 @@ import {
   isStrictlyOutsideNtz,
   reachesEffectiveConfirmation,
   type PatienceAnalysis,
+  type PatienceOccurrence,
 } from "./phase5.js";
 import { wallClockMinutesForTimestamp } from "../futures/session-calendar.js";
 import type { OrbTrendAnalysis } from "./orb-trend.js";
@@ -185,6 +186,47 @@ export type Phase6Analysis = {
   evaluations: SetupEvaluation[];
   explanation: string;
 };
+
+const EXECUTABLE_CONTINUATION_BREAKOUT_STATES = new Set<OrbBreakoutState>([
+  "QUALIFIED_BREAKOUT",
+  "WAITING_FOR_PULLBACK",
+  "PULLBACK_IN_PROGRESS",
+  "WAITING_FOR_PATIENCE_CANDLE",
+  "PATIENCE_CANDLE_VALID",
+  "TRIGGER_CANDLE_ACTIVE",
+  "ENTRY_TRIGGERED",
+]);
+
+export type CausalContinuationDirectionValidation =
+  | {
+    valid: true;
+    direction: Direction;
+    source: "ORB_TREND" | "ORB_BREAKOUT";
+    sourceTimestamp: number;
+    orbTrendEpochId: string | null;
+    occurrenceId: string;
+  }
+  | {
+    valid: false;
+    reasonCode:
+      | "MISSING_CAUSAL_DIRECTION"
+      | "UNSUPPORTED_DIRECTION_SOURCE"
+      | "MISSING_PATIENCE_OCCURRENCE"
+      | "DIRECTION_SOURCE_MISMATCH"
+       | "DIRECTION_SOURCE_TIMESTAMP_MISMATCH"
+      | "DIRECTION_MISMATCH"
+      | "MISSING_ORB_TREND_EPOCH"
+      | "ORB_TREND_EPOCH_MISMATCH"
+      | "ORB_TREND_NOT_EFFECTIVE_AT_P"
+      | "BREAKOUT_NOT_DETECTED"
+      | "BREAKOUT_FAILED"
+      | "BREAKOUT_STATE_NOT_EXECUTABLE"
+      | "BREAKOUT_DIRECTION_MISMATCH"
+      | "BREAKOUT_TIME_INVALID"
+      | "BREAKOUT_AFTER_P"
+      | "CONFLICTING_CAUSAL_DIRECTION";
+    detail: string;
+  };
 
 type ConsolidationEvaluationInput = {
   setupType: SetupType | LegacySetupType;
@@ -372,20 +414,15 @@ export function hasConfirmedPatienceEntry(
 }
 
 export function evaluateOrbBreakPullbackContinuation(context: Phase6Context): SetupEvaluation {
-  const direction = context.orbTrend?.direction ?? context.breakout.direction;
-  const causalOrbEpochActive = context.orbTrend?.direction !== null
-    && context.orbTrend?.direction !== undefined
-    && context.orbTrend?.epochId !== null
-    && context.orbTrend?.epochId !== undefined;
-  const breakoutDirectionMatchesTrend = causalOrbEpochActive || context.orbTrend?.direction === null
-    || context.orbTrend?.direction === undefined
-    || context.breakout.direction === null
-    || context.orbTrend.direction === context.breakout.direction;
-  const breakoutEvidenceAvailable = causalOrbEpochActive || context.breakout.detected;
+  const direction = context.patience.direction ?? null;
+  const causalDirection = validateCausalContinuationDirection(context, direction);
+  const breakoutEvidenceAvailable = context.orbTrend?.trendDirectionAt(context.patience.patienceCandle?.openTime ?? Number.NaN) != null
+    || context.breakout.detected;
   const levelInteraction = hasQualifyingPullback(context.pullback);
   const rules: SetupRuleEvidence[] = [
     rule("ntzComplete", "NTZ complete", context.levels.ntz?.complete === true, "A finalized NTZ/ORB range is required."),
-    rule("closeOutsideNtz", "Completed candle closed outside NTZ", breakoutEvidenceAvailable && breakoutDirectionMatchesTrend, breakoutEvidenceAvailable && breakoutDirectionMatchesTrend ? context.breakout.detail : "No current ORB epoch or compatible breakout evidence is available."),
+    rule("causalDirection", "Confirmed causal continuation direction", causalDirection.valid, causalDirection.valid ? `The ${causalDirection.source} direction was authorized at the patience candle.` : causalDirection.detail),
+    rule("closeOutsideNtz", "Completed candle closed outside NTZ", breakoutEvidenceAvailable, breakoutEvidenceAvailable ? context.breakout.detail : "No current ORB trend or breakout geometry is available."),
     rule("levelContext", "Pullback candle reached a governed level or indicator zone", levelInteraction, levelInteraction ? "A completed pullback candle interacted with a governed level or indicator within the configured tolerance." : "A completed pullback candle must reach a governed level or indicator zone within the configured tolerance."),
     rule("validPatienceCandle", "Valid trend-aligned patience candle formed", context.patience.patienceCandle !== null && patienceDirectionMatches(context.patience, direction) && ["PATIENCE_CANDLE_VALID", "TRIGGER_CANDLE_ACTIVE", "BREAK_DETECTED_WAITING_FOR_BUFFER", "ENTRY_BUFFER_REACHED", "ENTRY_TRIGGERED"].includes(context.patience.state), context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.state === "ENTRY_TRIGGERED" ? context.patience.detail : `Patience state is ${context.patience.state}; only ENTRY_TRIGGERED qualifies.`),
@@ -415,9 +452,9 @@ export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): Se
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
   const direction = context.patience.direction ?? null;
   const valid = context.patience.eligible && context.patience.patienceCandle !== null;
-  const causalDirection = hasCausalContinuationDirection(context, direction);
+  const causalDirection = validateCausalContinuationDirection(context, direction);
   const rules = [
-    rule("causalDirection", "Confirmed causal continuation direction", causalDirection, causalDirection ? `The ${context.patience.directionSource} direction was available at the patience candle.` : "No valid causal ORB trend or non-failed breakout direction was available when the patience candle became eligible."),
+    rule("causalDirection", "Confirmed causal continuation direction", causalDirection.valid, causalDirection.valid ? `The ${causalDirection.source} direction was authorized at the patience candle.` : causalDirection.detail),
     rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
@@ -1368,28 +1405,140 @@ function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {
     && (volume.pullbackToRecentRatio === null || volume.pullbackToRecentRatio < 1.5);
 }
 
-function hasCausalContinuationDirection(context: Phase6Context, direction: Direction | null): boolean {
+export function validateCausalContinuationDirection(
+  context: Phase6Context,
+  direction: Direction | null,
+): CausalContinuationDirectionValidation {
   const source = context.patience.directionSource;
   const patienceCandle = context.patience.patienceCandle;
-  if (!direction || !source || !patienceCandle || !["ORB_TREND", "ORB_BREAKOUT"].includes(source)) return false;
-  const occurrence = context.patience.occurrences?.find((item) =>
-    item.patienceCandle.openTime === patienceCandle.openTime,
-  );
-  if (!occurrence || occurrence.direction !== direction || occurrence.directionSource !== source) return false;
+  if (!direction || !source || !patienceCandle) {
+    return { valid: false, reasonCode: "MISSING_CAUSAL_DIRECTION", detail: "No executable continuation direction, source, or patience candle is available." };
+  }
+  if (!["ORB_TREND", "ORB_BREAKOUT"].includes(source)) {
+    return { valid: false, reasonCode: "UNSUPPORTED_DIRECTION_SOURCE", detail: `Direction source ${source} is not an executable continuation source.` };
+  }
+  const executableSource = source as "ORB_TREND" | "ORB_BREAKOUT";
+  const occurrenceId = context.patience.occurrenceId;
+  if (!occurrenceId) {
+    return { valid: false, reasonCode: "MISSING_PATIENCE_OCCURRENCE", detail: "The current patience analysis does not identify an immutable P→E occurrence." };
+  }
+  const matchingOccurrences = (context.patience.occurrences ?? []).filter((item) => item.occurrenceId === occurrenceId);
+  if (matchingOccurrences.length !== 1) {
+    return { valid: false, reasonCode: "MISSING_PATIENCE_OCCURRENCE", detail: `Expected exactly one patience occurrence for ${occurrenceId}, found ${matchingOccurrences.length}.` };
+  }
+  const occurrence = matchingOccurrences[0];
+  const identityMismatch = !patienceOccurrenceMatchesAnalysis(occurrence, context.patience);
+  if (identityMismatch) {
+    return { valid: false, reasonCode: "MISSING_PATIENCE_OCCURRENCE", detail: "The identified patience occurrence does not match the current P→E analysis identity." };
+  }
+  if (occurrence.direction !== direction) {
+    return { valid: false, reasonCode: "DIRECTION_MISMATCH", detail: "The occurrence direction does not match the evaluated continuation direction." };
+  }
+  if (occurrence.directionSource !== executableSource) {
+    return { valid: false, reasonCode: "DIRECTION_SOURCE_MISMATCH", detail: "The occurrence direction source does not match the current patience source." };
+  }
   if (source === "ORB_BREAKOUT") {
-    return context.breakout.detected
-      && !context.breakout.failed
-      && context.breakout.direction === direction
-      && typeof context.breakout.time === "number"
-      && Number.isFinite(context.breakout.time)
-      && context.breakout.time <= patienceCandle.openTime;
+    if (!context.breakout.detected) {
+      return { valid: false, reasonCode: "BREAKOUT_NOT_DETECTED", detail: "ORB_BREAKOUT requires a detected breakout." };
+    }
+    if (context.breakout.failed) {
+      return { valid: false, reasonCode: "BREAKOUT_FAILED", detail: "The ORB breakout is marked failed." };
+    }
+    if (!EXECUTABLE_CONTINUATION_BREAKOUT_STATES.has(context.breakout.state)) {
+      return { valid: false, reasonCode: "BREAKOUT_STATE_NOT_EXECUTABLE", detail: `Breakout state ${context.breakout.state} cannot authorize continuation.` };
+    }
+    if (context.breakout.direction !== occurrence.direction) {
+      return { valid: false, reasonCode: "BREAKOUT_DIRECTION_MISMATCH", detail: "The detected breakout direction does not match the patience occurrence." };
+    }
+    if (typeof context.breakout.time !== "number" || !Number.isFinite(context.breakout.time)) {
+      return { valid: false, reasonCode: "BREAKOUT_TIME_INVALID", detail: "The breakout source timestamp is missing or non-finite." };
+    }
+    if (typeof occurrence.directionSourceTimestamp !== "number"
+      || !Number.isFinite(occurrence.directionSourceTimestamp)
+      || occurrence.directionSourceTimestamp !== context.breakout.time) {
+      return { valid: false, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH", detail: "The occurrence source timestamp does not match the detected breakout timestamp." };
+    }
+    if (context.breakout.time > patienceCandle.openTime) {
+      return { valid: false, reasonCode: "BREAKOUT_AFTER_P", detail: "The breakout source occurs after the patience candle opened." };
+    }
+    const pTimeOrbDirection = context.orbTrend?.trendDirectionAt(patienceCandle.openTime) ?? null;
+    if (pTimeOrbDirection !== null && pTimeOrbDirection !== occurrence.direction) {
+      return { valid: false, reasonCode: "CONFLICTING_CAUSAL_DIRECTION", detail: "The ORB trend direction at P conflicts with the breakout-backed occurrence direction." };
+    }
+    return {
+      valid: true,
+      direction: occurrence.direction,
+      source: "ORB_BREAKOUT",
+      sourceTimestamp: context.breakout.time,
+      orbTrendEpochId: null,
+      occurrenceId,
+    };
   }
   const orbTrend = context.orbTrend;
-  if (!orbTrend || orbTrend.trendDirectionAt(patienceCandle.openTime) !== direction) return false;
+  if (!orbTrend) {
+    return { valid: false, reasonCode: "ORB_TREND_EPOCH_MISMATCH", detail: "ORB_TREND requires a reconstructed ORB trend analysis." };
+  }
   const occurrenceEpoch = occurrence.orbTrendEpochId;
-  return occurrenceEpoch === null || occurrenceEpoch === undefined
-    ? true
-    : orbTrend.epochIdAt(patienceCandle.openTime) === occurrenceEpoch;
+  if (typeof occurrenceEpoch !== "string" || occurrenceEpoch.length === 0) {
+    return { valid: false, reasonCode: "MISSING_ORB_TREND_EPOCH", detail: "ORB_TREND occurrence is missing its immutable epoch identity." };
+  }
+  const transitions = orbTrend.transitions.filter((transition) => transition.epochId === occurrenceEpoch);
+  if (transitions.length !== 1) {
+    return { valid: false, reasonCode: "ORB_TREND_EPOCH_MISMATCH", detail: `Expected exactly one ORB trend transition for epoch ${occurrenceEpoch}, found ${transitions.length}.` };
+  }
+  const transition = transitions[0];
+  if (transition.direction !== occurrence.direction) {
+    return { valid: false, reasonCode: "DIRECTION_MISMATCH", detail: "The ORB trend transition direction does not match the occurrence direction." };
+  }
+  if (!Number.isFinite(transition.effectiveFromTimestamp) || transition.effectiveFromTimestamp > patienceCandle.openTime) {
+    return { valid: false, reasonCode: "ORB_TREND_NOT_EFFECTIVE_AT_P", detail: "The ORB trend transition was not effective by the patience candle open." };
+  }
+  if (occurrence.directionSourceTimestamp !== transition.effectiveFromTimestamp) {
+    return { valid: false, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH", detail: "The occurrence source timestamp does not match the immutable ORB trend epoch." };
+  }
+  if (orbTrend.epochIdAt(patienceCandle.openTime) !== occurrenceEpoch) {
+    return { valid: false, reasonCode: "ORB_TREND_EPOCH_MISMATCH", detail: "The ORB trend epoch at P does not match the occurrence epoch." };
+  }
+  if (orbTrend.trendDirectionAt(patienceCandle.openTime) !== occurrence.direction) {
+    return { valid: false, reasonCode: "DIRECTION_MISMATCH", detail: "The ORB trend direction at P does not match the occurrence direction." };
+  }
+  if (!Number.isFinite(transition.confirmingCandle.openTime)
+    || !Number.isFinite(transition.confirmingCandle.closeTime)
+    || transition.confirmingCandle.closeTime <= transition.confirmingCandle.openTime
+    || transition.confirmingCandle.closeTime > transition.effectiveFromTimestamp) {
+    return { valid: false, reasonCode: "ORB_TREND_NOT_EFFECTIVE_AT_P", detail: "The ORB trend transition lacks a completed confirming candle before its effective timestamp." };
+  }
+  if (context.breakout.detected
+    && context.breakout.direction !== null
+    && context.breakout.time !== null
+    && context.breakout.time <= patienceCandle.openTime
+    && context.breakout.direction !== occurrence.direction) {
+    return { valid: false, reasonCode: "CONFLICTING_CAUSAL_DIRECTION", detail: "The current breakout evidence conflicts with the occurrence’s ORB trend direction at P." };
+  }
+  return {
+    valid: true,
+    direction: occurrence.direction,
+    source: "ORB_TREND",
+    sourceTimestamp: transition.effectiveFromTimestamp,
+    orbTrendEpochId: occurrenceEpoch,
+    occurrenceId,
+  };
+}
+
+function patienceOccurrenceMatchesAnalysis(
+  occurrence: PatienceOccurrence,
+  patience: PatienceAnalysis,
+): boolean {
+  const p = patience.patienceCandle;
+  if (!p) return false;
+  if (occurrence.patienceCandle.openTime !== p.openTime
+    || occurrence.patienceCandle.closeTime !== p.closeTime
+    || occurrence.expectedEntryCandleOpenTime !== (patience.triggerCandle?.openTime ?? p.closeTime)) return false;
+  if (!occurrence.eligibilityArmId || occurrence.eligibilityArmId !== patience.eligibilityArmId) return false;
+  const analysisEventId = patience.eligibilityProvenance?.eventId;
+  if (analysisEventId !== undefined && analysisEventId !== null
+    && occurrence.eligibilityEventId !== analysisEventId) return false;
+  return true;
 }
 
 function trendAgrees(direction: Direction, trend: TrendDirection): boolean {

@@ -26,3 +26,9 @@ For reversal strategies, the executable direction and profit target must oppose 
 **Why:** A visual-review candidate was labeled Peak Retracement Reversal even though its target followed the active trend; reversal attribution must describe counter-trend intent, not merely a Fibonacci-derived direction.
 
 **How to apply:** Require the counter-trend predicate before `PEAK_RETRACEMENT_REVERSAL` can qualify. Keep the v23 removal of the mandatory retracement-percentage threshold; counter-trend direction is an independent semantic gate.
+
+Continuation authorization must validate the exact occurrence identity and immutable source timestamp, not only the current direction label. Breakout-backed occurrences must match a detected, non-failed executable breakout state; ORB-trend occurrences must match one effective epoch and its completed confirming transition.
+
+**Why:** A current cursor direction can remain plausible after the causal occurrence has been superseded, failed, or moved to another ORB epoch. Without source-time binding, both evaluators can qualify a stale P→E sequence.
+
+**How to apply:** Reuse one validator for ORB Pullback and Patience Continuation, fail closed on missing or conflicting provenance, and version every result/cache surface when this contract changes.

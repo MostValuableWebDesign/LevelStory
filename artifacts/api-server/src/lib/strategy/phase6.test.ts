@@ -14,12 +14,15 @@ import {
   hasEquivalentOpposingCandles,
   isDoji,
   phase6Analysis,
+  validateCausalContinuationDirection,
   type Phase6Context,
 } from "./phase6.js";
 import { strategyConfig } from "./config.js";
 import type { DynamiteLevel, MajorLevel } from "./major-levels.js";
 import type { Candle } from "./types.js";
+import type { OrbTrendAnalysis } from "./orb-trend.js";
 import { canonicalStrategyId, STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
+import type { PatienceOccurrence } from "./phase5.js";
 
 const config = strategyConfig();
 
@@ -58,16 +61,47 @@ function major(price = 10): MajorLevel {
 }
 
 function patience(state: "ENTRY_TRIGGERED" | "PATIENCE_CANDLE_VALID" | "PATIENCE_CANDLE_EXPIRED" | "AMBIGUOUS_EVENT_ORDER" = "ENTRY_TRIGGERED", trend: "bullish" | "bearish" = "bullish", direction?: "long" | "short") {
+  const resolvedDirection = direction ?? "long";
+  const previousCandle = { openTime: 1, closeTime: 2, open: 10, high: 10.4, low: 9.6, close: 10.1, isComplete: true };
+  const patienceCandle = { openTime: 2, closeTime: 3, open: 10, high: 10.2, low: 9.8, close: 10.15, isComplete: true };
+  const triggerCandle = { openTime: 3, closeTime: 4, open: 10.15, high: 10.3, low: 10.1, close: 10.25, isComplete: true };
+  const occurrence: PatienceOccurrence = {
+    occurrenceId: "phase6-test-occurrence",
+    direction: resolvedDirection,
+    directionSource: "ORB_BREAKOUT",
+    directionSourceTimestamp: 1,
+    orbTrendEpochId: null,
+    entryBufferTicks: 4,
+    stopBufferTicks: 1,
+    eligibilityReason: "pullback",
+    eligibilityTime: 1,
+    eligibilityEventId: null,
+    expectedEntryCandleOpenTime: triggerCandle.openTime,
+    previousCandle,
+    patienceCandle,
+    triggerCandle,
+    outcomeStatus: "CONFIRMED",
+    qualificationStatus: "SIGNAL_CONFIRMED",
+    status: state,
+    reasonCode: `Patience state ${state}.`,
+    evaluationCursor: triggerCandle.closeTime,
+    eligibilityArmId: "phase6-test-arm",
+  };
   return {
     state,
-    direction,
+    direction: resolvedDirection,
+    directionSource: "ORB_BREAKOUT" as const,
+    occurrenceId: occurrence.occurrenceId,
+    occurrences: [occurrence],
+    eligibilityArmId: occurrence.eligibilityArmId,
+    eligibilityProvenance: { eventId: null, reason: "pullback" as const, time: 1, detail: "test" },
     eligible: true,
     eligibilityReason: "pullback" as const,
     eligibilityTime: 1,
     trend,
-    previousCandle: { openTime: 1, closeTime: 2, open: 10, high: 10.4, low: 9.6, close: 10.1, isComplete: true },
-    patienceCandle: { openTime: 2, closeTime: 3, open: 10, high: 10.2, low: 9.8, close: 10.15, isComplete: true },
-    triggerCandle: { openTime: 3, closeTime: 4, open: 10.15, high: 10.3, low: 10.1, close: 10.25, isComplete: true },
+    previousCandle,
+    patienceCandle,
+    triggerCandle,
     entryBufferTicks: 4,
     entryBufferPrice: 11.2,
     stopBufferTicks: 1,
@@ -179,6 +213,176 @@ function baseContext(overrides: Partial<Phase6Context> = {}): Phase6Context {
     ...overrides,
   };
 }
+
+function causalOrbTrend(direction: "long" | "short", epochId = `${direction}-epoch`, effectiveFromTimestamp = 1): OrbTrendAnalysis {
+  const confirmingCandle = {
+    openTime: effectiveFromTimestamp - 300_000,
+    closeTime: effectiveFromTimestamp,
+    open: 10,
+    high: direction === "long" ? 11 : 10,
+    low: direction === "short" ? 9 : 10,
+    close: direction === "long" ? 10.5 : 9.5,
+    volume: 100,
+  };
+  const transition = {
+    previousState: "NEUTRAL" as const,
+    newState: direction === "long" ? "BULLISH_ORB_TREND" as const : "BEARISH_ORB_TREND" as const,
+    direction,
+    epochId,
+    finalizedOrbHigh: 10,
+    finalizedOrbLow: 9,
+    confirmationBufferTicks: 1,
+    confirmationBufferPoints: 0.25,
+    confirmingCandle,
+    boundaryCrossed: direction === "long" ? "ORB_HIGH" as const : "ORB_LOW" as const,
+    effectiveFromTimestamp,
+    expiredArmIds: [],
+    expiredCandidateIds: [],
+    expirationReason: null,
+    activePositionBlocked: false,
+    formulaVersion: "test",
+    strategyVersion: "test",
+  };
+  return {
+    state: transition.newState,
+    direction,
+    epochId,
+    finalizedOrbHigh: 10,
+    finalizedOrbLow: 9,
+    finalizedAt: 0,
+    confirmationBufferTicks: 1,
+    confirmationBufferPoints: 0.25,
+    transitions: [transition],
+    trendDirectionAt: (openTime) => openTime >= effectiveFromTimestamp ? direction : null,
+    trendStateAt: (openTime) => openTime >= effectiveFromTimestamp ? transition.newState : "NEUTRAL",
+    epochIdAt: (openTime) => openTime >= effectiveFromTimestamp ? epochId : null,
+  };
+}
+
+function orbTrendPatience(direction: "long" | "short", epochId: string) {
+  const analysis = patience("ENTRY_TRIGGERED", direction === "long" ? "bullish" : "bearish", direction);
+  const occurrence = analysis.occurrences![0];
+  return {
+    ...analysis,
+    directionSource: "ORB_TREND" as const,
+    occurrences: [{
+      ...occurrence,
+      direction,
+      directionSource: "ORB_TREND" as const,
+      directionSourceTimestamp: 1,
+      orbTrendEpochId: epochId,
+    }],
+    occurrenceId: occurrence.occurrenceId,
+  };
+}
+
+test("canonical continuation validation accepts exact active ORB epochs for long and short", () => {
+  for (const direction of ["long", "short"] as const) {
+    const epochId = `${direction}-epoch`;
+    const context = baseContext({
+      breakout: { ...baseContext().breakout, direction },
+      patience: orbTrendPatience(direction, epochId),
+      orbTrend: causalOrbTrend(direction, epochId),
+    });
+    const result = validateCausalContinuationDirection(context, direction);
+    assert.equal(result.valid, true);
+    if (result.valid) {
+      assert.equal(result.direction, direction);
+      assert.equal(result.source, "ORB_TREND");
+      assert.equal(result.orbTrendEpochId, epochId);
+      assert.equal(result.sourceTimestamp, 1);
+      assert.equal(result.occurrenceId, context.patience.occurrenceId);
+    }
+  }
+});
+
+test("canonical continuation validation accepts exact valid breakout evidence for long and short", () => {
+  for (const direction of ["long", "short"] as const) {
+    const context = baseContext({
+      breakout: {
+        ...baseContext().breakout,
+        direction,
+        detected: true,
+        failed: false,
+        state: "WAITING_FOR_PULLBACK",
+        time: 1,
+      },
+      patience: {
+        ...patience("ENTRY_TRIGGERED", direction === "long" ? "bullish" : "bearish", direction),
+        directionSource: "ORB_BREAKOUT",
+      },
+    });
+    const result = validateCausalContinuationDirection(context, direction);
+    assert.equal(result.valid, true);
+    if (result.valid) {
+      assert.equal(result.source, "ORB_BREAKOUT");
+      assert.equal(result.sourceTimestamp, 1);
+      assert.equal(result.orbTrendEpochId, null);
+    }
+  }
+});
+
+test("canonical continuation validation fails closed for missing or mismatched occurrence identity", () => {
+  const valid = baseContext();
+  const missing = validateCausalContinuationDirection({
+    ...valid,
+    patience: { ...valid.patience, occurrenceId: null },
+  }, "long");
+  assert.equal(missing.valid, false);
+  assert.equal(missing.reasonCode, "MISSING_PATIENCE_OCCURRENCE");
+
+  const sourceMismatch = validateCausalContinuationDirection({
+    ...valid,
+    patience: {
+      ...valid.patience,
+      directionSource: "ORB_TREND",
+    },
+  }, "long");
+  assert.equal(sourceMismatch.valid, false);
+  assert.equal(sourceMismatch.reasonCode, "DIRECTION_SOURCE_MISMATCH");
+});
+
+test("canonical ORB trend validation fails closed for missing, wrong, future, or duplicated epochs", () => {
+  const valid = baseContext({
+    patience: orbTrendPatience("long", "long-epoch"),
+    orbTrend: causalOrbTrend("long", "long-epoch"),
+  });
+  const cases: Array<{ label: string; context: Phase6Context; reasonCode: string }> = [
+    { label: "missing", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], orbTrendEpochId: null }] } }, reasonCode: "MISSING_ORB_TREND_EPOCH" },
+    { label: "wrong", context: { ...valid, patience: orbTrendPatience("long", "wrong-epoch") }, reasonCode: "ORB_TREND_EPOCH_MISMATCH" },
+    { label: "future", context: { ...valid, orbTrend: causalOrbTrend("long", "long-epoch", 3) }, reasonCode: "ORB_TREND_NOT_EFFECTIVE_AT_P" },
+    { label: "duplicate", context: { ...valid, orbTrend: { ...valid.orbTrend!, transitions: [...valid.orbTrend!.transitions, valid.orbTrend!.transitions[0]] } }, reasonCode: "ORB_TREND_EPOCH_MISMATCH" },
+  ];
+  for (const { label, context, reasonCode } of cases) {
+    const result = validateCausalContinuationDirection(context, "long");
+    assert.equal(result.valid, false, label);
+    assert.equal(result.reasonCode, reasonCode, label);
+  }
+});
+
+test("canonical breakout validation rejects failed, expired, weak, future, and mismatched breakouts", () => {
+  const valid = baseContext();
+  const cases: Array<{ label: string; context: Phase6Context; reasonCode: string }> = [
+    { label: "failed", context: { ...valid, breakout: { ...valid.breakout, failed: true } }, reasonCode: "BREAKOUT_FAILED" },
+    { label: "expired", context: { ...valid, breakout: { ...valid.breakout, state: "SETUP_EXPIRED" } }, reasonCode: "BREAKOUT_STATE_NOT_EXECUTABLE" },
+    { label: "weak", context: { ...valid, breakout: { ...valid.breakout, state: "BREAKOUT_CANDIDATE" } }, reasonCode: "BREAKOUT_STATE_NOT_EXECUTABLE" },
+    {
+      label: "future",
+      context: {
+        ...valid,
+        breakout: { ...valid.breakout, time: 3 },
+        patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], directionSourceTimestamp: 3 }] },
+      },
+      reasonCode: "BREAKOUT_AFTER_P",
+    },
+    { label: "direction", context: { ...valid, breakout: { ...valid.breakout, direction: "short" } }, reasonCode: "BREAKOUT_DIRECTION_MISMATCH" },
+  ];
+  for (const { label, context, reasonCode } of cases) {
+    const result = validateCausalContinuationDirection(context, "long");
+    assert.equal(result.valid, false, label);
+    assert.equal(result.reasonCode, reasonCode, label);
+  }
+});
 
 test("ORB continuation qualifies only when every mandatory rule passes", () => {
   const result = evaluateOrbBreakPullbackContinuation(baseContext());
