@@ -1,0 +1,225 @@
+Repair the independent Patience Candle Continuation strategy-switch defect.
+
+Keep this change narrowly scoped to applying `visualReviewEnabledStrategies` correctly to the Phase 6 Patience evaluator. Preserve existing strategy qualification, canonical candidate ownership, execution, risk, and trade-management behavior.
+
+Confirmed defect
+
+In:
+
+- `artifacts/api-server/src/lib/phase9.ts`
+- `runCausalBacktest(...)`
+- the filtering of `snapshot.setupAnalysis.evaluations`
+
+The current code effectively does:
+
+```ts
+const strategyId = canonicalStrategyId(evaluation.setupType);
+return strategyId === null || enabledStrategies[strategyId] !== false;
+But:
+canonicalStrategyId("PATIENCE_CANDLE_CONTINUATION")
+  === "ORB_PULLBACK_CONTINUATION"
+Therefore, the filter consults the ORB Pullback switch for both evaluations and ignores the independent Patience switch.
+Verified production behavior
+Using the existing pre-11:30 long fixture:
+ORB enabled, Patience disabled
+→ 69 qualified Patience audits
+→ 70 occurrences containing the Patience edge
+→ 1 trade
+ORB disabled, Patience enabled
+→ 0 qualified Patience audits
+→ 0 occurrences containing the Patience edge
+→ 0 trades
+This is incorrect.
+Required behavior
+The switches must control the independent Phase 6 evaluators before canonical candidate ownership is applied.
+Use the raw evaluation setup type for switch selection:
+ORB_PULLBACK_CONTINUATION evaluation
+→ visualReviewEnabledStrategies.ORB_PULLBACK_CONTINUATION
+
+PATIENCE_CANDLE_CONTINUATION evaluation
+→ visualReviewEnabledStrategies.PATIENCE_CANDLE_CONTINUATION
+Other legacy aliases may continue using existing canonical resolution unless they also have an independent strategy switch.
+Do not change canonicalStrategyId(...) globally merely to fix this filter. It is still used for candidate ownership, taxonomy compatibility, historical reduction, and legacy identifiers.
+Recommended implementation shape
+Create or use a small helper with behavior equivalent to:
+function isEvaluationEnabled(
+  setupType: string,
+  enabledStrategies: VisualReviewStrategyToggles | undefined,
+): boolean {
+  if (!enabledStrategies) return true;
+
+  if (setupType === "PATIENCE_CANDLE_CONTINUATION") {
+    return enabledStrategies.PATIENCE_CANDLE_CONTINUATION !== false;
+  }
+
+  const canonical = canonicalStrategyId(setupType);
+  return canonical === null || enabledStrategies[canonical] !== false;
+}
+Use this helper when filtering snapshot.setupAnalysis.evaluations.
+Do not duplicate this decision in several projection layers. The authoritative filtering should happen once before:
+- evaluation audits
+- matchedEdges
+- setup grading
+- occurrence reduction
+- candidate projection
+- trade projection
+Canonical candidate ownership
+Preserve the existing taxonomy rule that Patience Candle Continuation can share one canonical ORB Pullback candidate.
+When both evaluators qualify:
+primaryEdge:
+  ORB_PULLBACK_CONTINUATION
+
+matchedEdges:
+  ORB_PULLBACK_CONTINUATION
+  PATIENCE_CANDLE_CONTINUATION
+
+secondaryStrategyMatches:
+  PATIENCE_CANDLE_CONTINUATION
+Do not create duplicate candidates or trades for the same occurrence merely because both evaluators qualified.
+When only Patience is enabled and qualifies, the candidate may retain the existing canonical ORB ownership if required by the current taxonomy. However:
+- the disabled ORB evaluator must not appear in matchedEdges
+- the enabled Patience evaluator must remain visible
+- the Patience qualification must still be allowed to create the canonical candidate
+- audit evidence must show that Patience, rather than the disabled ORB evaluator, authorized the occurrence
+Do not let a disabled evaluator contribute:
+- audit qualification
+- matchedEdges
+- secondaryStrategyMatches
+- setup grade
+- candidate eligibility
+- trade count
+- Visual Review strategy evidence
+Required toggle matrix
+Add production integration tests for long and short directions using the existing deterministic pre-11:30 fixture.
+Test all four combinations.
+1. ORB enabled, Patience enabled
+Expected:
+- qualified ORB audit exists
+- qualified Patience audit exists
+- matchedEdges contains both strategies
+- Patience appears in secondaryStrategyMatches
+- canonical occurrence count is unchanged
+- no duplicate candidate or trade is created
+- the expected account-authorized trade reaches Visual Review
+2. ORB enabled, Patience disabled
+Expected:
+- qualified ORB audit exists
+- no qualified Patience audit
+- matchedEdges contains ORB only
+- secondaryStrategyMatches does not contain Patience
+- Patience does not increase setup grade
+- ORB can still create its canonical candidate and trade
+- Visual Review contains no Patience qualification evidence
+3. ORB disabled, Patience enabled
+Expected:
+- no qualified ORB audit contributes to execution
+- qualified Patience audit exists
+- matchedEdges contains Patience
+- the Patience qualification creates the intended canonical candidate
+- candidate and trade retain the exact Patience-authorized occurrence ID
+- Visual Review shows the Patience qualification
+- the disabled ORB evaluator does not contribute to grade or evidence
+If the candidate’s primaryEdge remains ORB for canonical taxonomy compatibility, explicitly assert that:
+- canonical ownership is ORB
+- causal authorization came from the enabled Patience evaluation
+- matchedEdges does not falsely claim the disabled ORB evaluator qualified
+4. ORB disabled, Patience disabled
+Expected:
+- no qualified ORB audit
+- no qualified Patience audit
+- neither edge appears in matchedEdges
+- no candidate is created from these continuation evaluations
+- no linked modeled trade
+- no qualified continuation snapshot in Visual Review
+Exact assertions
+Do not use only .find() or .some().
+For every toggle combination, assert:
+- exact qualified ORB audit count
+- exact qualified Patience audit count
+- exact confirmed occurrence count
+- exact candidate count
+- exact entered-candidate count
+- exact account-blocked count
+- exact modeled-trade count
+- complete matchedEdges
+- complete secondaryStrategyMatches
+- setup grade
+- unique occurrence IDs
+- unique candidate IDs
+- exact occurrence → candidate → trade linkage
+- exact Visual Review linkage
+Retain the existing fixture behavior where the short case has two valid occurrences and two candidates, with the second candidate blocked by the active position. Assert the full result set rather than silently selecting the first candidate.
+Regression tests
+Add a focused unit test for the evaluation-enable helper proving:
+ORB on, Patience off:
+  ORB evaluation enabled
+  Patience evaluation disabled
+
+ORB off, Patience on:
+  ORB evaluation disabled
+  Patience evaluation enabled
+
+both on:
+  both enabled
+
+both off:
+  both disabled
+Also prove that unrelated strategy IDs retain their existing canonical switch behavior.
+Scope limits
+Do not change:
+- causal direction validation
+- ORB epoch validation
+- breakout validation
+- CONFIRMED_15M_TREND rules
+- Peak Retracement Reversal
+- P-to-E timing
+- entry or stop buffers
+- NTZ geometry
+- pullback qualification
+- risk rules
+- account-position arbitration
+- fees or slippage
+- exits or targets
+- Strong Breakout midpoint-stop behavior
+- global taxonomy or historical IDs unless an actual compatibility defect requires it
+Versions
+Because this changes audit output, matchedEdges, setup grading, candidate eligibility, and Visual Review results under strategy-switch configurations, bump the affected versions from their current values:
+- backtest strategy-engine version
+- fixed-formula version
+- strategy-result cache version
+- batch-aggregation version if aggregated results can change
+- qualification-funnel version
+- Visual Review strategy-engine version
+- Visual Review candidate/snapshot/cache versions
+Do not bump execution-management versions because entry and exit mechanics are unchanged.
+Add cache tests using the actual previous and current exported version values. Prove:
+- the immediately previous strategy-switch behavior is rejected
+- the current version is reusable
+- disabling Patience cannot reuse a cached result produced with Patience enabled
+- enabling only Patience cannot reuse an ORB-only result
+Verification
+Run:
+1. Focused strategy-switch helper tests.
+2. Phase 6 tests.
+3. Phase 9 unit tests.
+4. Phase 9 integration tests with the complete toggle matrix.
+5. Candidate/trade reconciliation tests.
+6. Visual Review projection tests.
+7. Analysis-cache tests.
+8. Visual-validation cache tests.
+9. API-server typecheck.
+10. LevelStory/shared typecheck.
+11. git diff --check.
+Final response
+Report:
+- files and functions changed
+- where raw evaluator identity is now used
+- how canonical candidate ownership remains unchanged
+- long and short results for all four switch combinations
+- exact occurrence, candidate, blocked-candidate, and trade counts
+- exact matchedEdges and secondaryStrategyMatches
+- versions bumped
+- test counts
+- typecheck results
+- any validation not run
+Do not report this complete unless the production fixture proves that the Patience switch independently controls the Patience evaluator in both directions without creating duplicate canonical candidates or trades.
