@@ -1,0 +1,282 @@
+Paste this into Replit:
+
+```text
+Repair the remaining causal-direction and acceptance defects in the removal of `CONFIRMED_15M_TREND`.
+
+Review the current code before editing because file contents may have changed. Keep the work narrowly limited to causal direction identity, ORB conflict validation, cache/version invalidation, and authoritative regression coverage.
+
+Current review findings
+
+1. Phase 5 occurrence identity does not bind the exact causal direction source.
+
+In:
+- `artifacts/api-server/src/lib/strategy/phase5.ts`
+- `patienceOccurrenceId(...)`
+
+The current identity is based on:
+- ORB epoch or `no-orb-epoch`
+- direction
+- patience-candle open time
+
+For `ORB_BREAKOUT`, two different authoritative breakout events can therefore produce the same occurrence ID when direction and P-open are unchanged.
+
+2. Phase 9 drops the direction-source timestamp when creating the governed occurrence ID.
+
+In:
+- `artifacts/api-server/src/lib/phase9.ts`
+- `governedOccurrenceId(...)`
+
+The patience identity includes `directionSource`, but it does not include `directionSourceTimestamp`. Phase 9 can therefore collapse two occurrences that came from different breakout events.
+
+3. The `ORB_TREND` validator allows invalid opposing breakout evidence to block a valid ORB trend.
+
+In:
+- `artifacts/api-server/src/lib/strategy/phase6.ts`
+- `validateCausalContinuationDirection(...)`
+
+The `ORB_TREND` branch currently returns `CONFLICTING_CAUSAL_DIRECTION` for any detected opposing breakout at or before P. It does not require the opposing breakout to be:
+- non-failed
+- in an executable continuation state
+- backed by a finite valid timestamp
+- still causally eligible
+
+A failed, expired, weak, stale, or diagnostic breakout must not suppress a candidate authorized by the exact active ORB trend epoch.
+
+4. Existing tests exercise fabricated Phase 6 contexts but do not prove the complete production path before 11:30 a.m. ET.
+
+Required implementation
+
+A. Bind the complete causal source to the Phase 5 occurrence ID
+
+Update `patienceOccurrenceId(...)` so its immutable identity includes:
+
+- direction
+- direction source: `ORB_TREND` or `ORB_BREAKOUT`
+- direction-source timestamp
+- ORB trend epoch ID, when the source is `ORB_TREND`
+- patience-candle open time
+
+Do not substitute the P-open time for the direction-source timestamp.
+
+Update every call site, including confirmed, invalidated, inactive-arm, expired, and diagnostic occurrence construction.
+
+Fail closed when an executable continuation occurrence lacks a finite direction-source timestamp.
+
+Required identity properties:
+
+- Same source, source timestamp, direction, epoch, and P-open must produce the same ID.
+- Different breakout timestamps must produce different occurrence IDs.
+- `ORB_TREND` and `ORB_BREAKOUT` must never produce the same occurrence ID.
+- Different ORB epoch IDs must produce different occurrence IDs.
+- Long and short occurrences must remain distinct.
+
+Use an explicit new identity schema/version marker so old and new IDs cannot collide.
+
+B. Bind the source timestamp to the Phase 9 governed identity
+
+Update the patience branch of `governedOccurrenceId(...)` to include:
+
+- `directionSource`
+- `directionSourceTimestamp`
+- `orbTrendEpochId`
+- the existing P-to-E causal fields
+
+Increment the governed patience occurrence identity version.
+
+Verify that the exact governed occurrence ID is propagated without substitution through:
+
+- historical audit occurrence
+- confirmed occurrence
+- trade candidate
+- `candidate.causalIdentity.signalOccurrenceId`
+- modeled trade
+- account arbitration
+- aggregation
+- Visual Review snapshot and trade linkage
+
+Do not match a candidate or trade using direction, strategy, timestamp proximity, array position, or another fallback when the exact occurrence ID is unavailable.
+
+C. Correct the ORB-trend conflict rule
+
+Keep the causal source priority:
+
+1. exact active `ORB_TREND` epoch at P
+2. valid `ORB_BREAKOUT` evidence only when no authoritative ORB trend exists
+3. no generic 15-minute-trend fallback
+
+For an `ORB_TREND` occurrence, an opposing breakout may count as conflicting evidence only if all of these are true:
+
+- `detected === true`
+- `failed === false`
+- direction is non-null
+- time is finite
+- time is at or before P-open
+- state belongs to the same executable continuation-state allowlist used by the `ORB_BREAKOUT` validator
+- the evidence is causally applicable to that P occurrence
+
+A breakout in any of these conditions must not invalidate an exact ORB epoch:
+
+- failed
+- `SETUP_EXPIRED`
+- `BREAKOUT_CANDIDATE` or another weak/non-executable state
+- missing or non-finite time
+- time after P
+- stale diagnostic breakout from an earlier causal state
+
+If the implementation establishes that `ORB_TREND` always has absolute priority and opposing breakout data is diagnostic only, remove the ORB-trend conflict check instead. Do not keep a partial check that lets non-executable evidence suppress candidates.
+
+The `ORB_BREAKOUT` source branch must remain strict:
+
+- breakout detected
+- breakout not failed
+- executable state
+- exact direction match
+- exact finite source-timestamp match
+- breakout time at or before P
+- no authoritative opposing ORB epoch at P
+
+D. Preserve strategy scope
+
+The generic confirmed 15-minute trend must remain unavailable as a direction source for:
+
+- Patience Candle Continuation
+- ORB Pullback Continuation
+- Early ORB Momentum Continuation
+- Strong Breakout After Consolidation
+- Equivalent Candle Reversal
+
+Peak Retracement Reversal must preserve its existing confirmed 15-minute counter-trend qualification.
+
+Do not weaken or change:
+
+- NTZ completion and outside-zone requirements
+- pullback-level qualification
+- P-to-immediate-E timing
+- four-tick entry confirmation
+- stop geometry
+- consolidation guards
+- fees or slippage
+- account-position arbitration
+- catastrophe stops
+- entry cutoff rules
+- unrelated strategies
+
+E. Add focused identity and validator tests
+
+Add tests proving:
+
+1. Two otherwise identical `ORB_BREAKOUT` occurrences with different breakout timestamps receive different Phase 5 occurrence IDs.
+
+2. `ORB_TREND` and `ORB_BREAKOUT` occurrences cannot share an ID.
+
+3. Two different ORB epoch IDs cannot share an ID.
+
+4. Phase 9 governed occurrence IDs differ when only `directionSourceTimestamp` differs.
+
+5. Candidate and trade linkage retains the revised occurrence ID exactly.
+
+6. A valid long ORB epoch is not rejected by a failed, expired, weak, future, or stale short breakout.
+
+7. A valid short ORB epoch is not rejected by a failed, expired, weak, future, or stale long breakout.
+
+8. If executable opposing breakout evidence is intended to remain a conflict, test that exact valid conflict separately.
+
+9. Missing, non-finite, or mismatched direction-source timestamps fail closed and create no candidate or trade.
+
+Do not satisfy these tests by manually inventing final candidate or trade objects.
+
+F. Add authoritative pre-11:30 production-chain fixtures
+
+Add deterministic long and short fixtures with P opening before 11:30 a.m. ET. Exercise the real production functions from candle input forward.
+
+Cover both continuation evaluators:
+
+- ORB Pullback Continuation
+- Patience Candle Continuation
+
+For each direction, prove:
+
+1. A valid ORB trend or valid breakout is established before P.
+2. No confirmed generic 15-minute trend is required.
+3. Phase 5 emits exactly one intended occurrence.
+4. Phase 6 qualifies the intended strategy.
+5. Phase 9 emits the corresponding candidate.
+6. A triggered candidate produces exactly one linked modeled trade.
+7. Visual Review contains the same occurrence, candidate, and trade.
+8. All of these fields match exactly:
+   - direction
+   - direction source
+   - direction-source timestamp
+   - ORB epoch ID when applicable
+   - occurrence ID
+   - candidate ID
+   - trade `candidateId`
+   - trade `signalOccurrenceId`
+9. The fixture produces a nonzero candidate and trade count. An HTTP success or empty replay is not acceptance evidence.
+
+Also add negative production fixtures proving:
+
+- failed breakout: no continuation candidate
+- expired or weak breakout: no continuation candidate
+- future breakout: no continuation candidate
+- mismatched source timestamp: no continuation candidate
+- missing ORB epoch: no continuation candidate
+- wrong ORB epoch: no continuation candidate
+- generic 15-minute trend alone: no continuation candidate
+- Peak Retracement Reversal still enforces its confirmed counter-trend rule
+
+G. Update cache and formula identities
+
+Because occurrence ownership and qualification results change, bump every affected version family again from its current value:
+
+- fixed-formula version
+- strategy-result cache version
+- batch-aggregation version
+- qualification-funnel version
+- strategy-engine version
+- candidate-projection version
+- execution-management version
+- Visual Review cache version
+- Visual Review snapshot/projection versions
+- any serialized occurrence or candidate identity schema version
+
+Add tests using the actual exported current and superseded constants. Prove:
+
+- records created under each superseded exact version are rejected
+- records created under the new exact version are reused
+- old occurrence IDs cannot reconcile with new candidates or trades
+- an empty successful result is not treated as proof of execution
+
+Verification
+
+Run at least:
+
+1. Phase 5 tests.
+2. Phase 6 tests.
+3. Phase 9 unit tests.
+4. Phase 9 integration tests containing the production fixtures.
+5. Analysis-cache tests.
+6. Visual-validation cache and projection tests.
+7. Shadow-account or candidate/trade reconciliation tests affected by the revised occurrence identity.
+8. API-server typecheck.
+9. LevelStory/shared typecheck.
+10. `git diff --check`.
+
+If a test needs `DATABASE_URL` only for module initialization, use the repository’s established test value. Do not hide a real database-dependent failure.
+
+Final response
+
+Report:
+
+- files changed
+- exact identity fields added
+- exact ORB conflict rule
+- version values changed
+- focused test counts
+- production fixture candidate/trade counts for long and short
+- exact occurrence → candidate → trade linkage assertions
+- typecheck results
+- any validation that was not run
+
+Do not report this repair complete unless the nonzero pre-11:30 long and short production fixtures pass through Visual Review with exact causal identity linkage.
+```
