@@ -5,7 +5,7 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION } from "./strategy/consolidation-midpoint-stop.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.25-patience-edge-projection";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.26-independent-patience-switch";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;

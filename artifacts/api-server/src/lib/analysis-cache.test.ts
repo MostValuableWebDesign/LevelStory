@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  BATCH_AGGREGATION_CACHE_KEY_VERSION,
   buildVersionedAnalysisCacheKey,
+  STRATEGY_RESULT_CACHE_KEY_VERSION,
   VersionedAnalysisCache,
 } from "./analysis-cache.js";
 
@@ -29,6 +31,62 @@ test("versioned analysis keys separate source, lookback, strategy, and execution
     ...base,
     execution: { ...base.execution, slippageTicks: 2 },
   }));
+});
+
+test("strategy-switch cache versions reject the immediately previous behavior", () => {
+  const previousStrategyVersion = "strategy-result-cache-v11-causal-source-identity";
+  const previousBatchVersion = "batch-aggregation-v7-causal-source-identity";
+  assert.notEqual(STRATEGY_RESULT_CACHE_KEY_VERSION, previousStrategyVersion);
+  assert.notEqual(BATCH_AGGREGATION_CACHE_KEY_VERSION, previousBatchVersion);
+
+  const currentKey = buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+    cacheKeyVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+    aggregationVersion: BATCH_AGGREGATION_CACHE_KEY_VERSION,
+    request: {
+      enabledStrategies: {
+        ORB_PULLBACK_CONTINUATION: true,
+        PATIENCE_CANDLE_CONTINUATION: true,
+      },
+    },
+  });
+  const previousKey = buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+    cacheKeyVersion: previousStrategyVersion,
+    aggregationVersion: previousBatchVersion,
+    request: {
+      enabledStrategies: {
+        ORB_PULLBACK_CONTINUATION: true,
+        PATIENCE_CANDLE_CONTINUATION: true,
+      },
+    },
+  });
+  assert.notEqual(currentKey, previousKey);
+  const cache = new VersionedAnalysisCache<{ version: string }>();
+  cache.setComplete(currentKey, { version: "current" });
+  assert.deepEqual(cache.get(currentKey), { version: "current" });
+});
+
+test("strategy result cache identity separates ORB-only and Patience-only analysis", () => {
+  const orbOnlyKey = buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+    cacheKeyVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+    aggregationVersion: BATCH_AGGREGATION_CACHE_KEY_VERSION,
+    request: {
+      enabledStrategies: {
+        ORB_PULLBACK_CONTINUATION: true,
+        PATIENCE_CANDLE_CONTINUATION: false,
+      },
+    },
+  });
+  const patienceOnlyKey = buildVersionedAnalysisCacheKey("cataloged-session-strategy-result", {
+    cacheKeyVersion: STRATEGY_RESULT_CACHE_KEY_VERSION,
+    aggregationVersion: BATCH_AGGREGATION_CACHE_KEY_VERSION,
+    request: {
+      enabledStrategies: {
+        ORB_PULLBACK_CONTINUATION: false,
+        PATIENCE_CANDLE_CONTINUATION: true,
+      },
+    },
+  });
+  assert.notEqual(orbOnlyKey, patienceOnlyKey);
 });
 
 test("previous result versions are rejected while the current version reuses its result", async () => {

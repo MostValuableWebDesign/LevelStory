@@ -1749,7 +1749,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v11-causal-source-identity";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v12-independent-patience-switch";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -4611,12 +4611,17 @@ export function buildHistoricalOccurrenceLedger(
        const recordEdge = canonicalStrategyId(record.setupType) ?? record.setupType;
        const qualifiedEdges = record.decision === "SETUP QUALIFIED"
          ? [
-           recordEdge,
+           ...(record.setupType === "PATIENCE_CANDLE_CONTINUATION" ? [] : [recordEdge]),
            ...(record.setupType === "PATIENCE_CANDLE_CONTINUATION" ? [record.setupType] : []),
            ...secondary,
          ]
          : secondary;
-       const primaryEdge = qualifiedEdges[0] ?? recordEdge;
+       // Patience remains an independent evaluator edge, but its physical
+       // candidate owner stays canonical ORB Pullback even when ORB itself is
+       // disabled. Do not add the disabled ORB edge to matchedEdges.
+       const primaryEdge = record.setupType === "PATIENCE_CANDLE_CONTINUATION"
+         ? "ORB_PULLBACK_CONTINUATION"
+         : qualifiedEdges[0] ?? recordEdge;
       const linkedEvents = linkedPullbackEvents(record, patience);
       const linkedPullback = linkedEvents[0];
       const linkedEvidence = levelEvidence(linkedEvents);
@@ -6902,6 +6907,17 @@ export function isCausalPositionActiveAt(
     && (exitEffectiveTime === null || transitionTime < exitEffectiveTime);
 }
 
+export function isVisualReviewEvaluationEnabled(
+  setupType: string,
+  enabledStrategies: VisualReviewStrategyToggles | undefined,
+): boolean {
+  if (!enabledStrategies) return true;
+  const strategyId = setupType === "PATIENCE_CANDLE_CONTINUATION"
+    ? setupType
+    : canonicalStrategyId(setupType);
+  return strategyId === null || enabledStrategies[strategyId] !== false;
+}
+
 export function runCausalBacktest(
   request: BacktestRequest,
   riskInput?: { accountSize: number; riskPercent: number; maxDailyLoss: number; dailyLossUsed: number; isLocked: boolean },
@@ -7044,9 +7060,7 @@ export function runCausalBacktest(
       },
     );
     const evaluations = snapshot.setupAnalysis.evaluations.filter((evaluation) => {
-      if (!enabledStrategies) return true;
-      const strategyId = canonicalStrategyId(evaluation.setupType);
-      return strategyId === null || enabledStrategies[strategyId] !== false;
+      return isVisualReviewEvaluationEnabled(evaluation.setupType, enabledStrategies ?? undefined);
     });
     const evaluationAudits = evaluations.map((evaluation) => {
       const record = auditForEvaluation(

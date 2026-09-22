@@ -15,6 +15,7 @@ import {
   applyHistoricalAccountPositionGate,
   reconcileOrbTrendTransitionPositionEvidence,
   deserializeDirectSetupEvidence,
+  isVisualReviewEvaluationEnabled,
   type IntrabarBar,
   type BacktestTrade,
   type BacktestAuditRecord,
@@ -27,6 +28,7 @@ import { DEFAULT_FUTURES_SESSION_CALENDAR, newYorkTimeToUtc } from "./futures/se
 import { consolidationThresholds, DEFAULT_STRATEGY_CONFIG } from "./strategy/config.js";
 import { getFuturesContractSpecification } from "./futures/contracts.js";
 import { RunBacktestBody } from "@workspace/api-zod";
+import type { VisualReviewStrategyToggles } from "./visual-validation-settings.js";
 
 test("causal active-position timestamps use one domain and release exactly at the exit boundary", () => {
   assert.equal(isCausalPositionActiveAt(100, 200, 99), false);
@@ -35,6 +37,36 @@ test("causal active-position timestamps use one domain and release exactly at th
   assert.equal(isCausalPositionActiveAt(100, 200, 200), false);
   assert.equal(isCausalPositionActiveAt(100, null, 10_000), true);
   assert.equal(isCausalPositionActiveAt(null, null, 100), false);
+});
+
+test("visual review toggles independently control canonical and Patience evaluators", () => {
+  const toggles = (orb: boolean, patience: boolean): VisualReviewStrategyToggles => ({
+    ORB_PULLBACK_CONTINUATION: orb,
+    EARLY_ORB_MOMENTUM_CONTINUATION: true,
+    CONSOLIDATION_BREAKOUT_CONTINUATION: true,
+    PATIENCE_CANDLE_CONTINUATION: patience,
+    EQUIVALENT_CANDLE_REVERSAL: true,
+    PEAK_RETRACEMENT_REVERSAL: true,
+  });
+
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_PULLBACK_CONTINUATION", toggles(true, false)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("PATIENCE_CANDLE_CONTINUATION", toggles(true, false)), false);
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_PULLBACK_CONTINUATION", toggles(false, true)), false);
+  assert.equal(isVisualReviewEvaluationEnabled("PATIENCE_CANDLE_CONTINUATION", toggles(false, true)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_PULLBACK_CONTINUATION", toggles(true, true)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("PATIENCE_CANDLE_CONTINUATION", toggles(true, true)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_PULLBACK_CONTINUATION", toggles(false, false)), false);
+  assert.equal(isVisualReviewEvaluationEnabled("PATIENCE_CANDLE_CONTINUATION", toggles(false, false)), false);
+
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_BREAK_PULLBACK_CONTINUATION", toggles(false, true)), false);
+  assert.equal(isVisualReviewEvaluationEnabled("ORB_BREAK_PULLBACK_CONTINUATION", toggles(true, false)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("STRONG_BREAKOUT_AFTER_CONSOLIDATION", toggles(true, false)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("STRONG_BREAKOUT_AFTER_CONSOLIDATION", {
+    ...toggles(true, false),
+    CONSOLIDATION_BREAKOUT_CONTINUATION: false,
+  }), false);
+  assert.equal(isVisualReviewEvaluationEnabled("UNRELATED_LEGACY_SETUP", toggles(false, false)), true);
+  assert.equal(isVisualReviewEvaluationEnabled("PATIENCE_CANDLE_CONTINUATION", undefined), true);
 });
 
 function gateCandidate(
@@ -1946,7 +1978,7 @@ test("a failed edge cannot become the canonical strategy for a confirmed P to E 
   assert.ok(patience);
   assert.equal(patience.edgeQualified, true);
   assert.equal(patience.strategyCandidate, "ORB_PULLBACK_CONTINUATION");
-  assert.deepEqual(patience.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+  assert.deepEqual(patience.matchedEdges, ["PATIENCE_CANDLE_CONTINUATION"]);
 });
 
 test("a confirmed sequence from only a failed edge is not projected as a trade candidate", () => {

@@ -789,6 +789,163 @@ test("pre-11:30 ORB continuation fixtures preserve exact long and short identity
   }
 });
 
+test("pre-11:30 fixtures apply independent ORB and Patience switches before canonical projection", () => {
+  const toggleCases = [
+    { label: "both enabled", orb: true, patience: true },
+    { label: "ORB enabled, Patience disabled", orb: true, patience: false },
+    { label: "ORB disabled, Patience enabled", orb: false, patience: true },
+    { label: "both disabled", orb: false, patience: false },
+  ] as const;
+
+  for (const direction of ["long", "short"] as const) {
+    for (const toggleCase of toggleCases) {
+      const fixture = orbContinuationProductionFixture(direction);
+      const request = {
+        ...fixture.request,
+        visualReviewEnabledStrategies: {
+          ...fixture.request.visualReviewEnabledStrategies,
+          ORB_PULLBACK_CONTINUATION: toggleCase.orb,
+          PATIENCE_CANDLE_CONTINUATION: toggleCase.patience,
+        },
+      };
+      const report = runCausalBacktest(request, undefined, fixture.dataset);
+      const expectedOccurrenceCount = direction === "long" ? 1 : 2;
+      const expectedQualifiedAuditCount = direction === "long" ? 69 : 33;
+      const expectedGrades = direction === "long" ? ["A+"] : ["A+", "A"];
+      const expectedQualifiedCount = toggleCase.orb || toggleCase.patience ? expectedOccurrenceCount : 0;
+      const expectedEnteredCount = expectedQualifiedCount > 0 ? 1 : 0;
+      const expectedBlockedCount = direction === "short" && expectedQualifiedCount > 0 ? 1 : 0;
+      const expectedEdges = toggleCase.orb && toggleCase.patience
+        ? ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]
+        : toggleCase.orb
+          ? ["ORB_PULLBACK_CONTINUATION"]
+          : toggleCase.patience
+            ? ["PATIENCE_CANDLE_CONTINUATION"]
+            : [];
+      const expectedSecondary = toggleCase.orb && toggleCase.patience
+        ? ["PATIENCE_CANDLE_CONTINUATION"]
+        : [];
+
+      const qualifiedOrbAudits = report.audit.filter((item) =>
+        item.setupType === "ORB_PULLBACK_CONTINUATION"
+        && item.direction === direction
+        && item.decision === "SETUP QUALIFIED",
+      );
+      const qualifiedPatienceAudits = report.audit.filter((item) =>
+        item.setupType === "PATIENCE_CANDLE_CONTINUATION"
+        && item.direction === direction
+        && item.decision === "SETUP QUALIFIED",
+      );
+      assert.equal(qualifiedOrbAudits.length, toggleCase.orb ? expectedQualifiedAuditCount : 0, `${direction} ${toggleCase.label} ORB audit count`);
+      assert.equal(qualifiedPatienceAudits.length, toggleCase.patience ? expectedQualifiedAuditCount : 0, `${direction} ${toggleCase.label} Patience audit count`);
+
+      const occurrences = report.occurrences.filter((item) =>
+        item.direction === direction
+        && item.status === "SIGNAL_CONFIRMED"
+        && item.strategyCandidate === "ORB_PULLBACK_CONTINUATION"
+        && (item.matchedEdges ?? []).some((edge) =>
+          edge === "ORB_PULLBACK_CONTINUATION" || edge === "PATIENCE_CANDLE_CONTINUATION"),
+      );
+      assert.equal(occurrences.length, expectedQualifiedCount, `${direction} ${toggleCase.label} occurrence count`);
+      assert.equal(new Set(occurrences.map((item) => item.occurrenceId)).size, occurrences.length);
+      assert.ok(occurrences.every((item) => item.primaryEdge === "ORB_PULLBACK_CONTINUATION"));
+      assert.ok(occurrences.every((item) => item.matchedEdges?.slice().sort().join("|") === expectedEdges.slice().sort().join("|")));
+      assert.ok(occurrences.every((item) => (item.secondaryStrategyMatches ?? []).slice().sort().join("|") === expectedSecondary.slice().sort().join("|")));
+
+      const candidates = report.tradeCandidates.filter((item) =>
+        occurrences.some((occurrence) => occurrence.occurrenceId === item.signalOccurrenceId),
+      );
+      assert.equal(candidates.length, expectedQualifiedCount, `${direction} ${toggleCase.label} candidate count`);
+      assert.equal(new Set(candidates.map((item) => item.candidateId)).size, candidates.length);
+      assert.deepEqual(
+        candidates.map((item) => item.accountEntryStatus),
+        direction === "long"
+          ? expectedQualifiedCount > 0 ? ["ENTERED"] : []
+          : expectedQualifiedCount > 0 ? ["ENTERED", "BLOCKED_ACTIVE_POSITION"] : [],
+      );
+      assert.equal(candidates.filter((item) => item.accountEntryStatus === "ENTERED").length, expectedEnteredCount);
+      assert.equal(candidates.filter((item) => item.accountEntryStatus === "BLOCKED_ACTIVE_POSITION").length, expectedBlockedCount);
+      assert.equal(report.trades.length, expectedEnteredCount, `${direction} ${toggleCase.label} modeled trade count`);
+      assert.ok(candidates.every((item) => item.primaryEdge === "ORB_PULLBACK_CONTINUATION"));
+      assert.ok(candidates.every((item) => item.matchedEdges.slice().sort().join("|") === expectedEdges.slice().sort().join("|")));
+      assert.deepEqual(candidates.map((item) => item.grade), expectedQualifiedCount > 0 ? expectedGrades : [], `${direction} ${toggleCase.label} setup grade`);
+
+      if (expectedEnteredCount === 0) {
+        const visualSet = buildHistoricalVisualValidationSetFromReport(
+          {
+            ...request,
+            source: "historical_databento",
+            reviewMode: "trades_and_diagnostics",
+          },
+          fixture.dataset,
+          {
+            symbol: report.symbol,
+            formulaHash: report.formulaHash,
+            executionMode: report.executionMode,
+            audit: report.audit,
+            trades: report.trades,
+            occurrences: report.occurrences,
+            tradeCandidates: report.tradeCandidates,
+          },
+        );
+        assert.equal(
+          visualSet.snapshots.filter((snapshot) =>
+            snapshot.category === "qualified_trade"
+            && (snapshot.machineEvidence.audit.setupType === "ORB_PULLBACK_CONTINUATION"
+              || snapshot.machineEvidence.audit.setupType === "PATIENCE_CANDLE_CONTINUATION"),
+          ).length,
+          0,
+          `${direction} ${toggleCase.label} must not create a qualified continuation Visual Review snapshot`,
+        );
+      }
+
+      for (const occurrence of occurrences) {
+        const matchingCandidates = candidates.filter((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+        assert.equal(matchingCandidates.length, 1, `${direction} ${toggleCase.label} occurrence must map to one candidate`);
+        const candidate = matchingCandidates[0]!;
+        const matchingTrades = report.trades.filter((item) =>
+          item.candidateId === candidate.candidateId
+          && item.signalOccurrenceId === occurrence.occurrenceId,
+        );
+        assert.equal(matchingTrades.length, candidate.accountEntryStatus === "ENTERED" ? 1 : 0);
+        if (candidate.accountEntryStatus === "ENTERED") {
+          const visualSet = buildHistoricalVisualValidationSetFromReport(
+            {
+              ...request,
+              source: "historical_databento",
+              reviewMode: "trades_and_diagnostics",
+            },
+            fixture.dataset,
+            {
+              symbol: report.symbol,
+              formulaHash: report.formulaHash,
+              executionMode: report.executionMode,
+              audit: report.audit,
+              trades: report.trades,
+              occurrences: report.occurrences,
+              tradeCandidates: report.tradeCandidates,
+            },
+          );
+          const visualSnapshots = visualSet.snapshots.filter((snapshot) =>
+            snapshot.category === "qualified_trade"
+            && snapshot.machineEvidence.trade?.candidateId === candidate.candidateId
+            && snapshot.machineEvidence.trade?.signalOccurrenceId === occurrence.occurrenceId,
+          );
+          assert.equal(visualSnapshots.length, 1, `${direction} ${toggleCase.label} candidate must have one Visual Review snapshot`);
+          assert.equal(visualSnapshots[0]?.machineEvidence.trade?.candidateId, candidate.candidateId);
+          assert.deepEqual(visualSnapshots[0]?.machineEvidence.trade?.matchedEdges?.slice().sort(), expectedEdges.slice().sort());
+          if (!toggleCase.patience) {
+            assert.notEqual(visualSnapshots[0]?.machineEvidence.audit.setupType, "PATIENCE_CANDLE_CONTINUATION");
+          }
+          if (!toggleCase.orb) {
+            assert.equal(visualSnapshots[0]?.machineEvidence.audit.setupType, "PATIENCE_CANDLE_CONTINUATION");
+          }
+        }
+      }
+    }
+  }
+});
+
 test("a reversal expires the real prior-epoch arm and pending candidate at the confirming boundary", () => {
   const source = generateSimulatedFuturesFeed(specification, {
     calendar,
