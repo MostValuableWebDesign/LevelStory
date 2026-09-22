@@ -811,7 +811,7 @@ test("Phase 3 uses the patience eligibility rule for continuation P evidence", (
       causalEvidence: orbEvidence({
         sourceEdge: "PATIENCE_CANDLE_CONTINUATION",
         ruleEvidence: [
-          "PASS confirmedTrend: trend confirmed",
+          "PASS causalDirection: causal direction confirmed",
           "PASS continuationContext: continuation context",
           "PASS patienceEligible: valid P candle",
           "PASS immediateTrigger: immediate E reached buffer",
@@ -874,7 +874,7 @@ test("Phase 3 selects merged edge evidence by exact source edge in either audit 
     sourceAuditId: "audit-patience",
     sourceEdge: "PATIENCE_CANDLE_CONTINUATION",
     ruleEvidence: [
-      "PASS confirmedTrend: trend confirmed",
+      "PASS causalDirection: causal direction confirmed",
       "PASS continuationContext: continuation context",
       "PASS patienceEligible: valid P candle",
       "PASS immediateTrigger: immediate E reached buffer",
@@ -895,7 +895,7 @@ test("Phase 3 selects merged edge evidence by exact source edge in either audit 
     const orb = signals.edgePredicates.ORB_PULLBACK_CONTINUATION
       .find((item) => item.predicateName === "finalized_orb_or_ntz");
     const patience = signals.edgePredicates.PATIENCE_CANDLE_CONTINUATION
-      .find((item) => item.predicateName === "confirmed_15m_trend");
+      .find((item) => item.predicateName === "causal_direction");
     assert.equal(orb?.sourceAuditId, "audit-orb");
     assert.equal(orb?.result, "PASS");
     assert.equal(patience?.sourceAuditId, "audit-patience");

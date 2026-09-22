@@ -1446,8 +1446,9 @@ export type HistoricalReplayDiagnostics = {
   eligibleLevelInteractions: number;
   bullishPatienceShapesBeforeQualification: number;
   bearishPatienceShapesBeforeQualification: number;
-  orbDirectionShapes: number;
-  trendDirectionShapes: number;
+  orbTrendDirectionShapes: number;
+  orbBreakoutDirectionShapes: number;
+  uploadedChartDirectionShapes: number;
   shapesWithoutStrategyDirection: number;
   signalConfirmed: number;
   structuralInvalidations: number;
@@ -2518,8 +2519,9 @@ export function historicalReplayDiagnostics(
     eligibleLevelInteractions: rawPullbackEvents,
     bullishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "long").length,
     bearishPatienceShapesBeforeQualification: patience.filter((item) => item.candidateShapeResult === true && item.direction === "short").length,
-    orbDirectionShapes: patience.filter((item) => item.directionSource === "ORB_BREAKOUT" || item.directionSource === "CONSOLIDATION_BREAKOUT").length,
-    trendDirectionShapes: patience.filter((item) => item.directionSource === "CONFIRMED_15M_TREND").length,
+    orbTrendDirectionShapes: patience.filter((item) => item.directionSource === "ORB_TREND").length,
+    orbBreakoutDirectionShapes: patience.filter((item) => item.directionSource === "ORB_BREAKOUT" || item.directionSource === "CONSOLIDATION_BREAKOUT").length,
+    uploadedChartDirectionShapes: patience.filter((item) => item.directionSource === "UPLOADED_CHART_DIRECTION").length,
     shapesWithoutStrategyDirection: audits.filter((record) => record.patienceCandle !== null && record.direction === null).length,
     immediateConfirmationFailures: canonicalPatience.filter((item) => item.status === "IMMEDIATE_CONFIRMATION_FAILED").length,
     signalConfirmed: confirmedPatience.length,
@@ -3861,7 +3863,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
   }
   if (value.kind === "patience") {
     return occurrenceId([
-      "historical-patience-occurrence-v5-epoch-and-direction-source-identity",
+       "historical-patience-occurrence-v6-causal-direction-source-identity",
       value.sourceFingerprint,
       value.formulaHash,
       value.formulaVersion,
@@ -4765,6 +4767,7 @@ export function buildHistoricalOccurrenceLedger(
         record.tradingDate,
         record.contractSymbol,
         patience.direction,
+         patience.directionSource ?? "no-direction-source",
          patience.orbTrendEpochId ?? record.orbTrendEpochId ?? "no-orb-epoch",
         patience.eligibilityArmId ?? "no-arm",
         pOpenTimestamp ?? "invalid",

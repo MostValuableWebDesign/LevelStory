@@ -103,6 +103,7 @@ export type UploadedChartCandidate = {
   candidateId: string;
   source: "uploaded_chart";
   direction: Direction;
+  directionSource: "UPLOADED_CHART_DIRECTION";
   primaryEdge: "PATIENCE_CANDLE_CONTINUATION";
   matchedEdges: string[];
   supportingConfluences: string[];
@@ -146,7 +147,7 @@ export type UploadedChartEvaluation = {
 };
 
 const MODEL_VERSION = "gpt-5.4-mini";
-const FORMULA_VERSION = "phase5-uploaded-chart-v2-fixed-eight-tick-target";
+const FORMULA_VERSION = "phase5-uploaded-chart-v3-explicit-uploaded-direction";
 
 export function imageChecksum(bytes: Buffer): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");
@@ -263,7 +264,7 @@ export function evaluateUploadedChart(
   const engine = patienceCandleEngine(normalized.slice(0, entryIndexValue + 1), direction, {
     eligibilityEvents: [{ time: patience.openTime, reason: "pullback", detail: "Uploaded chart marked a qualifying pullback context." }],
     trend,
-    directionSource: "CONFIRMED_15M_TREND",
+    directionSource: "UPLOADED_CHART_DIRECTION",
     tickSize: 0.25,
     finalizedNtz: ntzHigh !== null && ntzLow !== null ? { high: ntzHigh, low: ntzLow, complete: true } : null,
     requireFinalizedNtz: ntzHigh !== null && ntzLow !== null,
@@ -308,6 +309,7 @@ export function evaluateUploadedChart(
     candidateId: `uploaded:${checksum.slice(0, 20)}:${entry.openTime}`,
     source: "uploaded_chart",
     direction,
+    directionSource: "UPLOADED_CHART_DIRECTION",
     primaryEdge: "PATIENCE_CANDLE_CONTINUATION",
     matchedEdges: [],
     supportingConfluences: extraction.rules.filter((rule) => rule.status === "pass" && !rule.mandatory).map((rule) => rule.name),

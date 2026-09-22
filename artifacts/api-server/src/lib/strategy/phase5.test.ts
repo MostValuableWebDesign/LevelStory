@@ -6,10 +6,11 @@ import {
   earlyOrbMomentumPatienceAnalysis,
   isPatienceCandleOutsideNtz,
   isStrictlyOutsideNtz,
-  patienceCandleEngine,
+  patienceCandleEngine as rawPatienceCandleEngine,
   patienceArmLifecycleTransitions,
-  phase5PatienceAnalysis,
+  phase5PatienceAnalysis as rawPhase5PatienceAnalysis,
   type PatienceEligibilityEvent,
+  type PatienceEngineOptions,
   type PatienceOccurrence,
 } from "./phase5.js";
 import type { PullbackAnalysis } from "./phase4.js";
@@ -34,6 +35,54 @@ function candle(index: number, open: number, high: number, low: number, close: n
 
 function eligibility(time = FIVE_MINUTES): PatienceEligibilityEvent[] {
   return [{ time, reason: "pullback", detail: "Retest reached a qualifying level." }];
+}
+
+function patienceCandleEngine(
+  candles: readonly Candle[],
+  direction: "long" | "short",
+  options: PatienceEngineOptions = {},
+) {
+  return rawPatienceCandleEngine(candles, direction, {
+    directionSource: "ORB_BREAKOUT",
+    ...options,
+  });
+}
+
+function phase5PatienceAnalysis(
+  ...args: Parameters<typeof rawPhase5PatienceAnalysis>
+) {
+  const [
+    candles,
+    direction,
+    pullback,
+    ntz,
+    ntzEvents,
+    minimumEligibilityTime,
+    trend,
+    tickSize,
+    entryBufferTicks,
+    stopBufferTicks,
+    allowOpposingTrend,
+    directionSource,
+    orbTrend,
+    orbTrendEpochId,
+  ] = args;
+  return rawPhase5PatienceAnalysis(
+    candles,
+    direction,
+    pullback,
+    ntz,
+    ntzEvents,
+    minimumEligibilityTime,
+    trend,
+    tickSize,
+    entryBufferTicks,
+    stopBufferTicks,
+    allowOpposingTrend,
+    directionSource ?? "ORB_BREAKOUT",
+    orbTrend,
+    orbTrendEpochId,
+  );
 }
 
 function reversalOrbTrend(confirmingCandle: Candle): OrbTrendAnalysis {
@@ -815,17 +864,19 @@ test("a one-tick-short long and short excursion cannot confirm the governed buff
   assert.equal(short.entryBufferPrice, 9);
 });
 
-test("generic continuation still requires a confirmed trend, but records the examined shape", () => {
-  const neutral = patienceCandleEngine(setup("long", candle(2, 10.8, 10.9, 10.1, 10.7)), "long", {
+test("continuation without a causal source fails closed while recording no direction", () => {
+  const neutral = rawPatienceCandleEngine(setup("long", candle(2, 10.8, 10.9, 10.1, 10.7)), "long", {
     eligibilityEvents: eligibility(),
     trend: "neutral",
+    directionSource: null,
   });
-  const opposingShape = patienceCandleEngine([
+  const opposingShape = rawPatienceCandleEngine([
     candle(0, 10, 12, 8, 10.5),
     candle(1, 10.5, 13, 9, 12),
-  ], "long", { eligibilityEvents: eligibility() });
+  ], "long", { eligibilityEvents: eligibility(), directionSource: null });
   assert.equal(neutral.state, "PATIENCE_TREND_MISMATCH");
-  assert.match(neutral.detail, /WAITING — TREND UNCLEAR/);
+  assert.match(neutral.detail, /No causal direction source/);
+  assert.equal(neutral.direction, undefined);
   assert.equal(neutral.occurrences?.length ?? 0, 0);
   assert.equal(opposingShape.state, "PATIENCE_TREND_MISMATCH");
 });
@@ -853,7 +904,7 @@ test("ORB-directed bullish patience qualifies through an opposing 15-minute tren
 });
 
 test("generic continuation does not qualify without a causal direction", () => {
-  const result = phase5PatienceAnalysis(
+  const result = rawPhase5PatienceAnalysis(
     setup("long", candle(2, 10.8, 12.1, 10.2, 12)),
     null,
     { status: "observed", events: [], evaluatedCandles: 2, maxCandles: 6, maxDurationMinutes: 30, elapsedMinutes: 5, proximityTolerance: 0.5, atr14: 1, qualifyingLevelCount: 1, detail: "observed" },

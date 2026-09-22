@@ -104,7 +104,7 @@ export type PatienceDirectionSource =
   | "ORB_TREND"
   | "CONSOLIDATION_BREAKOUT"
   | "EQUIVALENT_REVERSAL"
-  | "CONFIRMED_15M_TREND";
+  | "UPLOADED_CHART_DIRECTION";
 
 export type PatienceOccurrenceQualification =
   | "PATIENCE_SHAPE_FOUND"
@@ -217,7 +217,7 @@ export type PatienceAnalysis = {
   state: PatienceState;
   /** The direction this patience engine evaluated, independent of the established continuation trend. */
   direction?: Direction;
-  directionSource?: PatienceDirectionSource;
+  directionSource?: PatienceDirectionSource | null;
   eligible: boolean;
   eligibilityReason: PatienceEligibilityReason | null;
   eligibilityTime: number | null;
@@ -248,7 +248,7 @@ export type PatienceEngineOptions = {
   stopBufferTicks?: number;
   validContext?: boolean;
   allowOpposingTrend?: boolean;
-  directionSource?: PatienceDirectionSource;
+  directionSource?: PatienceDirectionSource | null;
   orbTrend?: OrbTrendAnalysis;
   orbTrendEpochId?: string | null;
   finalizedNtz?: NtzRange | null;
@@ -300,14 +300,15 @@ export function patienceCandleEngine(
   const entryBufferTicks = options.entryBufferTicks ?? PATIENCE_ENTRY_BUFFER_TICKS;
   const stopBufferTicks = options.stopBufferTicks ?? DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks;
   const allowOpposingTrend = options.allowOpposingTrend ?? false;
-  const directionSource = options.directionSource ?? "CONFIRMED_15M_TREND";
-  const trendRequired = directionSource === "CONFIRMED_15M_TREND";
-  const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => ({ ...analysis, direction, directionSource });
+  const directionSource = options.directionSource ?? null;
+  const withDirection = (analysis: PatienceAnalysis): PatienceAnalysis => directionSource
+    ? { ...analysis, direction, directionSource }
+    : { ...analysis, direction: undefined, directionSource: null };
   validateBuffers(tickSize, entryBufferTicks, stopBufferTicks);
   const validContext = options.validContext ?? eligibility.length > 0;
   if (!validContext) return withDirection(waiting("WAITING_FOR_VALID_CONTEXT", "No valid pullback or consolidation context has been recorded.", trend, entryBufferTicks, stopBufferTicks));
   if (!eligibility.length) return withDirection(waiting("WAITING_FOR_LEVEL", "Valid pullback/consolidation context exists; waiting for a qualifying level interaction.", trend, entryBufferTicks, stopBufferTicks));
-  if (trend === "neutral" && trendRequired) return withDirection(waiting("PATIENCE_TREND_MISMATCH", "WAITING — TREND UNCLEAR. A bullish or bearish 15-minute trend is required.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
+  if (!directionSource) return withDirection(waiting("PATIENCE_TREND_MISMATCH", "No causal direction source is available for continuation patience.", trend, entryBufferTicks, stopBufferTicks, eligibility.at(-1)));
   const latestEligibility = eligibility.at(-1)!;
   const candidateIndexes = completed
     .map((candle, index) => {
@@ -337,7 +338,6 @@ export function patienceCandleEngine(
     entryBufferTicks,
     stopBufferTicks,
     allowOpposingTrend,
-    trendRequired,
     options.finalizedNtz,
     options.requireFinalizedNtz,
     options.entryCutoffMinutes,
@@ -392,7 +392,6 @@ export function patienceCandleEngine(
     if (!previous) return finalize(waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, candidate.event));
     const event = candidate.event!;
     const shapeValid = patienceShape(candidate.candle, previous, direction);
-    const trendValid = !trendRequired || allowOpposingTrend || directionTrendMatches(direction, trend);
     if (!isPatienceCandleOutsideNtz(candidate.candle, direction, options.finalizedNtz, options.requireFinalizedNtz)) {
       return finalize({
         ...baseAnalysis("PATIENCE_CANDLE_EXPIRED", true, event, trend, entryBufferTicks, stopBufferTicks),
@@ -402,15 +401,13 @@ export function patienceCandleEngine(
         detail: "PATIENCE_CANDLE_INSIDE_FINALIZED_NTZ",
       });
     }
-    if (!trendValid || !shapeValid) {
+    if (!shapeValid) {
       return finalize({
         ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),
         patienceCandle: snapshot(candidate.candle),
         stateTime: candidate.candle.closeTime,
-        detail: !trendValid
-          ? `${direction === "long" ? "Bullish" : "Bearish"} patience requires the established ${direction === "long" ? "bullish" : "bearish"} 15-minute trend; current trend is ${trend}.`
-          : `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
+        detail: `Opposing patience shape rejected: ${direction === "long" ? "candidate high must be less than or equal to the preceding high" : "candidate low must be greater than or equal to the preceding low"}. It may feed reversal analysis, not continuation patience.`,
       });
     }
     const next = sorted.find((candle) => candle.openTime > candidate.candle.openTime);
@@ -519,7 +516,7 @@ export function phase5PatienceAnalysis(
   entryBufferTicks = PATIENCE_ENTRY_BUFFER_TICKS,
   stopBufferTicks = DEFAULT_STRATEGY_CONFIG.patienceStopBufferTicks,
   allowOpposingTrend = false,
-  directionSource: PatienceDirectionSource = "CONFIRMED_15M_TREND",
+  directionSource: PatienceDirectionSource | null = null,
   orbTrend?: OrbTrendAnalysis,
   orbTrendEpochId?: string | null,
 ): PatienceAnalysis {
@@ -1030,7 +1027,6 @@ function buildPatienceOccurrences(
   entryBufferTicks: number,
   stopBufferTicks: number,
   allowOpposingTrend: boolean,
-  trendRequired: boolean,
   finalizedNtz: NtzRange | null | undefined,
   requireFinalizedNtz = false,
   entryCutoffMinutes?: number,
@@ -1161,15 +1157,7 @@ function buildPatienceOccurrences(
     let analysis: PatienceAnalysis;
     if (!previous) {
       analysis = waiting("WAITING_FOR_PATIENCE_CANDLE", "Waiting for a preceding completed candle.", trend, entryBufferTicks, stopBufferTicks, event);
-      } else if (trendRequired && !allowOpposingTrend && !directionTrendMatches(direction, trend)) {
-      analysis = {
-        ...baseAnalysis("PATIENCE_TREND_MISMATCH", true, event, trend, entryBufferTicks, stopBufferTicks),
-        previousCandle: snapshot(previous),
-        patienceCandle: snapshot(candidate.candle),
-        stateTime: candidate.candle.closeTime,
-        detail: "The detected patience candle is not aligned with the continuation trend.",
-      };
-    } else if (!nextObserved) {
+      } else if (!nextObserved) {
       analysis = {
         ...baseAnalysis("PATIENCE_CANDLE_VALID", true, event, trend, entryBufferTicks, stopBufferTicks),
         previousCandle: snapshot(previous),

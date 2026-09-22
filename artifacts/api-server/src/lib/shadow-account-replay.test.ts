@@ -652,7 +652,12 @@ test("replays a Strong gap-open trade with bound deterministic chronology", () =
         activationTimestamp: new Date(entryOpen).toISOString(),
         stopHitTimestamp: new Date(exitOpen).toISOString(),
       },
-      causalIdentity: { canonicalFrozenZoneIdentity },
+      causalIdentity: {
+        signalOccurrenceId: `occurrence-${candidateId}`,
+        eligibilityArmId: null,
+        activeConsolidationZoneId: null,
+        canonicalFrozenZoneIdentity,
+      },
       executionChronologyMode: "DETERMINISTIC_CANDLE_OPEN",
       executionChronology: chronology,
       exitReason: "CONSOLIDATION_MIDPOINT_REENTRY_STOP",
@@ -701,7 +706,7 @@ test("replays a Strong gap-open trade with bound deterministic chronology", () =
   assert.equal(replay.rejectedCandidates.length, 0);
   assert.equal(replay.ledger[0]?.exitTime, sourceTrade.exitTime);
   assert.equal(replay.ledger[0]?.exitPrice, sourceTrade.exitPrice);
-  assert.equal(replay.ledger[0]?.outcome, "strategy stop");
+  assert.equal(replay.ledger[0]?.exitReason, "CONSOLIDATION_MIDPOINT_REENTRY_STOP");
 });
 
 test("aggregates authoritative trades across dates with carried balance and zero-trade coverage", () => {

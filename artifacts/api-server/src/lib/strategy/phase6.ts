@@ -413,15 +413,11 @@ export function evaluateEarlyOrbMomentumContinuation(context: Phase6Context): Se
 }
 
 export function evaluatePatienceCandleContinuation(context: Phase6Context): SetupEvaluation {
-  const direction = context.patience.directionSource === "ORB_TREND"
-    ? context.patience.direction ?? null
-    : directionFromTrend(context.trend.direction);
+  const direction = context.patience.direction ?? null;
   const valid = context.patience.eligible && context.patience.patienceCandle !== null;
-  const confirmedTrend = context.patience.directionSource === "ORB_TREND"
-    ? direction !== null
-    : hasConfirmedTrend(context, direction);
+  const causalDirection = hasCausalContinuationDirection(context, direction);
   const rules = [
-    rule("confirmedTrend", context.patience.directionSource === "ORB_TREND" ? "Confirmed causal ORB directional trend" : "Confirmed causal 15-minute directional trend", confirmedTrend, confirmedTrend ? "Confirmed causal trend evidence is available." : "TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED."),
+    rule("causalDirection", "Confirmed causal continuation direction", causalDirection, causalDirection ? `The ${context.patience.directionSource} direction was available at the patience candle.` : "No valid causal ORB trend or non-failed breakout direction was available when the patience candle became eligible."),
     rule("continuationContext", "Qualifying continuation context", hasQualifyingPullback(context.pullback), "A qualifying pullback to a machine-visible level is required."),
     rule("patienceEligible", "Patience candle is eligible", valid, context.patience.detail),
     rule("immediateTrigger", "Immediate next candle reached the confirmation buffer", context.patience.state === "ENTRY_TRIGGERED", context.patience.detail),
@@ -691,6 +687,7 @@ export function evaluatePeakRetracementReversal(context: Phase6Context): SetupEv
       ? "long"
       : null;
   const counterTrendDirection = direction !== null
+    && hasConfirmedTrend(context, direction === "short" ? "long" : "short")
     && ((context.trend.direction === "bullish" && direction === "short")
       || (context.trend.direction === "bearish" && direction === "long"));
   const rules: SetupRuleEvidence[] = [
@@ -1369,6 +1366,30 @@ function pullbackVolumePassed(volume: Phase4VolumeAnalysis): boolean {
     && volume.breakoutVolume !== null
     && volume.pullbackAverageVolume <= volume.breakoutVolume
     && (volume.pullbackToRecentRatio === null || volume.pullbackToRecentRatio < 1.5);
+}
+
+function hasCausalContinuationDirection(context: Phase6Context, direction: Direction | null): boolean {
+  const source = context.patience.directionSource;
+  const patienceCandle = context.patience.patienceCandle;
+  if (!direction || !source || !patienceCandle || !["ORB_TREND", "ORB_BREAKOUT"].includes(source)) return false;
+  const occurrence = context.patience.occurrences?.find((item) =>
+    item.patienceCandle.openTime === patienceCandle.openTime,
+  );
+  if (!occurrence || occurrence.direction !== direction || occurrence.directionSource !== source) return false;
+  if (source === "ORB_BREAKOUT") {
+    return context.breakout.detected
+      && !context.breakout.failed
+      && context.breakout.direction === direction
+      && typeof context.breakout.time === "number"
+      && Number.isFinite(context.breakout.time)
+      && context.breakout.time <= patienceCandle.openTime;
+  }
+  const orbTrend = context.orbTrend;
+  if (!orbTrend || orbTrend.trendDirectionAt(patienceCandle.openTime) !== direction) return false;
+  const occurrenceEpoch = occurrence.orbTrendEpochId;
+  return occurrenceEpoch === null || occurrenceEpoch === undefined
+    ? true
+    : orbTrend.epochIdAt(patienceCandle.openTime) === occurrenceEpoch;
 }
 
 function trendAgrees(direction: Direction, trend: TrendDirection): boolean {

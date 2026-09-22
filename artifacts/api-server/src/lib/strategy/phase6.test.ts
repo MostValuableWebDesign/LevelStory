@@ -9,6 +9,7 @@ import {
   evaluateStrongBreakoutAfterConsolidation,
   evaluateExtendedNtzConsolidationBreakout,
   evaluateOrbBreakPullbackContinuation,
+  evaluatePatienceCandleContinuation,
   evaluateEarlyOrbMomentumContinuation,
   hasEquivalentOpposingCandles,
   isDoji,
@@ -226,6 +227,61 @@ test("peak retracement reversal must be counter-trend", () => {
   assert.equal(result.rules.find((rule) => rule.key === "counterTrendDirection")?.passed, false);
   assert.notEqual(result.decision, "SETUP QUALIFIED");
   assert.equal(result.mandatoryPassed, false);
+});
+
+test("peak retracement reversal rejects a directional label without full trend confirmation", () => {
+  const result = evaluatePeakRetracementReversal(baseContext({
+    trend: {
+      ...baseContext().trend,
+      direction: "bullish",
+      score: 4,
+      candleCount: 8,
+    },
+    reversalPatience: {
+      ...patience("ENTRY_TRIGGERED", "bearish", "short"),
+      triggerCandle: { openTime: 3, closeTime: 4, open: 9.1, high: 9.2, low: 8.5, close: 8.6, isComplete: true },
+    },
+  }));
+  assert.equal(result.rules.find((rule) => rule.key === "counterTrendDirection")?.passed, false);
+  assert.match(result.rules.find((rule) => rule.key === "counterTrendDirection")?.detail ?? "", /does not oppose/i);
+});
+
+test("peak retracement reversal accepts only a fully confirmed opposing trend", () => {
+  const result = evaluatePeakRetracementReversal(baseContext({
+    fibonacci: {
+      ...baseContext().fibonacci,
+      direction: "bearish",
+    },
+    trend: {
+      ...baseContext().trend,
+      direction: "bearish",
+      structure: "lower highs / lower lows",
+      score: -5,
+      evidenceItems: [
+        { key: "structure", status: "negative" },
+        { key: "vwap", status: "negative" },
+        { key: "ema", status: "negative" },
+        { key: "emaSlope", status: "negative" },
+      ],
+    },
+    reversalPatience: {
+      ...patience("ENTRY_TRIGGERED", "bullish", "long"),
+      triggerCandle: { openTime: 3, closeTime: 4, open: 9.1, high: 9.2, low: 8.5, close: 8.6, isComplete: true },
+    },
+  }));
+  assert.equal(result.rules.find((rule) => rule.key === "counterTrendDirection")?.passed, true);
+});
+
+test("patience continuation cannot qualify from generic trend context without a causal source", () => {
+  const result = evaluatePatienceCandleContinuation(baseContext({
+    patience: {
+      ...patience("ENTRY_TRIGGERED", "bullish", "long"),
+      direction: "long",
+      directionSource: null,
+    },
+  }));
+  assert.equal(result.rules.find((rule) => rule.key === "causalDirection")?.passed, false);
+  assert.notEqual(result.decision, "SETUP QUALIFIED");
 });
 
 test("early ORB momentum qualifies without pullback or trend evidence", () => {

@@ -5,7 +5,7 @@ import { KEY_LEVEL_TARGET_PLAN_VERSION } from "./strategy/key-level-targets.js";
 import { DYNAMIC_TARGET_UPDATE_CALCULATION_VERSION } from "./strategy/ohlcv-execution.js";
 import { CONSOLIDATION_MIDPOINT_STOP_CALCULATION_VERSION } from "./strategy/consolidation-midpoint-stop.js";
 
-export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.21-bound-chronology-evidence";
+export const FIXED_FORMULA_VERSION = "phase9-fixed-formula-v23.22-causal-direction-sources";
 
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
@@ -35,6 +35,7 @@ export function formulaConfiguration(
       directConsolidationEntryFormula: "long=frozen-zone-high-plus-eight-ticks; short=frozen-zone-low-minus-eight-ticks",
       directConsolidationTrendAuthorization: "require causal ORB trend at the setup candle, or an independently established breakout direction; never infer from the crossing or current evaluation trend",
       directConsolidationConflictHandling: "conflicting causal trend or crossing identity evidence fails closed and remains rejected for the full projection",
+      continuationDirectionAuthorization: "non-Peak continuation direction must come from an active causal ORB trend or a valid non-failed breakout; generic confirmed 15-minute trend is diagnostic only",
       noFutureData: true,
       noParameterOptimization: true,
       patienceEntryBufferTicks: config.patienceEntryBufferTicks,

@@ -674,22 +674,17 @@ export function createMarketSnapshot(
   const price = current?.close ?? 0;
   const previousClose = levels.previousDayClose ?? Number((price - specification.tickSize * 4).toFixed(2));
   const trend = trendEvidence(regular, levels, config);
-  const trendDirection: Direction | null = trend.direction === "bullish"
-    ? "long"
-    : trend.direction === "bearish"
-      ? "short"
-      : null;
   // A failed ORB reclaim must not continue to project the stale breakout
-  // direction into Phase 5. The independent 15-minute trend may still be
-  // displayed and evaluated through its own continuation path.
+  // direction into Phase 5. The independent 15-minute trend remains
+  // diagnostic context and is reserved for Peak Retracement Reversal.
   const breakoutDirection = executableBreakout.detected && !executableBreakout.failed ? executableBreakout.direction : null;
   const orbTrendDirection = orbTrend.direction;
-  const patienceDirection = orbTrendDirection ?? breakoutDirection ?? trendDirection;
+  const patienceDirection = orbTrendDirection ?? breakoutDirection ?? null;
   const patienceDirectionSource = orbTrendDirection
     ? "ORB_TREND" as const
     : breakoutDirection
       ? "ORB_BREAKOUT" as const
-      : "CONFIRMED_15M_TREND" as const;
+      : null;
   const patience = phase5PatienceAnalysis(
     regular,
     patienceDirection,

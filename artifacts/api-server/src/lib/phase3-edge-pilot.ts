@@ -640,7 +640,7 @@ const EDGE_PREDICATE_NAMES: Record<Phase3Edge, string[]> = {
     "e_completed_before_cutoff",
   ],
   PATIENCE_CANDLE_CONTINUATION: [
-    "confirmed_15m_trend",
+    "causal_direction",
     "valid_continuation_context",
     "valid_p_candle",
     "immediate_e_confirmation_buffer",
@@ -777,7 +777,7 @@ function edgePredicatesForOccurrence(occurrence: HistoricalOccurrence): Record<P
       map.permitted_level_within_tolerance = edgeEvidence("permitted_level_within_tolerance", "levelContext");
     } else if (edge === "PATIENCE_CANDLE_CONTINUATION") {
       map.valid_p_candle = edgeEvidence("valid_p_candle", "patienceEligible");
-      map.confirmed_15m_trend = edgeEvidence("confirmed_15m_trend", "confirmedTrend");
+      map.causal_direction = edgeEvidence("causal_direction", "causalDirection");
       map.valid_continuation_context = edgeEvidence("valid_continuation_context", "continuationContext");
     } else if (edge === "CONSOLIDATION_BREAKOUT_CONTINUATION") {
       map.valid_p_candle = edgeEvidence("valid_p_candle", "validPatienceNearLevel");
