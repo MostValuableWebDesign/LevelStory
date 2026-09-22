@@ -1,0 +1,202 @@
+Repair the remaining authoritative profit-target, 1R fallback, replay, display, and P/L defects for LevelStory continuation trades.
+
+The current implementation has the correct raw key-level search rule, but it is not production-complete. Preserve the existing strategy qualification, entry, stop, causal evidence, account-position, chronology, and dynamic-target behavior unless a change is explicitly required below.
+
+Required target behavior
+
+1. Freeze the eligible key levels and indicators using only information available at the completed entry-evidence boundary.
+
+2. Measure each raw level from the authoritative entry threshold before applying the near-side target buffer.
+
+3. A raw forward level is eligible only when its directional distance is:
+
+   distance > 5.00 points
+   distance <= 20.00 points
+
+   Exact boundaries:
+
+   - 5.00 points: skip
+   - 5.25 points: eligible
+   - 20.00 points: eligible
+   - 20.25 points: skip
+
+4. Select the nearest eligible forward level.
+
+5. Place every selected key-level or indicator target 8 MES ticks, or 2.00 points, on the entry-facing side:
+
+   Long:
+   executable target = raw level - 2.00
+
+   Short:
+   executable target = raw level + 2.00
+
+6. Do not reject an otherwise eligible level because its buffered executable target is below 1R. The 1R fallback applies only when no raw forward level satisfies the greater-than-5 and less-than-or-equal-to-20 point rule.
+
+Patience-based 1R fallback
+
+For a continuation trade with an actual frozen patience candle and no eligible key level:
+
+- Use the actual modeled entry fill, including a valid gap fill and configured entry slippage.
+- Use the raw adverse patience wick without the strategy-stop buffer.
+- Never use the strategy stop or catastrophe stop to calculate this 1R profit target.
+
+Long:
+
+risk = actual modeled fill - raw patience low
+target = actual modeled fill + risk
+
+Short:
+
+risk = raw patience high - actual modeled fill
+target = actual modeled fill - risk
+
+Normalize the resulting target to the MES tick size.
+
+The strategy and catastrophe stops remain independent loss barriers. They must not alter the patience-wick 1R target.
+
+Direct strategies without a patience candle
+
+Do not fabricate a patience candle or silently remove profit management from direct continuation strategies such as Strong Breakout After Consolidation.
+
+When a strategy legitimately has no patience candle:
+
+- preserve its existing governed structural-risk fallback behavior;
+- use its strategy-specific authoritative risk anchor;
+- do not produce a null target that leaves the trade open until session close merely because `oneRRiskAnchorPrice` is absent;
+- keep the direct strategy’s existing midpoint-stop, entry-candle chronology, and frozen-zone rules intact.
+
+Repair the currently failing direct-strategy production integration fixture. Both long and short direct-strategy fixtures must still produce their expected target or governed midpoint-stop exit.
+
+Authoritative plan consistency
+
+Create one finalized target plan after the actual modeled entry fill is known.
+
+For a patience-wick 1R fallback, the finalized plan must consistently contain:
+
+- `entryPrice` equal to the actual modeled fill
+- `oneRRiskAnchorType = PATIENCE_WICK`
+- `oneRRiskAnchorPrice` equal to the raw adverse patience wick
+- `initialRiskPoints` equal to the actual-fill-to-patience-wick distance
+- `targetPrice` equal to the fill-based 1R target
+- `targetDistanceTicks` based on that same risk
+- `targetR = 1`
+- `fallbackUsed = true`
+- `fallbackReason = ONE_R_FALLBACK_NO_ELIGIBLE_LEVEL`
+
+Do not retain a stop-based `initialRiskPoints` value inside a patience-wick fallback plan.
+
+Propagate the same finalized plan through:
+
+- candidate
+- candidate management context
+- authoritative trade
+- trade audit
+- candidate execution evidence
+- Visual Review snapshot
+- immutable shadow-account replay
+- account ledger
+- displayed target and R values
+- trade outcome and P/L
+
+Shadow replay repair
+
+The shadow replay currently rebuilds the fallback plan from the prefill entry threshold and returns it unchanged even when execution gets a different modeled fill.
+
+After `simulateOhlcvExecution` establishes the modeled fill:
+
+1. Finalize the fallback target plan from that modeled fill.
+2. Use the finalized plan for both `trade.targetPlan` and `trade.audit.targetPlan`.
+3. Require these values to agree:
+
+   trade.targetPlan.entryPrice
+   trade.targetPlan.targetPrice
+   trade.audit.targetPlan.entryPrice
+   trade.audit.targetPlan.targetPrice
+   trade.audit.targetPrice
+   execution.targetPrice
+   execution.audit.oneRPrice
+   execution.audit.profitCheckpointPrice
+
+A gap fill or slippage must not leave a stale threshold-based target plan beside fill-based execution or P/L.
+
+Display and explanation repair
+
+The Visual Review inspector currently reconstructs “1R” from stop-based `targetPlan.initialRiskPoints`.
+
+For a patience-wick fallback:
+
+- display entry as the actual modeled fill;
+- display risk as the fill-to-patience-wick distance;
+- display the patience wick as the 1R anchor;
+- display the same target used by execution;
+- do not label patience-wick risk as “entry / stop risk”;
+- if stop risk is still displayed, show it separately and clearly label it as stop risk.
+
+Remove or update every explanation that says the no-level fallback uses the “initial-stop 1R distance.” The authoritative explanation must say that the fallback is calculated from the actual modeled fill to the raw adverse patience wick.
+
+Screenshot regression
+
+Add a production-chain regression for the reported MES short:
+
+- authoritative entry/fill: 5763.75
+- EMA 200: 5755.75
+- premarket low: 5749.75
+- actual post-entry low: 5755.25
+- direction: short
+- tick size: 0.25
+
+Expected result:
+
+- EMA 200 raw distance = 8.00 points, so it is eligible.
+- Premarket low is farther away, so EMA 200 is selected first.
+- Executable target = 5755.75 + 2.00 = 5757.75.
+- The low of 5755.25 crosses 5757.75, so the target must execute.
+- The trade must be recorded as a profitable target exit rather than a strategy-stop loss.
+- For one MES contract with zero modeled exit slippage, gross P/L must be calculated from 5763.75 to 5757.75: 6.00 points × $5.00 = $30.00 before fees.
+- Net P/L must use the existing authoritative fee and slippage configuration.
+- The displayed target, trade audit, execution leg, account ledger, outcome, and P/L must all agree.
+
+Required focused tests
+
+Add or update tests proving:
+
+1. Long and short raw-distance boundaries at 5.00, 5.25, 20.00, and 20.25 points.
+2. Nearest eligible level selection.
+3. Universal 8-tick near-side placement.
+4. Eligible targets below 1R remain selected.
+5. Long patience-wick fallback uses actual fill to raw patience low.
+6. Short patience-wick fallback uses actual fill to raw patience high.
+7. Strategy-stop and catastrophe-stop distances cannot affect that fallback target.
+8. Gap entry and entry-slippage cases finalize the target from the modeled fill.
+9. Candidate, execution, audit, replay, ledger, display, outcome, and P/L use the same finalized values.
+10. Direct long and short continuation strategies without patience candles retain their governed fallback exits.
+11. The exact 5763.75 / 5755.75 / 5757.75 / 5755.25 screenshot regression.
+12. P/L correctly changes from the former loss to the target profit.
+13. No target or P/L is copied from stale legacy trade evidence.
+14. Existing dynamic VWAP/EMA ratchet behavior remains deterministic after entry.
+
+Verification
+
+Run at minimum:
+
+- key-level target tests
+- OHLCV execution tests
+- Phase 9 unit tests
+- Phase 9 integration tests
+- shadow-account replay tests
+- Visual Review and cache tests
+- TypeScript library build
+- API-server typecheck
+
+The current Phase 9 result of 105 passing and 1 failing is not acceptable. All focused and integration tests must pass.
+
+Do not claim completion from unit tests alone. Report:
+
+- files changed
+- exact target and 1R formulas implemented
+- exact direct-strategy fallback behavior
+- screenshot-fixture target, exit, gross P/L, fees, and net P/L
+- focused test results
+- integration test results
+- typecheck results
+- any validation that was not run
