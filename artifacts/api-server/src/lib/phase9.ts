@@ -328,6 +328,9 @@ export type CandidateCausalIdentity = {
   causalTrendDirection?: Direction | null;
   causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
   causalTrendTimestamp?: string | null;
+  direction?: Direction | null;
+  directionSource?: string | null;
+  orbTrendEpochId?: string | null;
   directionSourceTimestamp?: string | null;
   /** Stable causal crossing identity for direct consolidation entries. */
   directConsolidationCrossingIdentity?: string | null;
@@ -359,6 +362,9 @@ export type BacktestTrade = {
   setupType: string;
   specificStrategyId?: SpecificStrategyId | null;
   direction: Direction;
+  directionSource?: string | null;
+  directionSourceTimestamp?: string | null;
+  orbTrendEpochId?: string | null;
   entryTime: string;
   exitTime: string | null;
   entryPrice: number;
@@ -915,6 +921,9 @@ export type HistoricalTradeCandidate = {
   contractSymbol: string;
   tradingDate: string;
   direction: "long" | "short";
+  directionSource?: string | null;
+  directionSourceTimestamp?: string | null;
+  orbTrendEpochId?: string | null;
   specificStrategyId?: SpecificStrategyId | null;
   causalTrendDirection?: Direction | null;
   causalTrendSource?: "ORB_TREND" | "BREAKOUT_DIRECTION" | null;
@@ -1699,6 +1708,14 @@ function candidateCausalIdentityForOccurrence(
         causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
       }
       : {}),
+    ...(occurrence.directionSource || occurrence.directionSourceTimestamp !== undefined || occurrence.orbTrendEpochId
+      ? {
+        direction: occurrence.direction,
+        directionSource: occurrence.directionSource ?? null,
+        directionSourceTimestamp: occurrence.directionSourceTimestamp ?? null,
+        orbTrendEpochId: occurrence.orbTrendEpochId ?? null,
+      }
+      : {}),
     ...(occurrence.directionSourceTimestamp
       ? { directionSourceTimestamp: occurrence.directionSourceTimestamp }
       : {}),
@@ -1732,7 +1749,7 @@ export const QUALIFICATION_FUNNEL_STAGES = [
   "final_exit",
 ] as const;
 
-export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v10-causal-direction-integrity";
+export const QUALIFICATION_FUNNEL_VERSION = "qualification-funnel-v11-causal-source-identity";
 
 export type QualificationFunnelStage = typeof QUALIFICATION_FUNNEL_STAGES[number];
 
@@ -3868,7 +3885,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
   }
   if (value.kind === "patience") {
     return occurrenceId([
-        "historical-patience-occurrence-v7-causal-direction-integrity",
+        "historical-patience-occurrence-v8-causal-source-identity",
       value.sourceFingerprint,
       value.formulaHash,
       value.formulaVersion,
@@ -3878,6 +3895,7 @@ function governedOccurrenceId(value: HistoricalOccurrence): string {
       value.eligibilityArmId,
       value.orbTrendEpochId,
       value.directionSource,
+       value.directionSourceTimestamp,
       value.patienceTimestamp,
       value.patienceCandle?.closeTime,
       value.eOpenTimestamp,
@@ -5987,6 +6005,13 @@ export function projectHistoricalTradeCandidates(
       contractSymbol: occurrence.contractSymbol,
       tradingDate: occurrence.tradingDate,
       direction: occurrence.direction!,
+       ...(occurrence.directionSource || occurrence.directionSourceTimestamp !== undefined || occurrence.orbTrendEpochId
+         ? {
+           directionSource: occurrence.directionSource ?? null,
+           directionSourceTimestamp: occurrence.directionSourceTimestamp ?? null,
+           orbTrendEpochId: occurrence.orbTrendEpochId ?? null,
+         }
+         : {}),
       causalTrendDirection: occurrence.causalTrendDirection ?? null,
       causalTrendSource: occurrence.causalTrendSource ?? null,
       causalTrendTimestamp: occurrence.causalTrendTimestamp ?? null,
@@ -6546,6 +6571,13 @@ function candidateDrivenEntryTrade(
     setupType: occurrence.primaryEdge ?? occurrence.strategyCandidate,
     specificStrategyId: occurrence.specificStrategyId ?? null,
     direction: occurrence.direction,
+    ...(occurrence.directionSource || occurrence.directionSourceTimestamp !== undefined || occurrence.orbTrendEpochId
+      ? {
+        directionSource: occurrence.directionSource ?? null,
+        directionSourceTimestamp: occurrence.directionSourceTimestamp ?? null,
+        orbTrendEpochId: occurrence.orbTrendEpochId ?? null,
+      }
+      : {}),
     entryTime,
     exitTime: isOpen
       ? null

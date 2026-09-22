@@ -339,7 +339,8 @@ function outcomeForExecution(
   execution: ReturnType<typeof simulateOhlcvExecution>,
 ): BacktestTrade["outcome"] {
   if (execution.exitReason === "target") return "target";
-  if (execution.exitReason === "stop") {
+  if (execution.exitReason === "stop"
+    || execution.exitReason === CONSOLIDATION_MIDPOINT_REENTRY_STOP_EXIT_REASON) {
     return execution.audit.stopLevel === "catastrophe" ? "catastrophe stop" : "strategy stop";
   }
   if (execution.exitReason === "breakeven") return "breakeven";

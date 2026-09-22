@@ -8,6 +8,7 @@ import {
   isStrictlyOutsideNtz,
   patienceCandleEngine as rawPatienceCandleEngine,
   patienceArmLifecycleTransitions,
+  patienceOccurrenceId,
   phase5PatienceAnalysis as rawPhase5PatienceAnalysis,
   type PatienceEligibilityEvent,
   type PatienceEngineOptions,
@@ -18,6 +19,23 @@ import type { Candle } from "./types.js";
 import type { OrbTrendAnalysis } from "./orb-trend.js";
 
 const FIVE_MINUTES = 5 * 60_000;
+
+test("patience occurrence identity binds source, source timestamp, epoch, direction, and P open", () => {
+  const breakout = patienceOccurrenceId("long", "ORB_BREAKOUT", 100, null, 200);
+  const laterBreakout = patienceOccurrenceId("long", "ORB_BREAKOUT", 101, null, 200);
+  const trend = patienceOccurrenceId("long", "ORB_TREND", 100, "epoch-a", 200);
+  const otherEpoch = patienceOccurrenceId("long", "ORB_TREND", 100, "epoch-b", 200);
+  const short = patienceOccurrenceId("short", "ORB_BREAKOUT", 100, null, 200);
+
+  assert.notEqual(breakout, laterBreakout);
+  assert.notEqual(breakout, trend);
+  assert.notEqual(trend, otherEpoch);
+  assert.notEqual(breakout, short);
+  assert.equal(
+    breakout,
+    patienceOccurrenceId("long", "ORB_BREAKOUT", 100, null, 200),
+  );
+});
 
 function assertValidOhlc(open: number, high: number, low: number, close: number): void {
   assert.ok(low <= open, `Invalid OHLC: low ${low} is above open ${open}.`);

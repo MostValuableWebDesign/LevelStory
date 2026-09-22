@@ -1508,11 +1508,16 @@ export function validateCausalContinuationDirection(
     || transition.confirmingCandle.closeTime > transition.effectiveFromTimestamp) {
     return { valid: false, reasonCode: "ORB_TREND_NOT_EFFECTIVE_AT_P", detail: "The ORB trend transition lacks a completed confirming candle before its effective timestamp." };
   }
-  if (context.breakout.detected
+  const opposingBreakoutIsCausallyApplicable = context.breakout.detected
+    && !context.breakout.failed
     && context.breakout.direction !== null
-    && context.breakout.time !== null
+    && typeof context.breakout.time === "number"
+    && Number.isFinite(context.breakout.time)
     && context.breakout.time <= patienceCandle.openTime
-    && context.breakout.direction !== occurrence.direction) {
+    && EXECUTABLE_CONTINUATION_BREAKOUT_STATES.has(context.breakout.state)
+    && context.breakout.time >= transition.effectiveFromTimestamp
+    && context.breakout.direction !== occurrence.direction;
+  if (opposingBreakoutIsCausallyApplicable) {
     return { valid: false, reasonCode: "CONFLICTING_CAUSAL_DIRECTION", detail: "The current breakout evidence conflicts with the occurrence’s ORB trend direction at P." };
   }
   return {

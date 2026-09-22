@@ -702,7 +702,6 @@ test("replays a Strong gap-open trade with bound deterministic chronology", () =
   } as unknown as VisualValidationSet;
 
   const replay = buildShadowAccountReplay(set, { contractsPerTrade: 1 });
-  console.log("STRONG_GAP_REPLAY", JSON.stringify(replay.ledger[0]));
   assert.equal(replay.rejectedCandidates.length, 0);
   assert.equal(replay.ledger[0]?.exitTime, sourceTrade.exitTime);
   assert.equal(replay.ledger[0]?.exitPrice, sourceTrade.exitPrice);

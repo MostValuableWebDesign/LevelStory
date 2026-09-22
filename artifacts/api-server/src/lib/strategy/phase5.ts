@@ -1103,7 +1103,13 @@ function buildPatienceOccurrences(
       const previous = completed[candidate.index - 1];
       const inactiveDetail = `Eligibility arm ${arm.state}: ${arm.reason}`;
       return {
-        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+        occurrenceId: patienceOccurrenceId(
+          direction,
+          directionSource,
+          causalSourceTimestamp,
+          orbTrendEpochId,
+          candidate.candle.openTime,
+        ),
         direction,
         directionSource,
         directionSourceTimestamp: causalSourceTimestamp,
@@ -1137,7 +1143,13 @@ function buildPatienceOccurrences(
     }
     if (!isPatienceCandleOutsideNtz(candidate.candle, direction, finalizedNtz, requireFinalizedNtz)) {
       return {
-        occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+        occurrenceId: patienceOccurrenceId(
+          direction,
+          directionSource,
+          causalSourceTimestamp,
+          orbTrendEpochId,
+          candidate.candle.openTime,
+        ),
         direction,
         directionSource,
         directionSourceTimestamp: causalSourceTimestamp,
@@ -1289,7 +1301,13 @@ function buildPatienceOccurrences(
     const armTransitionTime = undefined;
     armStates.set(armId, { state: stateAfterCandidate, reason: stateReason });
     return {
-      occurrenceId: patienceOccurrenceId(direction, candidate.candle.openTime, orbTrend?.epochIdAt(candidate.candle.openTime)),
+      occurrenceId: patienceOccurrenceId(
+        direction,
+        directionSource,
+        causalSourceTimestamp,
+        orbTrendEpochId,
+        candidate.candle.openTime,
+      ),
       direction,
       directionSource,
       directionSourceTimestamp: causalSourceTimestamp,
@@ -1421,13 +1439,17 @@ function buildPatienceOccurrences(
   });
 }
 
-function patienceOccurrenceId(
+export function patienceOccurrenceId(
   direction: Direction,
-  patienceOpenTime: number,
+  directionSource: PatienceDirectionSource,
+  directionSourceTimestamp: number | null | undefined,
   epochId: string | null | undefined,
+  patienceOpenTime: number,
 ): string {
   return [
-    "patience",
+    "patience-v2-causal-source-identity",
+    directionSource,
+    Number.isFinite(directionSourceTimestamp) ? directionSourceTimestamp : "missing-source-time",
     epochId ?? "no-orb-epoch",
     direction,
     patienceOpenTime,

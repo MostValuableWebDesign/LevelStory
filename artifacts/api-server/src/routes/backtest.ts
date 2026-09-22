@@ -87,9 +87,9 @@ import {
   type Phase3PilotReport,
 } from "../lib/phase3-edge-pilot.js";
 
-const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v16-causal-direction-integrity";
-const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v21-causal-direction-integrity";
-const EXECUTION_MANAGEMENT_VERSION = "execution-management-v18-causal-direction-integrity";
+const STRATEGY_ENGINE_VERSION = "phase12-strategy-engine-v17-causal-source-identity";
+const CANDIDATE_PROJECTION_VERSION = "candidate-projection-v22-causal-source-identity";
+const EXECUTION_MANAGEMENT_VERSION = "execution-management-v19-causal-source-identity";
 const ACCOUNT_STATE_VERSION = "account-position-state-v3-strict-exit-boundary";
 const MAX_CALENDAR_RANGE_MS = 45 * 86_400_000;
 const MAX_MULTI_CONTRACT_RANGE_MS = 400 * 86_400_000;

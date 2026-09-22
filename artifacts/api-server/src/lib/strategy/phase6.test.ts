@@ -22,7 +22,7 @@ import type { DynamiteLevel, MajorLevel } from "./major-levels.js";
 import type { Candle } from "./types.js";
 import type { OrbTrendAnalysis } from "./orb-trend.js";
 import { canonicalStrategyId, STRATEGY_COMPONENT_TYPES, STRATEGY_IDS, STRATEGY_OUTCOME_TYPES, strategyIdsIncludingLegacy } from "./taxonomy.js";
-import type { PatienceOccurrence } from "./phase5.js";
+import { patienceOccurrenceId, type PatienceOccurrence } from "./phase5.js";
 
 const config = strategyConfig();
 
@@ -262,17 +262,25 @@ function causalOrbTrend(direction: "long" | "short", epochId = `${direction}-epo
 function orbTrendPatience(direction: "long" | "short", epochId: string) {
   const analysis = patience("ENTRY_TRIGGERED", direction === "long" ? "bullish" : "bearish", direction);
   const occurrence = analysis.occurrences![0];
+  const occurrenceId = patienceOccurrenceId(
+    direction,
+    "ORB_TREND",
+    1,
+    epochId,
+    occurrence.patienceCandle.openTime,
+  );
   return {
     ...analysis,
     directionSource: "ORB_TREND" as const,
+    occurrenceId,
     occurrences: [{
       ...occurrence,
+      occurrenceId,
       direction,
       directionSource: "ORB_TREND" as const,
       directionSourceTimestamp: 1,
       orbTrendEpochId: epochId,
     }],
-    occurrenceId: occurrence.occurrenceId,
   };
 }
 
@@ -382,6 +390,41 @@ test("canonical breakout validation rejects failed, expired, weak, future, and m
     assert.equal(result.valid, false, label);
     assert.equal(result.reasonCode, reasonCode, label);
   }
+});
+
+test("an exact ORB trend ignores failed, expired, weak, future, and stale opposing breakouts", () => {
+  const valid = baseContext({
+    patience: orbTrendPatience("long", "long-epoch"),
+    orbTrend: causalOrbTrend("long", "long-epoch"),
+  });
+  const cases = [
+    { label: "failed", breakout: { ...valid.breakout, direction: "short" as const, failed: true } },
+    { label: "expired", breakout: { ...valid.breakout, direction: "short" as const, state: "SETUP_EXPIRED" as const } },
+    { label: "weak", breakout: { ...valid.breakout, direction: "short" as const, state: "BREAKOUT_CANDIDATE" as const } },
+    { label: "future", breakout: { ...valid.breakout, direction: "short" as const, time: 4 } },
+    { label: "stale", breakout: { ...valid.breakout, direction: "short" as const, time: 0 } },
+  ];
+  for (const { label, breakout } of cases) {
+    const result = validateCausalContinuationDirection({ ...valid, breakout }, "long");
+    assert.equal(result.valid, true, label);
+  }
+});
+
+test("an executable opposing breakout after the active ORB epoch remains a conflict", () => {
+  const valid = baseContext({
+    patience: orbTrendPatience("long", "long-epoch"),
+    orbTrend: causalOrbTrend("long", "long-epoch"),
+    breakout: {
+      ...baseContext().breakout,
+      direction: "short",
+      state: "WAITING_FOR_PULLBACK",
+      failed: false,
+      time: 2,
+    },
+  });
+  const result = validateCausalContinuationDirection(valid, "long");
+  assert.equal(result.valid, false);
+  assert.equal(result.reasonCode, "CONFLICTING_CAUSAL_DIRECTION");
 });
 
 test("ORB continuation qualifies only when every mandatory rule passes", () => {

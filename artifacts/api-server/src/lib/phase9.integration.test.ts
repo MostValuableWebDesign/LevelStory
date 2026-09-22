@@ -263,6 +263,73 @@ function directProductionFixture(kind: DirectFixtureKind, direction: "long" | "s
   };
 }
 
+function orbContinuationProductionFixture(direction: "long" | "short") {
+  const tradingDate = "2026-08-25";
+  const source = generateSimulatedFuturesFeed(specification, {
+    calendar,
+    startDate: tradingDate,
+    days: 1,
+    seed: direction === "long" ? 11 : 12,
+    includePremarket: true,
+    premarketAvailable: true,
+  });
+  const regularWindow = sessionWindow(tradingDate, "regular", calendar)!;
+  const regular = source.filter((item) =>
+    tradingDateForTimestamp(item.openTime, calendar) === tradingDate
+    && item.openTime >= regularWindow.openTime
+    && item.openTime < regularWindow.closeTime,
+  );
+  const candles = source.map((item) => {
+    const index = regular.findIndex((candidate) => candidate.openTime === item.openTime);
+    if (index < 3 || index > 9) return item;
+    const template = regular[index + 27];
+    if (!template) return item;
+    const moved = {
+      ...item,
+      open: template.open,
+      high: template.high,
+      low: template.low,
+      close: template.close,
+      volume: template.volume,
+      bid: template.bid,
+      ask: template.ask,
+    };
+    if (index !== 9) return moved;
+    return direction === "long"
+      ? { ...moved, high: template.high + 0.75, close: template.high + 0.75, volume: 2_000 }
+      : { ...moved, low: template.low - 0.75, close: template.low - 0.75, volume: 2_000 };
+  });
+  return {
+    request: {
+      symbol: "MES",
+      startDate: tradingDate,
+      endDate: tradingDate,
+      inSampleDays: 1,
+      outOfSampleDays: 0,
+      executionMode: "ohlcv_modeled" as const,
+      premarketAvailable: true,
+      visualReviewEnabledStrategies: {
+        ORB_PULLBACK_CONTINUATION: true,
+        EARLY_ORB_MOMENTUM_CONTINUATION: false,
+        CONSOLIDATION_BREAKOUT_CONTINUATION: false,
+        EQUIVALENT_CANDLE_REVERSAL: false,
+        PATIENCE_CANDLE_CONTINUATION: true,
+        PEAK_RETRACEMENT_REVERSAL: false,
+      },
+    },
+    dataset: {
+      source: "historical_databento" as const,
+      contractSymbol: specification.fullContractSymbol,
+      contractMonth: specification.contractMonth,
+      candles,
+      quotesAvailable: false,
+      inSampleDates: [tradingDate],
+      outOfSampleDates: [],
+      selectedDates: [tradingDate],
+    },
+  };
+}
+
 function candle(index: number, open: number, high: number, low: number, close: number, volume = 100, isComplete = true): SimulatedFuturesCandle {
   const openTime = index * FIVE_MINUTES;
   return {
@@ -486,6 +553,126 @@ test("raw direct-strategy fixtures reach audit, occurrence, candidate, execution
          );
       }
     }
+  }
+});
+
+test("pre-11:30 ORB continuation fixtures preserve exact long and short identity through Visual Review", () => {
+  for (const direction of ["long", "short"] as const) {
+    const fixture = orbContinuationProductionFixture(direction);
+    const report = runCausalBacktest(fixture.request, undefined, fixture.dataset);
+    const occurrence = report.occurrences.find((item) =>
+      item.strategyCandidate === "ORB_PULLBACK_CONTINUATION"
+      && item.direction === direction
+      && item.status === "SIGNAL_CONFIRMED"
+      && item.directionSource === "ORB_TREND"
+      && Number.isFinite(Date.parse(item.directionSourceTimestamp ?? "")),
+    );
+    assert.ok(occurrence, `${direction} must produce a confirmed ORB-trend occurrence`);
+    const candidate = report.tradeCandidates.find((item) =>
+      item.signalOccurrenceId === occurrence?.occurrenceId
+      && item.primaryEdge === "ORB_PULLBACK_CONTINUATION"
+      && item.executionStatus === "MODELED_TRADE_CREATED"
+      && item.accountEntryStatus === "ENTERED",
+    );
+    assert.ok(candidate, `${direction} must produce an entered candidate`);
+    const trade = report.trades.find((item) =>
+      item.candidateId === candidate?.candidateId
+      && item.signalOccurrenceId === occurrence?.occurrenceId
+      && item.direction === direction
+      && item.primaryEdge === "ORB_PULLBACK_CONTINUATION",
+    );
+    assert.ok(trade, `${direction} must produce an authoritative trade`);
+    assert.ok(report.candidateExecutionEvidence?.some((item) =>
+      item.candidateId === candidate?.candidateId
+      && item.signalOccurrenceId === occurrence?.occurrenceId,
+    ), `${direction} must produce candidate-owned execution evidence`);
+    assert.ok(
+      Date.parse(trade?.entryTime ?? "") < Date.parse(`${fixture.request.startDate}T15:30:00.000Z`),
+      `${direction} trade must enter before 11:30 a.m. ET`,
+    );
+
+    const expectedIdentity = {
+      direction,
+      source: occurrence?.directionSource,
+      sourceTimestamp: occurrence?.directionSourceTimestamp,
+      epoch: occurrence?.orbTrendEpochId,
+    };
+    assert.deepEqual(
+      {
+        direction: candidate?.direction,
+        source: candidate?.directionSource,
+        sourceTimestamp: candidate?.directionSourceTimestamp,
+        epoch: candidate?.orbTrendEpochId,
+      },
+      expectedIdentity,
+      `${direction} candidate must preserve causal direction identity`,
+    );
+    assert.deepEqual(
+      {
+        direction: candidate?.causalIdentity.direction,
+        source: candidate?.causalIdentity.directionSource,
+        sourceTimestamp: candidate?.causalIdentity.directionSourceTimestamp,
+        epoch: candidate?.causalIdentity.orbTrendEpochId,
+      },
+      expectedIdentity,
+      `${direction} candidate identity must preserve causal direction identity`,
+    );
+    assert.deepEqual(
+      {
+        direction: trade?.direction,
+        source: trade?.directionSource,
+        sourceTimestamp: trade?.directionSourceTimestamp,
+        epoch: trade?.orbTrendEpochId,
+        identity: {
+          direction: trade?.causalIdentity?.direction,
+          source: trade?.causalIdentity?.directionSource,
+          sourceTimestamp: trade?.causalIdentity?.directionSourceTimestamp,
+          epoch: trade?.causalIdentity?.orbTrendEpochId,
+        },
+      },
+      {
+        ...expectedIdentity,
+        identity: expectedIdentity,
+      },
+      `${direction} trade must preserve causal direction identity`,
+    );
+
+    const visualSet = buildHistoricalVisualValidationSetFromReport(
+      {
+        ...fixture.request,
+        source: "historical_databento",
+        reviewMode: "trades_and_diagnostics",
+      },
+      fixture.dataset,
+      {
+        symbol: report.symbol,
+        formulaHash: report.formulaHash,
+        executionMode: report.executionMode,
+        audit: report.audit,
+        trades: report.trades,
+        occurrences: report.occurrences,
+        tradeCandidates: report.tradeCandidates,
+      },
+    );
+    const visualSnapshot = visualSet.snapshots.find((snapshot) =>
+      snapshot.category === "qualified_trade"
+      && snapshot.occurrenceId === occurrence?.occurrenceId
+      && snapshot.machineEvidence.trade?.candidateId === candidate?.candidateId
+      && snapshot.machineEvidence.trade?.signalOccurrenceId === occurrence?.occurrenceId,
+    );
+    assert.ok(visualSnapshot, `${direction} must reach Visual Review with exact occurrence/candidate linkage`);
+    assert.deepEqual(
+      {
+        direction: visualSnapshot?.machineEvidence.trade?.direction,
+        source: visualSnapshot?.machineEvidence.trade?.directionSource,
+        sourceTimestamp: visualSnapshot?.machineEvidence.trade?.directionSourceTimestamp,
+        epoch: visualSnapshot?.machineEvidence.trade?.orbTrendEpochId,
+      },
+      expectedIdentity,
+      `${direction} Visual Review must preserve causal direction identity`,
+    );
+    assert.equal(visualSnapshot?.machineEvidence.trade?.causalIdentity?.signalOccurrenceId, occurrence?.occurrenceId);
+    assert.equal(visualSnapshot?.machineEvidence.trade?.candidateId, candidate?.candidateId);
   }
 });
 

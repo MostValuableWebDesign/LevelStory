@@ -7,4 +7,4 @@ The midpoint-reentry stop must be selected from the explicit causal occurrence i
 
 **Why:** The direct consolidation taxonomy is shared by multiple strategies, so changing the broad helper without an identity gate silently changes unrelated stops.
 
-**How to apply:** Reuse the versioned midpoint helper for candidate execution, replay/audit projection, and Visual Review, and fail closed when the frozen direct and guard ranges disagree.
+**How to apply:** Reuse the versioned midpoint helper for candidate execution, replay/audit projection, and Visual Review, and fail closed when the frozen direct and guard ranges disagree. Shadow replay must also map its explicit midpoint-stop exit reason to a strategy-stop outcome so closed trades remain closed in the account ledger.

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
-export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v2-strong-breakout-identity";
-export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v10-causal-direction-integrity";
-export const BATCH_AGGREGATION_CACHE_KEY_VERSION = "batch-aggregation-v6-causal-direction-integrity";
+export const CAUSAL_FEATURE_CACHE_KEY_VERSION = "causal-features-cache-v3-causal-source-identity";
+export const STRATEGY_RESULT_CACHE_KEY_VERSION = "strategy-result-cache-v11-causal-source-identity";
+export const BATCH_AGGREGATION_CACHE_KEY_VERSION = "batch-aggregation-v7-causal-source-identity";
 export const LIFECYCLE_RECONCILIATION_VERSION = "pullback-lifecycle-v2-preserved-transition-history";
 
 export type AnalysisCacheStatus = "complete" | "incomplete" | "failed";
