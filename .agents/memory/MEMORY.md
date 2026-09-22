@@ -115,3 +115,4 @@
 - [Superseded arm snapshots](superseded-arm-snapshot-filter.md) — later replay cursors can re-emit PATIENCE_ARMED for a terminal superseded arm; filter only that stale transition, not active contradictions.
 - [Strong Breakout midpoint stop identity](strong-breakout-midpoint-stop.md) — midpoint-reentry applies only to canonical Strong Breakout; explicit extended consolidation and equivalent reversal identities retain separate stops.
 - [Replay chronology provenance](replay-chronology-provenance.md) — replay must preserve explicit execution mode and one canonical frozen-zone identity; legacy evidence is stale.
+- [Generated API contract synchronization](generated-api-contract-sync.md) — new response enum values require OpenAPI regeneration or completed jobs can fail validation and appear to reset.

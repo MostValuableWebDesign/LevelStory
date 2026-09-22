@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GetVisualValidationGenerationJobResponse } from "@workspace/api-zod";
 import {
   generationElapsedMs,
   getVisualValidationGenerationJob,
@@ -44,6 +45,38 @@ async function waitForHistoricalCompletion(jobId: string) {
   throw new Error("Historical generation job did not finish within the test timeout.");
 }
 
+function appendSkippedTargetReason(value: unknown, reason: string): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => appendSkippedTargetReason(item, reason));
+  }
+  if (value === null || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  let found = false;
+  if (Array.isArray(record.skippedLevels)) {
+    const template = record.skippedLevels[0];
+    const fallbackTemplate = {
+      id: "schema-regression-level",
+      type: "major resistance",
+      price: 106,
+      rangeLow: null,
+      rangeHigh: null,
+      distancePoints: 6,
+      distanceTicks: 24,
+      sourceTimestamp: null,
+    };
+    const level = template && typeof template === "object" ? template : fallbackTemplate;
+    record.skippedLevels = [
+      ...record.skippedLevels,
+      { ...(level as Record<string, unknown>), reason },
+    ];
+    found = true;
+  }
+  for (const child of Object.values(record)) {
+    if (appendSkippedTargetReason(child, reason)) found = true;
+  }
+  return found;
+}
+
 test("visual-validation generation jobs reuse active work and publish completion after storage", async () => {
   const first = await startVisualValidationGenerationJob(request);
   const duplicate = await startVisualValidationGenerationJob(request);
@@ -70,6 +103,17 @@ test("visual-validation generation jobs reuse active work and publish completion
   assert.equal(cached.jobId, first.jobId);
   assert.equal(cached.status, "completed");
   assert.equal(cached.percent, 100);
+});
+
+test("completed generation responses accept the current target skip reasons", async () => {
+  const started = await startVisualValidationGenerationJob({ ...request, seed: 17 });
+  const { current } = await waitForCompletion(started.jobId);
+  assert.equal(current.status, "completed");
+
+  const response = JSON.parse(JSON.stringify(current)) as Record<string, unknown>;
+  assert.equal(appendSkippedTargetReason(response, "TARGET_LEVEL_SKIPPED_WITHIN_5_POINTS"), true);
+  assert.equal(appendSkippedTargetReason(response, "TARGET_LEVEL_SKIPPED_BEYOND_20_POINTS"), true);
+  assert.doesNotThrow(() => GetVisualValidationGenerationJobResponse.parse(response));
 });
 
 test("historical default review generation stays current and retains end-date charts", async () => {
