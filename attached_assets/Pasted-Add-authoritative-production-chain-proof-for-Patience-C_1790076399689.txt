@@ -1,0 +1,241 @@
+Add authoritative production-chain proof for Patience Candle Continuation after removing `CONFIRMED_15M_TREND`.
+
+Keep this repair narrowly scoped to preserving and proving the real Patience Candle Continuation qualification through the production pipeline. Do not change unrelated strategies, execution rules, stops, targets, account behavior, or Shadow Replay behavior.
+
+Current verified gap
+
+The existing pre-11:30 integration fixture enables:
+
+- `ORB_PULLBACK_CONTINUATION`
+- `PATIENCE_CANDLE_CONTINUATION`
+
+However, its actual production result contains only:
+
+- `strategyCandidate: ORB_PULLBACK_CONTINUATION`
+- `matchedEdges: ["ORB_PULLBACK_CONTINUATION"]`
+
+It does not prove that the Phase 6 Patience Candle Continuation evaluator qualified or that its qualification survived the audit and Phase 9 projections.
+
+The current integration test searches only for `ORB_PULLBACK_CONTINUATION`, so it passes without exercising the Patience evaluator.
+
+Files and functions to inspect
+
+Start with:
+
+- `artifacts/api-server/src/lib/market-data.ts`
+  - `phase6Analysis(...)`
+  - `selectedEvaluation`
+  - `buildPhase8EvaluationRecord(...)`
+  - production snapshot/audit projection
+
+- `artifacts/api-server/src/lib/strategy/phase6.ts`
+  - `evaluatePatienceCandleContinuation(...)`
+  - `evaluateOrbBreakPullbackContinuation(...)`
+  - primary-setup selection
+  - `Phase6Analysis.evaluations`
+
+- `artifacts/api-server/src/lib/phase8.ts`, or the file containing:
+  - `buildPhase8EvaluationRecord(...)`
+  - setup evaluation serialization
+
+- `artifacts/api-server/src/lib/phase9.ts`
+  - historical audit reduction
+  - occurrence creation and merging
+  - `matchedEdges`
+  - `primaryEdge`
+  - `secondaryStrategyMatches`
+  - candidate projection
+  - trade projection
+
+- `artifacts/api-server/src/lib/phase9.integration.test.ts`
+  - `orbContinuationProductionFixture(...)`
+  - the existing pre-11:30 production-chain test
+
+Search the current repository before editing because function locations may have changed.
+
+Likely production seam to verify
+
+In `market-data.ts`, Phase 6 creates multiple strategy evaluations, but the code appears to pass only `selectedEvaluation` into `buildPhase8EvaluationRecord(...)`.
+
+Determine whether this drops a simultaneously qualified `PATIENCE_CANDLE_CONTINUATION` evaluation when ORB Pullback is selected as the primary setup.
+
+Do not assume the test fixture is the only problem.
+
+Prove which of these is happening:
+
+1. Phase 6 never qualifies Patience Candle Continuation for the fixture.
+2. Phase 6 qualifies it, but Phase 8 serializes only the primary ORB evaluation.
+3. Phase 8 preserves it, but Phase 9 drops it during occurrence reduction or canonicalization.
+4. The Patience edge survives but the existing test fails to inspect the correct field.
+
+Fix the earliest production seam that loses the valid Patience qualification.
+
+Required behavior
+
+For a valid Patience Candle Continuation:
+
+- Direction must come from an exact valid `ORB_TREND` epoch or valid `ORB_BREAKOUT`.
+- Generic `CONFIRMED_15M_TREND` must not be required or used as a fallback.
+- The exact direction source, source timestamp, and ORB epoch ID must match the Phase 5 occurrence.
+- Phase 6 must independently evaluate the Patience strategy.
+- A qualified Patience evaluation must remain visible in the authoritative audit.
+- Phase 9 must retain it in `matchedEdges` or the equivalent authoritative multi-strategy field.
+- The occurrence, candidate, trade, and Visual Review snapshot must remain linked by exact occurrence and candidate IDs.
+
+Respect the existing taxonomy
+
+If the current taxonomy intentionally canonicalizes:
+
+`PATIENCE_CANDLE_CONTINUATION → ORB_PULLBACK_CONTINUATION`
+
+do not create a duplicate candidate or duplicate trade merely to give Patience a separate primary edge.
+
+In that case, acceptance requires:
+
+- `primaryEdge === "ORB_PULLBACK_CONTINUATION"` if that remains the canonical owner
+- `matchedEdges` contains both:
+  - `ORB_PULLBACK_CONTINUATION`
+  - `PATIENCE_CANDLE_CONTINUATION`
+- `secondaryStrategyMatches` contains `PATIENCE_CANDLE_CONTINUATION`
+- exactly one canonical candidate owns the occurrence
+- exactly one modeled trade is linked to that candidate when account entry is allowed
+
+Do not rewrite the taxonomy solely to satisfy the test.
+
+Production fixtures
+
+Add deterministic long and short fixtures with the patience candle opening before 11:30 a.m. ET.
+
+Use the real production path from raw candles:
+
+`market data → Phase 5 occurrence → Phase 6 evaluations → Phase 8 audit → Phase 9 occurrence → candidate → modeled trade → Visual Review`
+
+For both long and short, assert:
+
+1. The fixture establishes an exact valid `ORB_TREND` or `ORB_BREAKOUT` source before P.
+2. P opens before 11:30 a.m. ET.
+3. No confirmed generic 15-minute trend is needed.
+4. Phase 5 emits the intended P-to-E occurrence.
+5. The Phase 6 evaluation with setup type `PATIENCE_CANDLE_CONTINUATION` has:
+   - `decision === "SETUP QUALIFIED"`
+   - `mandatoryPassed === true`
+   - a passing causal-direction rule
+6. The authoritative audit preserves the Patience qualification.
+7. The resulting historical occurrence includes `PATIENCE_CANDLE_CONTINUATION` in `matchedEdges`.
+8. If ORB Pullback owns the canonical candidate:
+   - `primaryEdge === "ORB_PULLBACK_CONTINUATION"`
+   - `secondaryStrategyMatches` includes `PATIENCE_CANDLE_CONTINUATION`
+9. Candidate identity matches the occurrence exactly:
+   - direction
+   - direction source
+   - direction-source timestamp
+   - ORB epoch ID when applicable
+   - signal occurrence ID
+10. The modeled trade matches:
+   - candidate ID
+   - signal occurrence ID
+   - direction
+   - direction source
+   - source timestamp
+   - epoch ID
+11. Visual Review contains the same occurrence, candidate, and trade linkage.
+12. The fixture produces nonzero candidate and trade counts.
+
+Exact result-set assertions
+
+Do not use only `.find()` or `.some()` as proof.
+
+Filter the results to the occurrence or causal arm under test and assert the complete expected set:
+
+- expected number of confirmed occurrences
+- expected number of candidates
+- expected number of entered candidates
+- expected number of account-blocked candidates
+- expected number of modeled trades
+- unique occurrence IDs
+- unique candidate IDs
+- exact trade-to-candidate linkage
+
+The existing short fixture currently produces two confirmed occurrences and two candidates, with one candidate blocked by the active position. Either:
+
+- redesign the fixture so it produces exactly one intended occurrence and one entered candidate, or
+- explicitly assert both attempts and prove why the second is account-blocked
+
+Do not silently select the first result.
+
+Negative regression tests
+
+Add focused tests proving Patience Candle Continuation does not qualify when:
+
+- direction source is missing
+- source timestamp is missing or non-finite
+- source timestamp does not match the authoritative evidence
+- ORB epoch ID is missing or wrong
+- breakout is failed
+- breakout is expired
+- breakout is weak or non-executable
+- breakout occurs after P
+- generic 15-minute trend is the only available direction
+- P-to-E timing is not immediate
+- any existing mandatory Patience rule fails
+
+These cases must create no candidate or modeled trade owned by the rejected Patience qualification.
+
+Scope limits
+
+Preserve:
+
+- Peak Retracement Reversal’s confirmed 15-minute counter-trend rule
+- ORB Pullback’s existing qualification rules
+- Early ORB Momentum behavior
+- Strong Breakout behavior
+- Equivalent Candle Reversal behavior
+- NTZ and pullback geometry
+- entry and stop buffers
+- risk and reward rules
+- entry cutoffs
+- fees and slippage
+- account-position arbitration
+- trade management and exits
+- Visual Review behavior unrelated to strategy-edge propagation
+
+Do not modify Strong Breakout midpoint-stop handling as part of this repair.
+
+Versions
+
+If production serialization, audit content, occurrence reduction, candidate projection, or Visual Review output changes, bump every affected formula/cache/projection version from its current value.
+
+Do not bump versions for a test-only change.
+
+Verification
+
+Run:
+
+1. Phase 5 tests.
+2. Phase 6 tests.
+3. Phase 8/audit tests if present.
+4. Phase 9 unit tests.
+5. Phase 9 integration tests.
+6. Candidate/trade reconciliation tests.
+7. Visual Review projection tests.
+8. Relevant cache tests if a versioned output changed.
+9. API-server typecheck.
+10. LevelStory/shared typecheck.
+11. `git diff --check`.
+
+Final report
+
+State:
+
+- where the Patience qualification was being lost
+- files and functions changed
+- whether Patience remains a secondary edge under the canonical ORB candidate
+- long fixture counts
+- short fixture counts
+- exact `matchedEdges` and `secondaryStrategyMatches` results
+- occurrence → candidate → trade → Visual Review IDs
+- whether any production versions were bumped
+- exact test counts and typecheck results
+- any validation not run
+
+Do not report this complete unless both long and short raw-candle fixtures show a qualified Patience Candle Continuation evaluation surviving into the authoritative production report and Visual Review with exact identity linkage.
