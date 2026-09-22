@@ -1376,7 +1376,13 @@ function toApiSetupAnalysis(analysis: Phase6Analysis): MarketSnapshot["setupAnal
     primarySetup: analysis.primarySetup,
     explanation: analysis.explanation,
     evaluations: analysis.evaluations.map((evaluation) => ({
-      setupType: canonicalStrategyId(evaluation.setupType) ?? "ORB_PULLBACK_CONTINUATION",
+      // Preserve the independent Patience evaluation for the downstream
+      // audit/projection chain. Its canonical owner remains ORB Pullback via
+      // `primarySetup` and taxonomy resolution; collapsing the evaluator here
+      // would make a qualified secondary edge impossible to audit.
+      setupType: evaluation.setupType === "PATIENCE_CANDLE_CONTINUATION"
+        ? evaluation.setupType
+        : canonicalStrategyId(evaluation.setupType) ?? "ORB_PULLBACK_CONTINUATION",
       specificStrategyId: evaluation.specificStrategyId ?? null,
       direction: evaluation.direction,
       decision: evaluation.decision,

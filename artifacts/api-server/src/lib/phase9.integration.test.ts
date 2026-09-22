@@ -560,19 +560,132 @@ test("pre-11:30 ORB continuation fixtures preserve exact long and short identity
   for (const direction of ["long", "short"] as const) {
     const fixture = orbContinuationProductionFixture(direction);
     const report = runCausalBacktest(fixture.request, undefined, fixture.dataset);
-    const occurrence = report.occurrences.find((item) =>
-      item.strategyCandidate === "ORB_PULLBACK_CONTINUATION"
-      && item.direction === direction
-      && item.status === "SIGNAL_CONFIRMED"
-      && item.directionSource === "ORB_TREND"
-      && Number.isFinite(Date.parse(item.directionSourceTimestamp ?? "")),
+    const confirmedOccurrences = [...new Map(report.occurrences
+      .filter((item) =>
+        item.strategyCandidate === "ORB_PULLBACK_CONTINUATION"
+        && item.direction === direction
+        && item.status === "SIGNAL_CONFIRMED"
+        && item.matchedEdges?.includes("PATIENCE_CANDLE_CONTINUATION")
+        && item.primaryEdge === "ORB_PULLBACK_CONTINUATION"
+        && item.directionSource === "ORB_TREND"
+        && Number.isFinite(Date.parse(item.directionSourceTimestamp ?? "")),
+      )
+      .map((item) => [item.occurrenceId, item])).values()];
+    const expectedOccurrenceCount = direction === "long" ? 1 : 2;
+    assert.equal(confirmedOccurrences.length, expectedOccurrenceCount, `${direction} must produce the complete confirmed occurrence set`);
+    assert.equal(new Set(confirmedOccurrences.map((item) => item.occurrenceId)).size, expectedOccurrenceCount);
+    assert.ok(confirmedOccurrences.every((item) => item.matchedEdges?.includes("ORB_PULLBACK_CONTINUATION")));
+    assert.ok(confirmedOccurrences.every((item) => item.matchedEdges?.includes("PATIENCE_CANDLE_CONTINUATION")));
+    assert.ok(confirmedOccurrences.every((item) => item.secondaryStrategyMatches?.includes("PATIENCE_CANDLE_CONTINUATION")));
+    assert.ok(confirmedOccurrences.every((item) => item.primaryEdge === "ORB_PULLBACK_CONTINUATION"));
+    assert.ok(confirmedOccurrences.every((item) =>
+      Date.parse(item.pOpenTimestamp ?? item.patienceTimestamp ?? "") < Date.parse(`${fixture.request.startDate}T15:30:00.000Z`),
+    ), `${direction} patience candle must open before 11:30 a.m. ET`);
+
+    const candidates = report.tradeCandidates.filter((item) =>
+      confirmedOccurrences.some((occurrence) => occurrence.occurrenceId === item.signalOccurrenceId)
+      && item.primaryEdge === "ORB_PULLBACK_CONTINUATION",
     );
-    assert.ok(occurrence, `${direction} must produce a confirmed ORB-trend occurrence`);
-    const candidate = report.tradeCandidates.find((item) =>
-      item.signalOccurrenceId === occurrence?.occurrenceId
-      && item.primaryEdge === "ORB_PULLBACK_CONTINUATION"
-      && item.executionStatus === "MODELED_TRADE_CREATED"
-      && item.accountEntryStatus === "ENTERED",
+    assert.equal(candidates.length, expectedOccurrenceCount, `${direction} must produce one canonical candidate per confirmed occurrence`);
+    assert.equal(new Set(candidates.map((item) => item.candidateId)).size, expectedOccurrenceCount);
+    assert.deepEqual(
+      candidates.map((item) => item.accountEntryStatus),
+      direction === "long" ? ["ENTERED"] : ["ENTERED", "BLOCKED_ACTIVE_POSITION"],
+    );
+    assert.equal(candidates.filter((item) => item.accountEntryStatus === "ENTERED").length, 1);
+    assert.equal(candidates.filter((item) => item.accountEntryStatus === "BLOCKED_ACTIVE_POSITION").length, direction === "long" ? 0 : 1);
+    assert.equal(report.trades.length, 1, `${direction} must produce exactly one account-authorized modeled trade`);
+
+    for (const occurrence of confirmedOccurrences) {
+      const patienceAudits = report.audit.filter((item) =>
+        item.setupType === "PATIENCE_CANDLE_CONTINUATION"
+        && item.decision === "SETUP QUALIFIED"
+        && item.direction === direction
+        && occurrence.auditIds?.includes(item.id),
+      );
+      assert.ok(patienceAudits.length > 0, `${direction} authoritative audit must preserve the qualified Patience evaluation`);
+      assert.ok(patienceAudits.every((item) =>
+        ["causalDirection", "continuationContext", "patienceEligible", "immediateTrigger", "entryOutsideFinalizedNtz"]
+          .every((key) => item.ruleEvidence.some((evidence) => evidence.startsWith(`PASS ${key}:`))),
+      ), `${direction} qualified Patience audit must preserve every mandatory pass`);
+      const phase6Snapshot = createMarketSnapshot(
+        "MES",
+        "regular",
+        undefined,
+        undefined,
+        { targetDollars: 75, slippageMode: "normal" },
+        {
+          tradingDate: fixture.request.startDate,
+          cursor: Date.parse(patienceAudits[0]!.evaluatedCandleOpenTime) + FIVE_MINUTES,
+          allCandles: fixture.dataset.candles,
+          historicalFeed: fixture.dataset.candles,
+          premarketAvailable: true,
+          executionMode: "ohlcv_modeled",
+        },
+      );
+      const patienceEvaluation = phase6Snapshot.setupAnalysis.evaluations.find((item) =>
+        item.setupType === "PATIENCE_CANDLE_CONTINUATION"
+        && item.decision === "SETUP QUALIFIED",
+      );
+      assert.ok(patienceEvaluation, `${direction} Phase 6 must retain the qualified Patience evaluator identity`);
+      assert.equal(patienceEvaluation?.mandatoryPassed, true);
+      assert.equal(patienceEvaluation?.rules.find((rule) => rule.key === "causalDirection")?.passed, true);
+
+      const candidateMatches = candidates.filter((item) => item.signalOccurrenceId === occurrence.occurrenceId);
+      assert.equal(candidateMatches.length, 1);
+      const candidate = candidateMatches[0]!;
+      assert.deepEqual(candidate.matchedEdges, ["ORB_PULLBACK_CONTINUATION", "PATIENCE_CANDLE_CONTINUATION"]);
+      assert.deepEqual(candidate.causalIdentity.signalOccurrenceId, occurrence.occurrenceId);
+      assert.deepEqual(
+        {
+          direction: candidate.direction,
+          source: candidate.directionSource,
+          sourceTimestamp: candidate.directionSourceTimestamp,
+          epoch: candidate.orbTrendEpochId,
+          signalOccurrenceId: candidate.signalOccurrenceId,
+        },
+        {
+          direction,
+          source: occurrence.directionSource,
+          sourceTimestamp: occurrence.directionSourceTimestamp,
+          epoch: occurrence.orbTrendEpochId,
+          signalOccurrenceId: occurrence.occurrenceId,
+        },
+      );
+      const linkedTrades = report.trades.filter((item) =>
+        item.candidateId === candidate.candidateId && item.signalOccurrenceId === occurrence.occurrenceId,
+      );
+      assert.equal(linkedTrades.length, candidate.accountEntryStatus === "ENTERED" ? 1 : 0);
+      const trade = linkedTrades[0];
+      if (trade) {
+        assert.equal(trade.primaryEdge, "ORB_PULLBACK_CONTINUATION");
+        assert.deepEqual(
+          {
+            candidateId: trade.candidateId,
+            signalOccurrenceId: trade.signalOccurrenceId,
+            direction: trade.direction,
+            source: trade.directionSource,
+            sourceTimestamp: trade.directionSourceTimestamp,
+            epoch: trade.orbTrendEpochId,
+          },
+          {
+            candidateId: candidate.candidateId,
+            signalOccurrenceId: occurrence.occurrenceId,
+            direction,
+            source: occurrence.directionSource,
+            sourceTimestamp: occurrence.directionSourceTimestamp,
+            epoch: occurrence.orbTrendEpochId,
+          },
+        );
+      }
+    }
+
+    const occurrence = confirmedOccurrences.find((item) =>
+      candidates.some((candidate) => candidate.signalOccurrenceId === item.occurrenceId && candidate.accountEntryStatus === "ENTERED"),
+    );
+    assert.ok(occurrence, `${direction} must have an account-authorized occurrence`);
+    const candidate = candidates.find((item) =>
+      item.signalOccurrenceId === occurrence?.occurrenceId && item.accountEntryStatus === "ENTERED",
     );
     assert.ok(candidate, `${direction} must produce an entered candidate`);
     const trade = report.trades.find((item) =>

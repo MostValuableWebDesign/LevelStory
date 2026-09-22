@@ -35,6 +35,7 @@
 - [Causal direction gating](causal-direction-gating.md) — causal ORB, consolidation, and reversal directions are authoritative; only generic continuation requires confirmed 15-minute trend.
 - [Candidate-driven execution](candidate-driven-execution.md) — eligible confirmed candidates initiate deterministic Shadow Mode entry; legacy modeled trades are reconciliation evidence only.
 - [Phase 3 edge projections](phase3-edge-projection.md) — primary edge owns independent totals; secondary matches remain confluence evidence without multiplying physical candidates.
+- [Phase 6 evaluator identity](phase6-evaluation-identity.md) — preserve exact independent evaluator setup types through snapshots before canonical candidate ownership.
 - [Entry observation timing](entry-observation-timing.md) — historical eligibility, cutoff, fill observation, and time buckets use completed E close; E open remains identity evidence.
 - [Management evidence status](management-evidence-status.md) — absent management evidence is missing; present but geometrically or temporally contradictory evidence is invalid and must not be simulated.
 - [Orphan provenance](orphan-provenance.md) — checkpoint corrections must preserve prior orphan modeled-trade evidence so later resumes can explain each disposition.

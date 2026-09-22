@@ -357,6 +357,8 @@ test("canonical ORB trend validation fails closed for missing, wrong, future, or
   });
   const cases: Array<{ label: string; context: Phase6Context; reasonCode: string }> = [
     { label: "missing", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], orbTrendEpochId: null }] } }, reasonCode: "MISSING_ORB_TREND_EPOCH" },
+    { label: "missing source timestamp", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], directionSourceTimestamp: undefined as unknown as number }] } }, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH" },
+    { label: "non-finite source timestamp", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], directionSourceTimestamp: Number.NaN }] } }, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH" },
     { label: "wrong", context: { ...valid, patience: orbTrendPatience("long", "wrong-epoch") }, reasonCode: "ORB_TREND_EPOCH_MISMATCH" },
     { label: "future", context: { ...valid, orbTrend: causalOrbTrend("long", "long-epoch", 3) }, reasonCode: "ORB_TREND_NOT_EFFECTIVE_AT_P" },
     { label: "duplicate", context: { ...valid, orbTrend: { ...valid.orbTrend!, transitions: [...valid.orbTrend!.transitions, valid.orbTrend!.transitions[0]] } }, reasonCode: "ORB_TREND_EPOCH_MISMATCH" },
@@ -374,6 +376,10 @@ test("canonical breakout validation rejects failed, expired, weak, future, and m
     { label: "failed", context: { ...valid, breakout: { ...valid.breakout, failed: true } }, reasonCode: "BREAKOUT_FAILED" },
     { label: "expired", context: { ...valid, breakout: { ...valid.breakout, state: "SETUP_EXPIRED" } }, reasonCode: "BREAKOUT_STATE_NOT_EXECUTABLE" },
     { label: "weak", context: { ...valid, breakout: { ...valid.breakout, state: "BREAKOUT_CANDIDATE" } }, reasonCode: "BREAKOUT_STATE_NOT_EXECUTABLE" },
+    { label: "missing breakout timestamp", context: { ...valid, breakout: { ...valid.breakout, time: null } }, reasonCode: "BREAKOUT_TIME_INVALID" },
+    { label: "non-finite breakout timestamp", context: { ...valid, breakout: { ...valid.breakout, time: Number.NaN } }, reasonCode: "BREAKOUT_TIME_INVALID" },
+    { label: "missing occurrence timestamp", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], directionSourceTimestamp: undefined as unknown as number }] } }, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH" },
+    { label: "non-finite occurrence timestamp", context: { ...valid, patience: { ...valid.patience, occurrences: [{ ...valid.patience.occurrences![0], directionSourceTimestamp: Number.NaN }] } }, reasonCode: "DIRECTION_SOURCE_TIMESTAMP_MISMATCH" },
     {
       label: "future",
       context: {
