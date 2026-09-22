@@ -1,0 +1,248 @@
+Remove `CONFIRMED_15M_TREND` as a qualification source from every executable strategy except Peak Retracement Reversal.
+
+Inspect the current LevelStory checkout before editing. Implement this through the full production path and add production-path regression tests. Do not solve this by changing labels while leaving the late trend gate active elsewhere.
+
+PROBLEM
+
+The generic trend calculation requires eight completed 15-minute candles. Starting from the regular-session open, that can delay direction confirmation until approximately 11:30 a.m. ET and prevent otherwise valid early trade candidates from appearing.
+
+Verified current paths still include:
+
+- `PatienceDirectionSource` contains `CONFIRMED_15M_TREND`.
+- The main market-data flow chooses:
+  `ORB trend → breakout direction → CONFIRMED_15M_TREND`.
+- `patienceCandleEngine()` defaults to `CONFIRMED_15M_TREND`.
+- `phase5PatienceAnalysis()` defaults to `CONFIRMED_15M_TREND`.
+- `evaluatePatienceCandleContinuation()` can require the full confirmed 15-minute trend again.
+- Uploaded-chart analysis explicitly labels its supplied direction as `CONFIRMED_15M_TREND`.
+- Phase 9 diagnostics count patience shapes sourced from `CONFIRMED_15M_TREND`.
+
+REQUESTED STRATEGY POLICY
+
+Only `PEAK_RETRACEMENT_REVERSAL` may require the generic confirmed 15-minute trend.
+
+Use earlier strategy-native causal direction for continuation strategies:
+
+1. Active confirmed causal ORB trend.
+2. Otherwise, a current valid non-failed ORB breakout direction.
+3. Otherwise, no executable continuation direction exists.
+
+Do not fall back to the generic 15-minute trend.
+
+A bullish or bearish generic 15-minute trend may remain visible as diagnostic context. It must not create, suppress, redirect, or invalidate a non-Peak candidate.
+
+AUTHORITATIVE STRATEGY BEHAVIOR
+
+### 1. Peak Retracement Reversal
+
+Preserve the confirmed 15-minute trend requirement.
+
+It must still require:
+
+- eight completed 15-minute candles;
+- bullish or bearish direction;
+- score of at least `+5` or at most `-5`;
+- matching structure;
+- matching VWAP evidence;
+- matching EMA evidence;
+- matching EMA-slope evidence;
+- proposed reversal direction opposite that confirmed trend.
+
+A neutral, incomplete, mixed, or unconfirmed trend must fail Peak Retracement Reversal.
+
+Prefer calling the canonical `hasConfirmedDirectionalTrend()` helper explicitly in the Peak evaluator so this exception cannot be weakened accidentally.
+
+### 2. Patience Candle Continuation
+
+Remove the generic confirmed 15-minute trend gate.
+
+Direction must come from:
+
+```text
+active causal ORB trend
+    otherwise
+current valid non-failed ORB breakout direction
+    otherwise
+no executable direction
+Once a causal direction exists, continue enforcing the existing:
+- qualifying pullback or consolidation context;
+- patience-candle shape;
+- immediate P→E adjacency;
+- four-tick confirmation buffer;
+- finalized NTZ separation;
+- entry cutoff;
+- stop construction;
+- risk-management rules.
+A neutral or opposing generic 15-minute trend must not reject the candidate.
+3. ORB Pullback Continuation
+Remove the generic 15-minute trend fallback completely.
+Require an active causal ORB trend or current valid non-failed breakout direction. If neither exists, fail closed with no trade candidate.
+Do not infer direction from:
+- the latest candle;
+- VWAP alone;
+- EMA alone;
+- a partially formed 15-minute candle;
+- a later candle that was unavailable when P formed;
+- a failed or stale breakout;
+- a future ORB-trend transition.
+4. Early ORB Momentum Continuation
+Preserve its isolated strategy path.
+It must remain independent of:
+- generic 15-minute trend;
+- pullback confirmation;
+- indicator alignment;
+- body or close-location filters;
+- volume confirmation.
+5. Strong Breakout After Consolidation
+Preserve its existing causal hierarchy:
+active causal ORB trend → valid breakout direction
+Do not add a generic trend gate.
+Do not alter its frozen consolidation identity, midpoint stop, catastrophe stop, entry boundary, replay chronology, or execution rules.
+6. Equivalent Candle Reversal
+Do not add a generic confirmed-trend requirement.
+Preserve its pattern-owned reversal direction and immediate-trigger rules. Generic trend may remain diagnostic context used to interpret a pattern, but it must not become a mandatory qualification gate.
+CAUSAL TIMING RULES
+The chosen direction must have existed when the candidate became eligible.
+For an ORB-trend source:
+- the ORB transition must already be effective at or before P opens;
+- preserve the exact ORB epoch ID;
+- a later trend transition cannot authorize an earlier P;
+- a reversal of the ORB trend must continue to invalidate or supersede the appropriate pending arm under existing rules.
+For a breakout-direction source:
+- the breakout must already be detected;
+- it must not be failed, invalidated, superseded, or stale;
+- its timestamp must be no later than the P eligibility boundary;
+- preserve the source breakout identity and direction in the occurrence and candidate.
+If both sources are absent, return no executable direction and create no candidate or modeled trade.
+If an active causal ORB trend and breakout evidence conflict, follow the repository’s canonical ORB-epoch policy. Do not silently combine incompatible evidence. Fail closed if the evidence cannot be reconciled causally.
+FILES AND FUNCTIONS TO INSPECT
+Inspect at least:
+- artifacts/api-server/src/lib/market-data.ts
+- artifacts/api-server/src/lib/strategy/phase5.ts
+- artifacts/api-server/src/lib/strategy/phase5.test.ts
+- artifacts/api-server/src/lib/strategy/phase6.ts
+- artifacts/api-server/src/lib/strategy/phase6.test.ts
+- artifacts/api-server/src/lib/strategy/rules.ts
+- artifacts/api-server/src/lib/uploaded-chart-analysis.ts
+- artifacts/api-server/src/lib/phase9.ts
+- artifacts/api-server/src/lib/phase9.test.ts
+- artifacts/api-server/src/lib/phase9.integration.test.ts
+- artifacts/api-server/src/lib/phase3-edge-pilot.ts
+- artifacts/api-server/src/lib/formula-hash.ts
+- artifacts/api-server/src/lib/analysis-cache.ts
+- artifacts/api-server/src/lib/visual-validation-cache.ts
+- artifacts/api-server/src/routes/backtest.ts
+- generated API schemas and clients if diagnostic fields change
+Search the current checkout for every occurrence of:
+CONFIRMED_15M_TREND
+hasConfirmedDirectionalTrend
+confirmedTrend
+trendDirectionShapes
+PATIENCE_TREND_MISMATCH
+TREND_DIRECTION_PRESENT_BUT_UNCONFIRMED
+directionSource
+directionSources
+REQUIRED IMPLEMENTATION
+1. Remove CONFIRMED_15M_TREND from PatienceDirectionSource.
+2. Do not replace it with a misleading default such as ORB_BREAKOUT when no breakout exists.
+3. Make production callers provide an explicit causal direction source.
+4. Remove the generic 15-minute trend fallback from the main market-data direction selection.
+5. Update evaluatePatienceCandleContinuation() to use the direction already frozen by Phase 5.
+6. Replace its confirmedTrend rule with a causal-direction rule that verifies:
+   - source type;
+   - direction;
+   - source timestamp;
+   - ORB epoch or breakout identity;
+   - causal availability at P;
+   - agreement with the occurrence and candidate.
+7. Preserve generic trend data for display and Peak Retracement Reversal only.
+8. For uploaded-chart analysis, introduce an honest source such as:
+UPLOADED_CHART_DIRECTION
+Do not describe a manually extracted chart direction as a confirmed 15-minute trend.
+9. Replace obsolete Phase 9 diagnostics such as trendDirectionShapes with source-specific diagnostics, for example:
+orbTrendDirectionShapes
+orbBreakoutDirectionShapes
+uploadedChartDirectionShapes
+shapesWithoutCausalDirection
+Update schemas and generated clients through the normal generation workflow.
+10. Bind the selected direction source through:
+audit
+→ patience occurrence
+→ canonical signal occurrence
+→ trade candidate
+→ authoritative trade
+→ Visual Review
+→ shadow replay
+A candidate’s direction and source must not change during projection or replay.
+11. Advance every cache or formula version whose results can change, including the fixed formula, strategy-result cache, batch aggregation, qualification funnel, route strategy engine, candidate projection, Visual Review cache, and related snapshot/chart projection versions.
+REGRESSION MATRIX
+Add symmetric long and short tests proving:
+1. Active causal ORB trend qualifies before eight completed 15-minute candles.
+2. Valid non-failed breakout direction qualifies before eight completed 15-minute candles.
+3. Neutral generic 15-minute trend does not block either causal source.
+4. Opposing generic 15-minute trend does not block either causal source.
+5. No ORB trend and no valid breakout produces no candidate, even if the generic trend is bullish or bearish.
+6. A failed breakout cannot supply direction.
+7. A stale breakout cannot supply direction.
+8. A later ORB transition cannot authorize an earlier P.
+9. An ORB epoch reversal preserves existing pending-arm invalidation behavior.
+10. The occurrence, candidate, and trade retain the same direction source and causal identity.
+11. Early ORB Momentum remains independent of generic trend.
+12. Strong Breakout remains independent of generic trend.
+13. Equivalent Candle Reversal remains free of a hard generic-trend gate.
+14. Peak Retracement Reversal fails with fewer than eight completed 15-minute candles.
+15. Peak Retracement Reversal fails with a neutral or incomplete trend.
+16. Peak Retracement Reversal qualifies only when its reversal direction opposes a fully confirmed trend.
+17. Uploaded-chart direction is labeled as uploaded-chart evidence, not confirmed 15-minute evidence.
+18. Old cached results containing CONFIRMED_15M_TREND cannot load as current.
+19. A production-generated early continuation signal produces a nonzero linked chain:
+strategy
+→ direction source
+→ occurrence ID
+→ candidate ID
+→ trade ID
+20. Visual Review shows that exact linked candidate and does not regenerate its direction from current generic trend.
+Use at least one deterministic production-path fixture before 11:30 a.m. ET. An HTTP 200 response, a detected signal with zero candidates, or a zero-trade replay is not acceptance proof.
+PRESERVE
+Do not change:
+- Peak Retracement Reversal’s counter-trend meaning;
+- patience-candle geometry;
+- four-tick entry confirmation;
+- stop buffers;
+- finalized NTZ rules;
+- entry cutoffs;
+- pullback-level requirements;
+- Strong Breakout stop behavior;
+- Extended consolidation stop behavior;
+- Equivalent Candle pattern rules;
+- fees or slippage;
+- account-wide active-position arbitration;
+- execution chronology;
+- unrelated strategies.
+Do not introduce a new untested indicator score merely to produce earlier direction. The earlier solution is strategy-native causal ORB trend or valid breakout direction.
+VERIFICATION
+Run focused tests first:
+pnpm --filter @workspace/scripts exec tsx --test \
+  ../artifacts/api-server/src/lib/strategy/phase5.test.ts \
+  ../artifacts/api-server/src/lib/strategy/phase6.test.ts \
+  ../artifacts/api-server/src/lib/phase9.test.ts \
+  ../artifacts/api-server/src/lib/phase9.integration.test.ts
+Then run:
+pnpm --filter @workspace/api-server run typecheck
+pnpm --filter @workspace/levelstory run typecheck
+pnpm test
+git diff --check
+Run one bounded production-style replay before 11:30 a.m. ET that yields at least one executed continuation trade sourced from ORB_TREND or ORB_BREAKOUT.
+FINAL RESPONSE
+Report:
+1. Every former CONFIRMED_15M_TREND production dependency.
+2. Files and functions changed.
+3. Final causal-direction precedence.
+4. Exact no-direction and conflict behavior.
+5. Proof that Peak Retracement Reversal still requires the full confirmed trend.
+6. Formula and cache versions before and after.
+7. Tests added and exact commands run.
+8. Test totals and typecheck results.
+9. The production fixture’s time, strategy, direction source, occurrence ID, candidate ID, trade ID, and outcome.
+10. Any database, sandbox, or real-data validation that could not run.
+Do not call the change complete if non-Peak candidates still depend on the generic confirmed 15-minute trend, if Peak loses its confirmed-trend requirement, or if the production fixture produces zero linked trades.
